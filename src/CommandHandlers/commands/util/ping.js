@@ -8,9 +8,9 @@ module.exports = new CommandInterface({
 
 	execute: async function() {
 		if (this.command == "ping") {
-			this.send("Pong!");
+			await this.send("Pong!");
 		} else {
-			this.send("Ping!");
+			await this.send("Ping!");
 		}
 	}
 

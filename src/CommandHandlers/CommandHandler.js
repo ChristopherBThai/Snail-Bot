@@ -1,5 +1,6 @@
 const requireDir = require('require-dir');
 const CommandInterface = require('./CommandInterface.js');
+const global = require('../utils/global.js');
 
 class CommandHandler {
 
@@ -8,25 +9,40 @@ class CommandHandler {
 		this.initCommands();
 	}
 
-	async execute (command, msg) {
-		const commandName = this.aliasToCommand[command.toLowerCase()];
+	async execute (msg) {
+		console.log(msg.command);
+		const commandName = this.aliasToCommand[msg.command];
 		if (!commandName) return;
 		const commandObj = this.commands[commandName];
-		await commandObj.execute(this.constructBind(command, commandName, commandObj, msg));
+		await commandObj.execute(this.constructBind(commandName, commandObj, msg));
 	}
 
-	constructBind (command,  commandName, commandObj, msg) {
+	constructBind (commandName, commandObj, msg) {
 		const bindObj = {
 			msg,
 			commands: this.commands,
 			aliasToCommand: this.aliasToCommand,
-			command: command.toLowerCase(),
 			commandName,
-			commandObj
+			commandObj,
+			global,
+			config: this.bot.config,
+			db: this.bot.db
 		}
 
 		bindObj.send = (text) => {
 			return msg.channel.createMessage(`${commandObj.emoji} **|** ${text}`);
+		}
+
+		bindObj.reply = (text) => {
+			return msg.channel.createMessage(`${commandObj.emoji} **| ${msg.author.username}**${text}`);
+		}
+
+		bindObj.error = async (text) => {
+			let msgObj = await msg.channel.createMessage(`🚫 **| ${msg.author.username}**${text}`);
+			setTimeout(() => {
+				msgObj.delete();
+			}, 5000);
+			return msgObj;
 		}
 
 		return bindObj;

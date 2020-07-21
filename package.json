@@ -19,6 +19,7 @@
   "dependencies": {
     "dotenv": "^8.2.0",
     "eris": "^0.13.3",
+    "mongoose": "^5.9.24",
     "require-dir": "^1.2.0"
   }
 }
