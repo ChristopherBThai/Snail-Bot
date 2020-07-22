@@ -4,7 +4,13 @@ const RoleSchema = require('./RoleSchema.js');
 
 const UserSchema = new mongoose.Schema({
 	_id: String,
-	role: { type: RoleSchema }
+
+	roleBenefit: {
+		months: { type: Number, default: 0 },
+		started: { type: Date, default: Date.now }
+	},
+
+	role: { type: RoleSchema, default: null }
 });
 
 module.exports = { name: 'User', schema: UserSchema };
