@@ -8,18 +8,17 @@ module.exports = new CommandInterface({
 
 	execute: async function() {
 		const user = await this.db.User.findById(this.msg.author.id);
-		console.log(user);
 
 		// Check if they have perms to change roles
-		if (!this.global.hasRoles(this.msg.member, this.config.roles.role_change)
-				&& !this.global.hasBenefit(user.roleBenefit)) {
-			if (user.role) {
+		if (!(this.global.hasRoles(this.msg.member, this.config.roles.role_change)
+				|| this.global.hasBenefit(user.roleBenefit))) {
+			if (user.role && user.role.active) {
 				try {
 					await this.msg.channel.guild.deleteRole(user.role._id);
 				} catch (err) {console.error(err)}
 				await this.db.User.updateOne(
 					{ _id: this.msg.author.id },
-					{ role: undefined }
+					{ $set: { 'role.active': false } }
 				);
 			}
 			await this.error(", you don't have Patreon perks to change your roles!");

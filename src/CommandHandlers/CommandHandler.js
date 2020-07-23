@@ -26,7 +26,8 @@ class CommandHandler {
 			commandObj,
 			global,
 			config: this.bot.config,
-			db: this.bot.db
+			db: this.bot.db,
+			bot: this.bot
 		}
 
 		bindObj.send = (text) => {

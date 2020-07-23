@@ -8,7 +8,7 @@ class EventHandler{
 		for (let listener in dir) {
 			if (listener!=filename) {
 				const handler = new dir[listener](bot);
-				bot.on(listener,handler.handle.bind(handler));
+				bot.on(listener, handler.handle.bind(handler));
 				handlers.push(handler);
 			}
 		}

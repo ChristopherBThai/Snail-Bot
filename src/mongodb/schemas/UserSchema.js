@@ -7,10 +7,10 @@ const UserSchema = new mongoose.Schema({
 
 	roleBenefit: {
 		months: { type: Number, default: 0 },
-		started: { type: Date, default: Date.now }
+		started: { type: Date, default: Date.now },
 	},
+	role: { type: RoleSchema.schema, default: null }
 
-	role: { type: RoleSchema, default: null }
 });
 
 module.exports = { name: 'User', schema: UserSchema };
