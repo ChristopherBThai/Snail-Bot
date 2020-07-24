@@ -11,8 +11,8 @@ module.exports = new CommandInterface({
 
 		// Check if they have perms to change roles
 		if (!(this.global.hasRoles(this.msg.member, this.config.roles.role_change)
-				|| this.global.hasBenefit(user.roleBenefit))) {
-			if (user.role && user.role.active) {
+				|| (user && this.global.hasBenefit(user.roleBenefit)))) {
+			if (user && user.role && user.role.active) {
 				try {
 					await this.msg.channel.guild.deleteRole(user.role._id);
 				} catch (err) {console.error(err)}
@@ -22,6 +22,7 @@ module.exports = new CommandInterface({
 				);
 			}
 			await this.error(", you don't have Patreon perks to change your roles!");
+			console.log(`Failed to change role for ${this.msg.author.username}`);
 			return;
 		}
 
@@ -47,12 +48,13 @@ module.exports = new CommandInterface({
 			return;
 		}
 
+		let userRole;
 		try {
 			// Assign roles
-			if (user.role && user.role._id) {
-				await updateRole.bind(this)(user.role._id, hexcode, roleName);
+			if (user && user.role && user.role._id) {
+				userRole = await updateRole.bind(this)(user.role._id, hexcode, roleName);
 			} else {
-				await addRole.bind(this)(hexcode, roleName);
+				userRole = await addRole.bind(this)(hexcode, roleName);
 			}
 		} catch (err) {
 			console.error(err);
@@ -60,7 +62,9 @@ module.exports = new CommandInterface({
 			return;
 		}
 
-		await this.reply(`, you changed your to ${roleName}!`);
+		await this.reply(`, you changed your role to <@&${userRole.id}>!`);
+		await this.log(`${this.msg.author.mention} changed their role to **${userRole.name}**`);
+		console.log(`Changed role for ${this.msg.author.username}`);
 
 	}
 
@@ -71,8 +75,7 @@ async function updateRole (id, hexcode, roleName) {
 	// Get existing role
 	const existingRole = this.msg.channel.guild.roles.get(id);
 	if (!existingRole) {
-		await addRole.bind(this)(hexcode, roleName);
-		return;
+		return await addRole.bind(this)(hexcode, roleName);
 	}
 
 	// Edit changes
@@ -93,6 +96,8 @@ async function updateRole (id, hexcode, roleName) {
 		},
 		{ upsert: true }
 	);
+
+	return existingRole;
 }
 
 // Adds role for the user
@@ -121,4 +126,6 @@ async function addRole (hexcode, roleName) {
 		},
 		{ upsert: true }
 	);
+
+	return newRole;
 }

@@ -17,6 +17,7 @@
   },
   "homepage": "https://github.com/ChristopherBThai/Snail-Bot#readme",
   "dependencies": {
+    "bad-words": "^3.0.3",
     "dotenv": "^8.2.0",
     "eris": "^0.13.3",
     "mongoose": "^5.9.24",

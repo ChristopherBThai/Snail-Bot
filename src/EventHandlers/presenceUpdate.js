@@ -20,8 +20,8 @@ module.exports = class PresenceUpdateHandler {
 
 	async setLimit(timer, text) {
 		const promises = [];
-		for (let i in this.bot.config.watchChannels) {
-			let channelID = this.bot.config.watchChannels[i];
+		for (let i in this.bot.config.channels.chat) {
+			let channelID = this.bot.config.channels.chat[i];
 			let guildID = this.bot.channelGuildMap[channelID];
 			if (!guildID) throw new Error("Invalid channel id in watchlist");
 			let guild = this.bot.guilds.get(guildID)

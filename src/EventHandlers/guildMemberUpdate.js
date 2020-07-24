@@ -22,12 +22,13 @@ module.exports = class GuildMemberUpdateHandler {
 						{ $set: { 'role.active': false } }
 					);
 					await this.msgUser(member.id, `${roleEmoji} **|** Your role perks for **OwO Bot Support** has expired! Thanks for supporting the server!`);
+					console.log(`Role Perks expired for ${member.username}`);
 				}
 			}
 		} else if (global.hasRoles(member, this.bot.config.roles.role_change)) {
 			// gained perks
 			const user = await this.db.User.findById(member.id);
-			if (!global.hasBenefit(user.roleBenefit)) {
+			if (!user || !global.hasBenefit(user.roleBenefit)) {
 				if (user && user.role) {
 					// Already has existing role, add that
 					let userRole = guild.roles.get(user.role._id);
@@ -55,9 +56,11 @@ module.exports = class GuildMemberUpdateHandler {
 						}
 					);
 					await this.msgUser(member.id, `${roleEmoji} **|** Thanks for supporting the server! You now have the ability to change roles on **OwO Bot Support**!\n${blankEmoji} **|** You regained your role named: **${userRole.name}**\n${blankEmoji} **|** You can change your role by using the command \`snail changerole {hexcode} {roleName}\``);
+					console.log(`Readding Role Perks for ${member.username}`);
 				} else {
 					// No role, notify user
 					await this.msgUser(member.id, `${roleEmoji} **|** Thanks for supporting the server! You now have the ability to change roles on **OwO Bot Support**!\n${blankEmoji} **|** You can do so by using the command \`snail changerole {hexcode} {roleName}\``);
+					console.log(`First time Role Perks for ${member.username}`);
 				}
 			}
 		}

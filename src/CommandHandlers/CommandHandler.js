@@ -46,6 +46,10 @@ class CommandHandler {
 			return msgObj;
 		}
 
+		bindObj.log = async (text) => {
+			return await this.bot.createMessage(this.bot.config.channels.log, `${commandObj.emoji} **|** ${text}`);
+		}
+
 		return bindObj;
 	}
 
