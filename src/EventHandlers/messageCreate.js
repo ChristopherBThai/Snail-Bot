@@ -37,13 +37,13 @@ module.exports = class MessageCreateHandler {
 
 					// Tags dnd or offline helper/mod
 					if (member.status === 'dnd' || member.status === 'offline' || !member.status) {
-						await msg.channel.createMessage(`⚠️ **|** Please refrain from tagging \`offline\` or \`do not disturb\` helpers/mods!`);
+						await msg.channel.createMessage(`⚠️ **|** ${msg.author.mention}, please refrain from tagging \`offline\` or \`do not disturb\` helpers/mods!`);
 						await this.bot.createMessage(this.bot.config.channels.log, `⚠️ **|** ${msg.author.mention} tagged ${member.username}#${member.discriminator} in ${msg.channel.mention}`);
 					}
 
 					// Tags in spam channel
 					else if (this.bot.config.channels.spam.includes(msg.channel.id)) {
-						await msg.channel.createMessage(`⚠️ **|** Please refrain from tagging helper/mods in spam channels!`);
+						await msg.channel.createMessage(`⚠️ **|** ${msg.author.mention}, please refrain from tagging helper/mods in spam channels!`);
 						await this.bot.createMessage(this.bot.config.channels.log, `⚠️ **|** ${msg.author.mention} tagged ${member.username}#${member.discriminator} in ${msg.channel.mention}`);
 					}
 				}

@@ -63,7 +63,7 @@ module.exports = new CommandInterface({
 		}
 
 		await this.reply(`, you changed your role to <@&${userRole.id}>!`);
-		await this.log(`${this.msg.author.mention} changed their role to **${userRole.name}**`);
+		await this.log(`${this.msg.author.mention} changed their role to **${userRole.name}** #${userRole.color.toString(16).padStart(6, '0')}`);
 		console.log(`Changed role for ${this.msg.author.username}`);
 
 	}
