@@ -9,7 +9,12 @@ const UserSchema = new mongoose.Schema({
 		months: { type: Number, default: 0 },
 		started: { type: Date, default: Date.now },
 	},
-	role: { type: RoleSchema.schema, default: null }
+	role: { type: RoleSchema.schema, default: null },
+
+	friends: {
+		type: Map,
+		of: { type: String, ref: 'User' }
+	}
 
 });
 

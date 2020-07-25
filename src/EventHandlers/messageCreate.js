@@ -30,6 +30,11 @@ module.exports = class MessageCreateHandler {
 
 	async checkModMention (msg) {
 		if (msg.mentions && msg.mentions.length > 0) {
+			if(global.hasRoles(msg.member, this.bot.config.roles.mods) ||
+				global.hasRoles(msg.member, this.bot.config.roles.helpers) ||
+				this.bot.config.channels.ignoreMention.includes(msg.channel.id)) {
+				return;
+			}
 			msg.mentions.forEach(async (mention) => {
 				const member = msg.channel.guild.members.get(mention.id);
 				if(global.hasRoles(member, this.bot.config.roles.mods) ||
@@ -37,12 +42,16 @@ module.exports = class MessageCreateHandler {
 
 					// Tags dnd or offline helper/mod
 					if (member.status === 'dnd' || member.status === 'offline' || !member.status) {
+						const user = await this.bot.db.User.findById(mention.id);
+						if (user.friends && user.friends.has(msg.author.id)) return;
 						await msg.channel.createMessage(`⚠️ **|** ${msg.author.mention}, please refrain from tagging \`offline\` or \`do not disturb\` helpers/mods!`);
 						await this.bot.createMessage(this.bot.config.channels.log, `⚠️ **|** ${msg.author.mention} tagged ${member.username}#${member.discriminator} in ${msg.channel.mention}`);
 					}
 
 					// Tags in spam channel
 					else if (this.bot.config.channels.spam.includes(msg.channel.id)) {
+						const user = await this.bot.db.User.findById(mention.id);
+						if (user.friends && user.friends.has(msg.author.id)) return;
 						await msg.channel.createMessage(`⚠️ **|** ${msg.author.mention}, please refrain from tagging helper/mods in spam channels!`);
 						await this.bot.createMessage(this.bot.config.channels.log, `⚠️ **|** ${msg.author.mention} tagged ${member.username}#${member.discriminator} in ${msg.channel.mention}`);
 					}
