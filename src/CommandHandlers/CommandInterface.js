@@ -14,14 +14,14 @@ module.exports = class CommandInterface {
 		if (this.mods && params.global.hasRoles(params.msg.member, params.config.roles.mods)) {
 			valid = true;
 		}
-		if (this.helpers && !params.global.hasRoles(params.msg.member, params.config.roles.helpers)) {
+		if (this.helpers && params.global.hasRoles(params.msg.member, params.config.roles.helpers)) {
 			valid = true;
 		}
 
 		if (valid) {
 			await this.executeCommand.bind(params)();
 		} else {
-			await params.error(", you do not haver permission to use this command!");
+			await params.error(", you do not have permission to use this command!");
 		}
 	}
 

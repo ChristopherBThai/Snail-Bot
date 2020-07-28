@@ -38,8 +38,9 @@ module.exports = new CommandInterface({
 			await this.error(", Invalid hexcode! It should look something like this: `#ABCDEF`");
 			return;
 		}
-		hexcode = parseInt(hexcode, 16);
-		if (!hexcode) {
+
+		const intcode = parseInt(hexcode, 16);
+		if (!intcode) {
 			await this.error(", Invalid hexcode! It should look something like this: `#ABCDEF`");
 			return;
 		}
@@ -47,14 +48,23 @@ module.exports = new CommandInterface({
 			await this.error(", The role name is too long! Must be under 100 characters.");
 			return;
 		}
+		const r = parseInt(hexcode.substring(0,2),16);
+		const g = parseInt(hexcode.substring(2,4),16);
+		const b = parseInt(hexcode.substring(4,6),16);
+		if (r < 75 && r > 43 &&
+				g < 75 && g > 43 &&
+				b < 75 && b > 43) {
+			await this.error(", This color is too close to Discord's dark theme! No invisible roles!");
+			return;
+		}
 
 		let userRole;
 		try {
 			// Assign roles
 			if (user && user.role && user.role._id) {
-				userRole = await updateRole.bind(this)(user.role._id, hexcode, roleName);
+				userRole = await updateRole.bind(this)(user.role._id, intcode, roleName);
 			} else {
-				userRole = await addRole.bind(this)(hexcode, roleName);
+				userRole = await addRole.bind(this)(intcode, roleName);
 			}
 		} catch (err) {
 			console.error(err);
