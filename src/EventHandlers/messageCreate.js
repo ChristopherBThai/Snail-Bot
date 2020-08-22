@@ -44,8 +44,9 @@ module.exports = class MessageCreateHandler {
 					if (member.status === 'dnd' || member.status === 'offline' || !member.status) {
 						const user = await this.bot.db.User.findById(mention.id);
 						if (user.friends && user.friends.has(msg.author.id)) return;
-						await msg.channel.createMessage(`⚠️ **|** ${msg.author.mention}, please refrain from tagging \`offline\` or \`do not disturb\` helpers/mods!`);
-						await this.bot.createMessage(this.bot.config.channels.log, `⚠️ **|** ${msg.author.mention} tagged ${member.username}#${member.discriminator} in ${msg.channel.mention}`);
+						let warnMsg = await msg.channel.createMessage(`⚠️ **|** ${msg.author.mention}, please refrain from tagging \`offline\` or \`do not disturb\` helpers/mods!`);
+						const link = `https://discordapp.com/channels/${msg.channel.guild.id}/${msg.channel.id}/${warnMsg.id}`;
+						await this.bot.createMessage(this.bot.config.channels.log, `⚠️ **|** ${msg.author.mention} tagged ${member.username}#${member.discriminator} in ${msg.channel.mention} ${link}`);
 					}
 
 					// Tags in spam channel
@@ -53,7 +54,8 @@ module.exports = class MessageCreateHandler {
 						const user = await this.bot.db.User.findById(mention.id);
 						if (user.friends && user.friends.has(msg.author.id)) return;
 						await msg.channel.createMessage(`⚠️ **|** ${msg.author.mention}, please refrain from tagging helper/mods in spam channels!`);
-						await this.bot.createMessage(this.bot.config.channels.log, `⚠️ **|** ${msg.author.mention} tagged ${member.username}#${member.discriminator} in ${msg.channel.mention}`);
+						const link = `https://discordapp.com/channels/${msg.channel.guild.id}/${msg.channel.id}/${warnMsg.id}`;
+						await this.bot.createMessage(this.bot.config.channels.log, `⚠️ **|** ${msg.author.mention} tagged ${member.username}#${member.discriminator} in ${msg.channel.mention} ${link}`);
 					}
 				}
 			});

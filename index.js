@@ -13,5 +13,4 @@ bot.db = new (require('./src/mongodb/mongo.js'))();
 
 const eventHandlers = new (require('./src/EventHandlers/EventHandler.js'))(bot);
 
-
 bot.connect();

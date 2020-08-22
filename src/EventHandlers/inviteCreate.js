@@ -4,7 +4,7 @@ module.exports = class PresenceUpdateHandler {
 	}
 
 	async handle (guild, invite) {
-		await this.bot.createMessage(this.bot.config.channels.log, `📫 **|** ${invite.inviter.mention} created a new invite link \`https://discord.gg/${invite.code}\``);
+		await this.bot.createMessage(this.bot.config.channels.log, `📫 **|** ${invite.inviter.mention} created a new invite link \`${invite.code}\``);
 	}
 
 }
