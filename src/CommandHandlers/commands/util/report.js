@@ -2,21 +2,21 @@ const CommandInterface = require('../../CommandInterface.js');
 
 module.exports = new CommandInterface({
 
-	alias: ["report"],
+    alias: ["report"],
 
-	emoji: '📮',
+    emoji: '📮',
 
-	execute: async function() {
-		if (!this.msg.args.length) {
-			this.error(", please include something to report!");
-			return;
-		}
+    execute: async function() {
+        if (!this.msg.args.length) {
+            this.error(", please include something to report!");
+            return;
+        }
 
         // check for mentions
         let mentions = [];
-		this.msg.mentions.forEach((member) => {
-			mentions.push(member.id);
-		});
+        this.msg.mentions.forEach((member) => {
+            mentions.push(member.id);
+        });
         
         // build report
         let report = await this.db.Report.create({
