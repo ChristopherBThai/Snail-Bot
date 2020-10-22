@@ -28,11 +28,11 @@ module.exports = new CommandInterface({
         // build message
         let content = null;
         if (report.mentions) {
-            content = report.mentions.join(",");
+            content = report.mentions.join(", ");
         }
 
         let embed = {
-            "color": 10590193,
+            "color": 16698700,
             "timestamp": new Date(),
             "author": {
                 "name": "Snail Messaging Service",
