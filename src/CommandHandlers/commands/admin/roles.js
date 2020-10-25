@@ -29,14 +29,14 @@ module.exports = new CommandInterface({
 		let replyText = ''
 		roleArray.forEach((role) => {
 			let roleText = `${role.name.padEnd(25, ' ')} (${role.members})\n`;
-			if (replyText.length + roleText.length > 1990) {
-				this.send('```\n'+replyText+'```');
+			if (replyText.length + roleText.length > 1900) {
+				this.msg.channel.createMessage('```\n'+replyText+'```');
 				replyText = roleText;
 			} else {
 				replyText += roleText;
 			}
 		});
-		this.send('```\n'+replyText+'```');
+		this.msg.channel.createMessage('```\n'+replyText+'```');
 	}
 
 });

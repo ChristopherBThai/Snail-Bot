@@ -1,15 +1,14 @@
-const customAlphabet = require('nanoid').customAlphabet;
-const nanoid = customAlphabet('1234567890abcdefghijklmnopqrstuvwxyz', 8);
 const mongoose = require('mongoose');
 
+const UserSchema = require('./UserSchema.js');
+
 const ReportSchema = new mongoose.Schema({
-	_id: {
-        'type': String,
-        'default': () => nanoid()
-      },
-	sender: String,
+	sender: { type: UserSchema.schema, default: null },
 	message: String,
-	mentions: [String]
+	mentions: [{
+		type: String,
+		ref: 'User'
+	}]
 });
 
 module.exports = { name: 'Report', schema: ReportSchema };
