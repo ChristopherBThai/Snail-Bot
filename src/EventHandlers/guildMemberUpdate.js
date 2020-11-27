@@ -1,5 +1,7 @@
 const global = require('../utils/global.js');
+const got = require('got'); 
 const roleEmoji = '🏷️';
+const patreonFailEmoji = '😥';
 const blankEmoji = '<:blank:735753896026308669>';
 
 module.exports = class GuildMemberUpdateHandler {
@@ -9,6 +11,51 @@ module.exports = class GuildMemberUpdateHandler {
 	}
 
 	async handle (guild, member, oldMember) {
+		this.checkRolePerk(guild, member, oldMember);
+		this.checkPatreonPerk(guild, member, oldMember);
+	}
+
+	async checkPatreonPerk (guild, member, oldMember) {
+		let animal, daily, changed;
+
+		if (global.hasRoles(oldMember, this.bot.config.roles.daily_perk)) {
+			if (!global.hasRoles(member, this.bot.config.roles.daily_perk)) {
+				// Lost perk
+				daily = false;
+				changed = true;
+			}
+		} else if (global.hasRoles(member, this.bot.config.roles.daily_perk)) {
+			// Gain perk
+			daily = true;
+			changed = true;
+		}
+		if (global.hasRoles(oldMember, this.bot.config.roles.animal_perk)) {
+			if (!global.hasRoles(member, this.bot.config.roles.animal_perk)) {
+				// Lost perk
+				animal = false;
+				changed = true;
+			}
+		} else if (global.hasRoles(member, this.bot.config.roles.animal_perk)) {
+			// Gain perk
+			animal = true;
+			changed = true;
+		}
+		
+		if (!changed) return;
+
+		const query = { password: process.env.OWO_TOKEN, user: member.id };
+		if (typeof animal == "boolean") query.animal = animal;
+		if (typeof daily == "boolean") query.daily = daily;
+
+		try {
+			const test = await got.post(`${process.env.OWO_URI}/patreon-perks`, { json: query, responseType: 'json' })
+		} catch (err) {
+			console.error(err);
+			await this.msgUser(member.id, `${patreonFailEmoji} **|** It seems like we failed to add your patreon perks! Please try using the command \`owo patreon\` in a few days.`);
+		}
+	}
+
+	async checkRolePerk (guild, member, oldMember) {
 		if (global.hasRoles(oldMember, this.bot.config.roles.role_change)) {
 			if (!global.hasRoles(member, this.bot.config.roles.role_change)) {
 				const user = await this.db.User.findById(member.id);

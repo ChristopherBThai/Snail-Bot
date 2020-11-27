@@ -53,7 +53,7 @@ module.exports = class MessageCreateHandler {
 					else if (this.bot.config.channels.spam.includes(msg.channel.id)) {
 						const user = await this.bot.db.User.findById(mention.id);
 						if (user.friends && user.friends.has(msg.author.id)) return;
-						await msg.channel.createMessage(`⚠️ **|** ${msg.author.mention}, please refrain from tagging helper/mods in spam channels!`);
+						let warnMsg = await msg.channel.createMessage(`⚠️ **|** ${msg.author.mention}, please refrain from tagging helper/mods in spam channels!`);
 						const link = `https://discordapp.com/channels/${msg.channel.guild.id}/${msg.channel.id}/${warnMsg.id}`;
 						await this.bot.createMessage(this.bot.config.channels.log, `⚠️ **|** ${msg.author.mention} tagged ${member.username}#${member.discriminator} in ${msg.channel.mention} ${link}`);
 					}
