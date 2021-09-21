@@ -12,5 +12,6 @@ bot.config = require('./src/config.json');
 bot.db = new (require('./src/mongodb/mongo.js'))();
 
 const eventHandlers = new (require('./src/EventHandlers/EventHandler.js'))(bot);
+const socket = new (require('./src/socket'))(bot);
 
 bot.connect();

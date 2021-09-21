@@ -48,10 +48,10 @@ module.exports = class GuildMemberUpdateHandler {
 		if (typeof daily == "boolean") query.daily = daily;
 
 		try {
-			const test = await got.post(`${process.env.OWO_URI}/patreon-perks`, { json: query, responseType: 'json' })
+			await got.post(`${process.env.OWO_URI}/patreon-perks`, { json: query, responseType: 'json' })
 		} catch (err) {
 			console.error(err);
-			await this.msgUser(member.id, `${patreonFailEmoji} **|** It seems like we failed to add your patreon perks! Please try using the command \`owo patreon\` in a few days.`);
+			// await this.msgUser(member.id, `${patreonFailEmoji} **|** It seems like we failed to add your patreon perks! Please try using the command \`owo patreon\` in a few days.`);
 		}
 	}
 

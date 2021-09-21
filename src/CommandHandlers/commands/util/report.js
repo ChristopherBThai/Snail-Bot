@@ -7,6 +7,8 @@ module.exports = new CommandInterface({
  	emoji: '📮',
 
  	execute: async function() {
+		this.error(", this command is deprecated!");
+		return;
 		if (!this.msg.args.length) {
 			this.error(", please include something to report!");
 			return;
