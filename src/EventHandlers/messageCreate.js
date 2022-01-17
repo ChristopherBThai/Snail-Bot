@@ -40,9 +40,10 @@ module.exports = class MessageCreateHandler {
 				if(global.hasRoles(member, this.bot.config.roles.mods) ||
 					global.hasRoles(member, this.bot.config.roles.helpers)) {
 
+					const user = await this.bot.db.User.findById(mention.id);
+
 					// Tags dnd or offline helper/mod
-					if (member.status === 'dnd' || member.status === 'offline' || !member.status) {
-						const user = await this.bot.db.User.findById(mention.id);
+					if ((member.status === 'dnd' || member.status === 'offline' || !member.status) && !user.ignorePingOffline) {
 						if (user.friends && user.friends.has(msg.author.id)) return;
 						let warnMsg = await msg.channel.createMessage(`⚠️ **|** ${msg.author.mention}, please refrain from tagging \`offline\` or \`do not disturb\` helpers/mods!`);
 						const link = `https://discordapp.com/channels/${msg.channel.guild.id}/${msg.channel.id}/${warnMsg.id}`;
@@ -50,8 +51,7 @@ module.exports = class MessageCreateHandler {
 					}
 
 					// Tags in spam channel
-					else if (this.bot.config.channels.spam.includes(msg.channel.id)) {
-						const user = await this.bot.db.User.findById(mention.id);
+					else if (this.bot.config.channels.spam.includes(msg.channel.id) && !user.ignorePingSpam) {
 						if (user.friends && user.friends.has(msg.author.id)) return;
 						let warnMsg = await msg.channel.createMessage(`⚠️ **|** ${msg.author.mention}, please refrain from tagging helper/mods in spam channels!`);
 						const link = `https://discordapp.com/channels/${msg.channel.guild.id}/${msg.channel.id}/${warnMsg.id}`;

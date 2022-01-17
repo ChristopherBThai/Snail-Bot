@@ -11,6 +11,8 @@ const UserSchema = new mongoose.Schema({
 	},
 	role: { type: RoleSchema.schema, default: null },
 
+	ignorePingOffline: { type: Boolean, default: false },
+	ignorePingSpam: { type: Boolean, default: false },
 	friends: {
 		type: Map,
 		of: { type: String, ref: 'User' }
