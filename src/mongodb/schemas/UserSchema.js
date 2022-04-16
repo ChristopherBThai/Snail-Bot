@@ -14,7 +14,9 @@ const UserSchema = new mongoose.Schema({
 	friends: {
 		type: Map,
 		of: { type: String, ref: 'User' }
-	}
+	},
+
+	hoursBanned: { type: Number, default: 0 }
 
 });
 

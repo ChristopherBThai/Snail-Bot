@@ -1,9 +1,8 @@
 const messageQueue = {};
 
 module.exports = class MessageChannel {
-	constructor (bot, socket) {
+	constructor (bot) {
 		this.bot = bot;
-		this.socket = socket;
 	}
 
 	handle (payload) {
@@ -33,7 +32,7 @@ module.exports = class MessageChannel {
 		}
 
 		const { channelId, contents } = payload;
-		console.log(channelId + " has queue: " + channel.queue.length);
+		channel.queue.length && console.log(channelId + " has queue: " + channel.queue.length);
 		this.bot.createMessage(channelId, contents);
 	}
 }
