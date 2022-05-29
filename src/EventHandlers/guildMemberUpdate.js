@@ -11,7 +11,8 @@ module.exports = class GuildMemberUpdateHandler {
 	}
 
 	async handle (guild, member, oldMember) {
-		this.checkRolePerk(guild, member, oldMember);
+		// Deprecated
+		// this.checkRolePerk(guild, member, oldMember);
 		this.checkPatreonPerk(guild, member, oldMember);
 	}
 

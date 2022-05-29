@@ -7,6 +7,7 @@ module.exports = new CommandInterface({
 	emoji: '🏷️',
 
 	execute: async function() {
+		return this.error(", this command is no longer available.");
 		const user = await this.db.User.findById(this.msg.author.id);
 
 		// Check if they have perms to change roles

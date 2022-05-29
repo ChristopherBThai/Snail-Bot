@@ -9,6 +9,7 @@ module.exports = new CommandInterface({
 	mods: true,
 
 	execute: async function() {
+		return this.error(", this command is no longer available.");
 		// Validation
 		if (this.msg.args.length < 2) {
 			this.error(", wrong arguments");

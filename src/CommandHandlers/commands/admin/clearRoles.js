@@ -9,6 +9,7 @@ module.exports = new CommandInterface({
 	mods: true,
 
 	execute: async function() {
+		return this.error(", this command is no longer available.");
 		await this.msg.channel.guild.fetchAllMembers(120000);
 		const roles = {};
 		this.msg.channel.guild.roles.forEach(role => {
