@@ -4,9 +4,11 @@ let bot;
 
 exports.init = (eris) => {
 	bot = eris;
+	/* Deprecated
 	checkRoles();
 	// 1 day interval
 	setInterval(checkRoles, 86400000);
+	*/
 }
 
 async function checkRoles () {
