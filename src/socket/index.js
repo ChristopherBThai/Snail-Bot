@@ -5,7 +5,7 @@ const requireDir = require('require-dir');
 const dir = requireDir('./');
 
 class SocketHandler {
-	constructor (bot) {
+	constructor(bot) {
 		this.handlers = [];
 		let filename = __filename.slice(__dirname.length + 1, -3);
 		for (let listener in dir) {
@@ -19,16 +19,20 @@ class SocketHandler {
 			}
 		}
 
-		io.on('error', (err) => { console.log(err) });
+		io.on('error', (err) => {
+			console.log(err);
+		});
 
-		io.on('disconnect', (socket) => { console.log('Disconnected: ', socket.id) });
+		io.on('disconnect', (socket) => {
+			console.log('Disconnected: ', socket.id);
+		});
 
 		io.on('connection', (socket) => {
 			if (socket.handshake.auth.token != process.env.SOCKET_TOKEN) {
-				console.log("UNAUTHORIZED: ", socket);
+				console.log('UNAUTHORIZED: ', socket);
 				return;
 			}
-			console.log("Connected: ", socket.id);
+			console.log('Connected: ', socket.id);
 			this.handlers.forEach((handler) => {
 				socket.on(handler.name, handler.handle.bind(handler));
 			});

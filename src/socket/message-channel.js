@@ -1,16 +1,16 @@
 const messageQueue = {};
 
 module.exports = class MessageChannel {
-	constructor (bot) {
+	constructor(bot) {
 		this.bot = bot;
 	}
 
-	handle (payload) {
+	handle(payload) {
 		const { channelId } = payload;
 		if (!messageQueue[channelId]) {
 			messageQueue[channelId] = {
 				timer: null,
-				queue: []
+				queue: [],
 			};
 		}
 
@@ -23,7 +23,7 @@ module.exports = class MessageChannel {
 		}
 	}
 
-	sendMsg (channel) {
+	sendMsg(channel) {
 		const payload = channel.queue.shift();
 		if (!payload) {
 			clearInterval(channel.timer);
@@ -32,7 +32,8 @@ module.exports = class MessageChannel {
 		}
 
 		const { channelId, contents } = payload;
-		channel.queue.length && console.log(channelId + " has queue: " + channel.queue.length);
+		channel.queue.length &&
+			console.log(channelId + ' has queue: ' + channel.queue.length);
 		this.bot.createMessage(channelId, contents);
 	}
-}
+};

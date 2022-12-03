@@ -3,13 +3,12 @@ const CommandInterface = require('./CommandInterface.js');
 const global = require('../utils/global.js');
 
 class CommandHandler {
-
-	constructor(bot){
+	constructor(bot) {
 		this.bot = bot;
 		this.initCommands();
 	}
 
-	async execute (msg) {
+	async execute(msg) {
 		console.log(msg.command);
 		const commandName = this.aliasToCommand[msg.command];
 		if (!commandName) return;
@@ -17,7 +16,7 @@ class CommandHandler {
 		await commandObj.execute(this.constructBind(commandName, commandObj, msg));
 	}
 
-	constructBind (commandName, commandObj, msg) {
+	constructBind(commandName, commandObj, msg) {
 		const bindObj = {
 			msg,
 			commands: this.commands,
@@ -27,34 +26,41 @@ class CommandHandler {
 			global,
 			config: this.bot.config,
 			db: this.bot.db,
-			bot: this.bot
-		}
+			bot: this.bot,
+		};
 
 		bindObj.send = (text) => {
 			return msg.channel.createMessage(`${commandObj.emoji} **|** ${text}`);
-		}
+		};
 
 		bindObj.reply = (text) => {
-			return msg.channel.createMessage(`${commandObj.emoji} **| ${msg.author.username}**${text}`);
-		}
+			return msg.channel.createMessage(
+				`${commandObj.emoji} **| ${msg.author.username}**${text}`
+			);
+		};
 
 		bindObj.error = async (text) => {
-			let msgObj = await msg.channel.createMessage(`🚫 **| ${msg.author.username}**${text}`);
+			let msgObj = await msg.channel.createMessage(
+				`🚫 **| ${msg.author.username}**${text}`
+			);
 			setTimeout(() => {
 				msgObj.delete();
 			}, 5000);
 			return msgObj;
-		}
+		};
 
 		bindObj.log = async (text) => {
-			return await this.bot.createMessage(this.bot.config.channels.log, `${commandObj.emoji} **|** ${text}`);
-		}
+			return await this.bot.createMessage(
+				this.bot.config.channels.log,
+				`${commandObj.emoji} **|** ${text}`
+			);
+		};
 
 		return bindObj;
 	}
 
-	initCommands () {
-		const dir = requireDir('./commands', {recurse: true});
+	initCommands() {
+		const dir = requireDir('./commands', { recurse: true });
 		this.commands = {};
 		this.aliasToCommand = {};
 
@@ -71,19 +77,19 @@ class CommandHandler {
 		}
 	}
 
-	parseCommand (commandObj) {
+	parseCommand(commandObj) {
 		const commandName = commandObj.alias[0];
 
-		if (this.commands[commandName]) throw new Error("Duplicate command names");
+		if (this.commands[commandName]) throw new Error('Duplicate command names');
 		this.commands[commandName] = commandObj;
 
 		for (let i in commandObj.alias) {
 			const commandAlias = commandObj.alias[i];
-			if (this.aliasToCommand[commandAlias]) throw new Error("Duplicate command alias");
+			if (this.aliasToCommand[commandAlias])
+				throw new Error('Duplicate command alias');
 			this.aliasToCommand[commandAlias] = commandName;
 		}
 	}
-
 }
 
 module.exports = CommandHandler;

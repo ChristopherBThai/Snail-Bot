@@ -1,17 +1,16 @@
 const CommandInterface = require('../../CommandInterface.js');
 
 module.exports = new CommandInterface({
-
-	alias: ["addfriend", "addfren"],
+	alias: ['addfriend', 'addfren'],
 
 	emoji: '💞',
 
 	mods: true,
 	helpers: true,
 
-	execute: async function() {
+	execute: async function () {
 		if (!this.msg.mentions.length) {
-			this.error(", please mention at least one friend!");
+			this.error(', please mention at least one friend!');
 			return;
 		}
 
@@ -25,8 +24,9 @@ module.exports = new CommandInterface({
 			{ $set: friends },
 			{ upsert: true }
 		);
-		
-		await this.reply(`, I added ${this.msg.mentions.length} to your friends list!`);
-	}
 
+		await this.reply(
+			`, I added ${this.msg.mentions.length} to your friends list!`
+		);
+	},
 });

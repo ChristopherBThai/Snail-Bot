@@ -1,11 +1,11 @@
 require('dotenv').config();
 
-const Eris = require("eris");
+const Eris = require('eris');
 const bot = new Eris(process.env.BOT_TOKEN, {
 	allowMentions: {
-		everyone: false
+		everyone: false,
 	},
-	getAllUsers: true
+	getAllUsers: true,
 });
 
 bot.config = require('./src/config.json');

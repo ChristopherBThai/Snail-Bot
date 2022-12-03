@@ -1,9 +1,9 @@
 module.exports = class ErrorHandler {
-	constructor (bot) {
+	constructor(bot) {
 		this.bot = bot;
 	}
 
-	handle (err, id) {
+	handle(err, id) {
 		console.error(`[${id}] ${err}`);
 	}
-}
+};
