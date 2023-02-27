@@ -11,7 +11,17 @@ module.exports = class GuildMemberAddHandler {
 		const result = await this.bot.owo_db.query(sql, [member.id]);
 		
 		if (result[0]) {
-			await guild.banMember(member.id, 0, 'Bot banned');
+			let channel;
+			let auditLogMessage = "Bot banned";
+
+			try {
+				channel = await this.bot.getDMChannel(member.id);
+				await channel.createMessage("You have been banned from OwO permanently. You will not be unbanned.");
+			} catch (err) {
+				auditLogMessage = "Bot Banned (Unable to DM)";
+			}
+
+			await guild.banMember(member.id, 0, auditLogMessage);
 		}
 	}
 };
