@@ -6,6 +6,7 @@ const bot = new Eris(process.env.BOT_TOKEN, {
 		everyone: false,
 	},
 	getAllUsers: true,
+	restMode: true,
 });
 
 bot.config = require('./src/config.json');
