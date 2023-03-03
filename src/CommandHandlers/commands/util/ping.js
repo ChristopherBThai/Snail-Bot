@@ -6,7 +6,7 @@ module.exports = new CommandInterface({
 	emoji: '🏓',
 
 	execute: async function () {
-		if (this.command == 'ping') {
+		if (this.commandName == 'ping') {
 			await this.send('Pong!');
 		} else {
 			await this.send('Ping!');
