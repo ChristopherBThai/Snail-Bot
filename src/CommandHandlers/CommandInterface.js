@@ -10,19 +10,10 @@ module.exports = class CommandInterface {
 	async execute(params) {
 		await params.msg.channel.sendTyping();
 		let valid = !this.mods && !this.helpers;
-		if (
-			this.mods &&
-			params.global.hasRoles(params.msg.member, params.config.roles.mods)
-		) {
-			valid = true;
-		}
-		if (
-			this.helpers &&
-			params.global.hasRoles(params.msg.member, params.config.roles.helpers)
-		) {
-			valid = true;
-		}
 
+		if (this.mods && params.global.isAdmin(params.msg.member)) valid = true;
+		if (this.helpers && params.global.isHelper(params.msg.member)) valid = true;
+		
 		if (valid) {
 			await this.executeCommand.bind(params)();
 		} else {
