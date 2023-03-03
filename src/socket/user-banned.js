@@ -1,4 +1,5 @@
-const bannedRole = require('../utils/bannedRole.js');
+const permaBanThreshold = 99999;
+
 module.exports = class MessageChannel {
 	constructor(bot) {
 		this.bot = bot;
@@ -10,24 +11,18 @@ module.exports = class MessageChannel {
 		const member = guild.members.get(userId);
 
 		if (!member) return;
+		
+		// let channel;
+		// let auditLogMessage = "Bot banned";
 
-		/*
-		 */
-		if (isBanned) {
-			await guild.addMemberRole(
-				member.id,
-				this.bot.config.roles.banned,
-				member.id + ' was banned'
-			);
-			// TODO add to mongoose
-		} else {
-			await guild.removeMemberRole(
-				member.id,
-				this.bot.config.roles.banned,
-				member.id + ' was unbanned'
-			);
-			// TODO add to mongoose
-		}
+		// try {
+		// 	channel = await this.bot.getDMChannel(member.id);
+		// 	await channel.createMessage("You have been banned from OwO permanently. You will not be unbanned.");
+		// } catch (err) {
+		// 	auditLogMessage = "Bot Banned (Unable to DM)";
+		// }
+
+		// await guild.banMember(member.id, 0, auditLogMessage);
 	}
 
 	async init() {
