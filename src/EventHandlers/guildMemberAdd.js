@@ -12,7 +12,7 @@ module.exports = class GuildMemberAddHandler {
 		
 		if (result[0]) {
 			let channel;
-			let auditLogMessage = "Bot banned";
+			let auditLogMessage = "Bot Banned";
 
 			try {
 				channel = await this.bot.getDMChannel(member.id);
@@ -21,6 +21,7 @@ module.exports = class GuildMemberAddHandler {
 				auditLogMessage = "Bot Banned (Unable to DM)";
 			}
 
+			console.log(`Banned ${member.username}#${member.discriminator} because they were ` + auditLogMessage);
 			await guild.banMember(member.id, 0, auditLogMessage);
 		}
 	}

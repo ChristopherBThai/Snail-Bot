@@ -15,7 +15,7 @@ module.exports = class MessageChannel {
 		
 		// if (hoursBanned > permaBanThreshold) {
 		// 	let channel;
-		// 	let auditLogMessage = "Bot banned";
+		// 	let auditLogMessage = "Bot Banned";
 
 		// 	try {
 		// 		channel = await this.bot.getDMChannel(member.id);
