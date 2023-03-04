@@ -1,11 +1,12 @@
 const CommandInterface = require('../../CommandInterface.js');
+const {hasAdminPerms} = require('../../../utils/global.js');
 
 module.exports = new CommandInterface({
 	alias: ['roles'],
 
 	emoji: '🏷️',
 
-	mods: true,
+	auth: hasAdminPerms,
 
 	execute: async function () {
 		await this.msg.channel.guild.fetchAllMembers(120000);

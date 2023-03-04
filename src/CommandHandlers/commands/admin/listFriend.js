@@ -1,12 +1,12 @@
 const CommandInterface = require('../../CommandInterface.js');
+const {hasHelperPerms} = require('../../../utils/global.js');
 
 module.exports = new CommandInterface({
 	alias: ['listfriend', 'listfren', 'friendlist', 'frenlist'],
 
 	emoji: '❤',
 
-	mods: true,
-	helpers: true,
+	auth: hasHelperPerms,
 
 	execute: async function () {
 		const user = await this.bot.db.User.findById(this.msg.author.id);

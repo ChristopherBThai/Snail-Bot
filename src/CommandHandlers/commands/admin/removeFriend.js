@@ -1,12 +1,12 @@
 const CommandInterface = require('../../CommandInterface.js');
+const {hasHelperPerms} = require('../../../utils/global.js');
 
 module.exports = new CommandInterface({
 	alias: ['removefriend', 'removefren', 'unfriend', 'unfren'],
 
 	emoji: '💔',
 
-	mods: true,
-	helpers: true,
+	auth: hasHelperPerms,
 
 	execute: async function () {
 		if (!this.msg.mentions.length) {
