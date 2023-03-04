@@ -23,9 +23,8 @@
 			"556183345353064513",
 			"613533427068567583"
 		],
-		"ignoreMention": [
-			"465978474163601436"
-		]
+		"ignoreMention": ["465978474163601436"],
+		"market": ["822972235996201021"]
 	},
 	"roles": {
 		"owner": "420104532085964819",
@@ -42,6 +41,7 @@
 			"everyone": false
 		},
 		"getAllUsers": true,
+    "restMode": true,
 		"intents": 33603
 	}
 }
