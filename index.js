@@ -7,6 +7,9 @@ const bot = new (require('eris')).Client(process.env.BOT_TOKEN, CONFIG.eris);
 bot.config = CONFIG;
 bot.db = new (require('./src/mongodb/mongo.js'))();
 bot.owo_db = require('./src/mysql/mysql.js');
+bot.log = async (message) => {
+    await bot.createMessage(CONFIG.channels.log, message);
+}
 
 const eventHandlers = new (require('./src/EventHandlers/EventHandler.js'))(bot);
 const socket = new (require('./src/socket'))(bot);
