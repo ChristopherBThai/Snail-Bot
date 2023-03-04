@@ -42,7 +42,7 @@ module.exports = class MessageCreateHandler {
 			if (!global.isStaff(member)) continue;									// Ignore if the mentioned user wasn't staff
 
 			const user = await this.bot.db.User.findById(mention.id);
-			if (user?.friends?.has(msg.author.id)) continue;						// Ignore if the staff member has the user on their friend list 
+			if (user?.friends?.includes(msg.author.id)) continue;						// Ignore if the staff member has the user on their friend list 
 
 			let is_online = member.status == "online";								// If the staff member was online
 			let in_spam = this.bot.config.channels.spam.includes(msg.channel.id)	// If mentioned in a spam channel

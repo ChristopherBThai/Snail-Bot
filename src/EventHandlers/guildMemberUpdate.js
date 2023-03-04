@@ -1,8 +1,5 @@
 const global = require('../utils/global.js');
 const got = require('got');
-const roleEmoji = '🏷️';
-const patreonFailEmoji = '😥';
-const blankEmoji = '<:blank:735753896026308669>';
 
 module.exports = class GuildMemberUpdateHandler {
 	constructor(bot) {
@@ -11,7 +8,6 @@ module.exports = class GuildMemberUpdateHandler {
 	}
 
 	async handle(guild, member, oldMember) {
-		// Deprecated
 		this.checkPatreonPerk(guild, member, oldMember);
 	}
 
