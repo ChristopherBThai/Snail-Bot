@@ -12,7 +12,7 @@ module.exports = class CommandInterface {
 		let valid = !this.mods && !this.helpers;
 
 		if (this.mods && params.global.isAdmin(params.msg.member)) valid = true;
-		if (this.helpers && params.global.isHelper(params.msg.member)) valid = true;
+		if (this.helpers && (params.global.isHelper(params.msg.member) || params.global.isModerator(params.msg.member))) valid = true;
 		
 		if (valid) {
 			await this.executeCommand.bind(params)();
