@@ -23,7 +23,7 @@
   "dependencies": {
     "bad-words": "^3.0.3",
     "dotenv": "^8.2.0",
-    "eris": "^0.13.3",
+    "eris": "^0.17.1",
     "got": "^11.8.0",
     "mongoose": "^5.9.24",
     "mysql": "^2.18.1",
