@@ -15,8 +15,8 @@ class MarketUtil {
 		const messagesToDelete = [];
 		for (let i = 0; i < messages.length; i++) {
 			const message = messages[i];
-			if (global.hasRoles(message.member, this.bot.config.roles.mods)
-				|| global.hasRoles(message.member, this.bot.config.roles.helpers)) {
+			if (global.hasRole(message.member, this.bot.config.roles.mods)
+				|| global.hasRole(message.member, this.bot.config.roles.helpers)) {
 				console.log(`Ignoring message from ${message.member.username}`);
 				return;
 			}

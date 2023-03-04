@@ -41,7 +41,7 @@
 			"everyone": false
 		},
 		"getAllUsers": true,
-    "restMode": true,
+    	"restMode": true,
 		"intents": 33603
 	}
 }
