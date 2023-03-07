@@ -33,7 +33,7 @@ module.exports = class MessageCreateHandler {
 		if (global.isStaff(msg.member)) return;											// was sent by a staff member,  
 		if (this.bot.config.channels.ignoreMention.includes(msg.channel.id)) return;	// or was sent in a mention ignored channel (only quest help at the moment)
 
-		let warning = `⚠️ **|** ${msg.author.mention}, please refrain from tagging \`offline\` or \`do not disturb\` helpers/mods!`;
+		let warning = `⚠️ **|** ${msg.author.mention}, please refrain from tagging \`offline\` or \`do not disturb\` staff members!`;
 		let mentioned_staff = [];
 
 		for (const mention of msg.mentions) {
@@ -49,17 +49,17 @@ module.exports = class MessageCreateHandler {
 
 			if (!is_online || in_spam) mentioned_staff.push(member);
 			
-			if (in_spam) warning = `⚠️ **|** ${msg.author.mention}, please refrain from tagging helper/mods in spam channels!`;
+			if (in_spam) warning = `⚠️ **|** ${msg.author.mention}, please refrain from tagging staff members in spam channels!`;
 		}
 
-		if (mentioned_staff.length != 0) {
-			let warn_message = await msg.channel.createMessage(warning);
+		if (mentioned_staff.length == 0) return;	// Ignore if no bad mentions were found
 
-			let log_message = mentioned_staff.map(
-				member => `⚠️ **|** ${msg.author.mention} tagged ${member.username}#${member.discriminator} in ${msg.channel.mention} ${warn_message.jumpLink}`
-			).join(`\n`);
+		let warn_message = await msg.channel.createMessage(warning);
 
-			await this.bot.log(log_message);
-		}
+		let log_message = mentioned_staff.map(
+			member => `⚠️ **|** ${msg.author.mention} tagged ${member.username}#${member.discriminator} in ${msg.channel.mention} ${warn_message.jumpLink}`
+		).join(`\n`);
+
+		await this.bot.log(log_message);
 	}
 };
