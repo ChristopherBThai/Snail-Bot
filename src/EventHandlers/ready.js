@@ -5,6 +5,5 @@ module.exports = class ReadyHandler {
 
 	handle() {
 		console.log('Bot is ready!');
-		new (require('../utils/marketUtil'))(this.bot);
 	}
 };
