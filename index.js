@@ -1,17 +1,15 @@
 require('dotenv').config();
 
-const Eris = require('eris');
-const bot = new Eris(process.env.BOT_TOKEN, {
-	allowMentions: {
-		everyone: false,
-	},
-	getAllUsers: true,
-	restMode: true,
-});
+const CONFIG = require('./src/config.json');;
 
-bot.config = require('./src/config.json');
+const bot = new (require('eris')).Client(process.env.BOT_TOKEN, CONFIG.eris);
+
+bot.config = CONFIG;
 bot.db = new (require('./src/mongodb/mongo.js'))();
 bot.owo_db = require('./src/mysql/mysql.js');
+bot.log = async (message) => {
+    await bot.createMessage(CONFIG.channels.log, message);
+}
 
 const eventHandlers = new (require('./src/EventHandlers/EventHandler.js'))(bot);
 const socket = new (require('./src/socket'))(bot);

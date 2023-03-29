@@ -5,7 +5,5 @@ module.exports = class ReadyHandler {
 
 	handle() {
 		console.log('Bot is ready!');
-		require('../utils/checkRolePerks.js').init(this.bot);
-		new (require('../utils/marketUtil'))(this.bot);
 	}
 };

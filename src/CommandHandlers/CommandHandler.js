@@ -9,7 +9,7 @@ class CommandHandler {
 	}
 
 	async execute(msg) {
-		console.log(msg.command);
+		console.log(`${msg.author.username}#${msg.author.discriminator} (${msg.author.id}) used "${msg.command}" in ${msg.channel.name}`);
 		const commandName = this.aliasToCommand[msg.command];
 		if (!commandName) return;
 		const commandObj = this.commands[commandName];
@@ -50,10 +50,7 @@ class CommandHandler {
 		};
 
 		bindObj.log = async (text) => {
-			return await this.bot.createMessage(
-				this.bot.config.channels.log,
-				`${commandObj.emoji} **|** ${text}`
-			);
+			return await this.bot.log(`${commandObj.emoji} **|** ${text}`);
 		};
 
 		return bindObj;
