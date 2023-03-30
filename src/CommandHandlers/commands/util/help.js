@@ -33,7 +33,7 @@ module.exports = new CommandInterface({
 async function displayCommands() {
     let embed = {
         author: {
-            name: `Command list`,
+            name: `Command List`,
             icon_url: this.msg.author.avatarURL
         },
         description: `Here is the list my commands!\nFor more info on a specific command, use \`snail help {command}\``,
