@@ -2,7 +2,7 @@ const CommandInterface = require('../../CommandInterface.js');
 const {hasHelperPerms} = require('../../../utils/global.js');
 
 module.exports = new CommandInterface({
-	alias: ['listfriends', 'frens'],
+	alias: ['friends', 'frens'],
 
 	emoji: '❤',
 
