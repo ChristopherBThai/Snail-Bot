@@ -6,15 +6,13 @@ module.exports = new CommandInterface({
 
     emoji: '🏷️',
 
-    auth: hasAdminPerms,
-
     execute: async function () {
         const tags = await this.db.Tag.find({});
 
         let tag_list = tags.map((tag) => `\`${tag._id}\``).sort().join(` `);
 
         if (!tag_list) {
-            this.error(`Oh no! I don't have any tags :(. Create some with \`${this.config.prefix[0]} tag add {tag_name} {data}\`!`);
+            this.error(`Oh no! I don't have any tags :(`);
             return;
         }
 
