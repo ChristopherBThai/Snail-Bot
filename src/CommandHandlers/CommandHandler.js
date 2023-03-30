@@ -6,25 +6,22 @@ class CommandHandler {
 	constructor(bot) {
 		this.bot = bot;
 		this.commands = {};
-		this.aliasToCommand = {};
 		this.initCommands();
 	}
 
 	async execute(msg) {
+		const command = this.commands[msg.command];
+		if (!command) return;
+		await command.execute(this.constructBind(command, msg));
+
 		console.log(`${msg.author.username}#${msg.author.discriminator} (${msg.author.id}) used "${msg.command}" in ${msg.channel.name}`);
-		const commandName = this.aliasToCommand[msg.command];
-		if (!commandName) return;
-		const commandObj = this.commands[commandName];
-		await commandObj.execute(this.constructBind(commandName, commandObj, msg));
 	}
 
-	constructBind(commandName, commandObj, msg) {
+	constructBind(command, msg) {
 		const bindObj = {
 			msg,
 			commands: this.commands,
-			aliasToCommand: this.aliasToCommand,
-			commandName,
-			commandObj,
+			command,
 			global,
 			config: this.bot.config,
 			db: this.bot.db,
@@ -32,19 +29,15 @@ class CommandHandler {
 		};
 
 		bindObj.send = (text) => {
-			return msg.channel.createMessage(`${commandObj.emoji} **|** ${text}`);
+			return msg.channel.createMessage(`${command.emoji} **|** ${text}`);
 		};
 
 		bindObj.reply = (text) => {
-			return msg.channel.createMessage(
-				`${commandObj.emoji} **| ${msg.author.username}**${text}`
-			);
+			return msg.channel.createMessage(`${command.emoji} **| ${msg.author.username}**${text}`);
 		};
 
 		bindObj.error = async (text) => {
-			let msgObj = await msg.channel.createMessage(
-				`🚫 **| ${msg.author.username}**${text}`
-			);
+			let msgObj = await msg.channel.createMessage(`🚫 **| ${msg.author.username}**${text}`);
 			setTimeout(() => {
 				msgObj.delete();
 			}, 5000);
@@ -52,7 +45,7 @@ class CommandHandler {
 		};
 
 		bindObj.log = async (text) => {
-			return await this.bot.log(`${commandObj.emoji} **|** ${text}`);
+			return await this.bot.log(`${command.emoji} **|** ${text}`);
 		};
 
 		return bindObj;
@@ -61,31 +54,24 @@ class CommandHandler {
 	initCommands() {
 		const dir = requireDir('./commands', { recurse: true });
 
-		for (let key in dir) {
-			if (dir[key] instanceof CommandInterface) {
-				this.parseCommand(dir[key]);
-			} else {
-				for (let key2 in dir[key]) {
-					if (dir[key][key2] instanceof CommandInterface) {
-						this.parseCommand(dir[key][key2]);
+		// Repeat #map(file => file instanceof CommandInterface ? file : Object.values(file)).flat() once for each level of folders in "./commands"
+		Object
+			.values(dir)
+			.flat()
+			.map(file => file instanceof CommandInterface ? file : Object.values(file))
+			.flat()
+			.filter(command => command instanceof CommandInterface)
+			.forEach(command => {
+				const aliases = command.alias;
+				aliases.forEach(alias => {
+					if (this.commands[alias]) {
+						const firstInstance = this.commands[alias].alias[0];
+						const secondInstance = command.alias[0];
+						throw new Error(`Duplicate command alias, ${alias}, found in ${firstInstance} and ${secondInstance} commands!`);
 					}
-				}
-			}
-		}
-	}
-
-	parseCommand(commandObj) {
-		const commandName = commandObj.alias[0];
-
-		if (this.commands[commandName]) throw new Error('Duplicate command names');
-		this.commands[commandName] = commandObj;
-
-		for (let i in commandObj.alias) {
-			const commandAlias = commandObj.alias[i];
-			if (this.aliasToCommand[commandAlias])
-				throw new Error('Duplicate command alias');
-			this.aliasToCommand[commandAlias] = commandName;
-		}
+					this.commands[alias] = command;
+				})
+			});
 	}
 }
 
