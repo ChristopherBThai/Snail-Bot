@@ -78,12 +78,10 @@ async function displayCommand(command) {
         }]
     };
 
-    const examples = command.examples;
-
-    if ((examples?.length ?? 0) > 0) {
+    if ((command.examples?.length ?? 0) > 0) {
         embed.fields.unshift({
             name: "Example usage",
-            value: examples.join(", ")
+            value: command.examples.join(", ")
         })
     }
 
