@@ -6,7 +6,6 @@ class CommandHandler {
 	constructor(bot) {
 		this.bot = bot;
 		this.commands = {};
-		this.aliasToCommand = {}
 		this.initCommands();
 	}
 
@@ -71,7 +70,6 @@ class CommandHandler {
 						throw new Error(`Duplicate command alias, ${alias}, found in ${firstInstance} and ${secondInstance} commands!`);
 					}
 					this.commands[alias] = command;
-					this.aliasToCommand[alias] = command.alias[0];
 				})
 			});
 	}
