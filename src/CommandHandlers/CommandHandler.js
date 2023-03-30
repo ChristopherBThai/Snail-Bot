@@ -5,6 +5,8 @@ const global = require('../utils/global.js');
 class CommandHandler {
 	constructor(bot) {
 		this.bot = bot;
+		this.commands = {};
+		this.aliasToCommand = {};
 		this.initCommands();
 	}
 
@@ -58,8 +60,6 @@ class CommandHandler {
 
 	initCommands() {
 		const dir = requireDir('./commands', { recurse: true });
-		this.commands = {};
-		this.aliasToCommand = {};
 
 		for (let key in dir) {
 			if (dir[key] instanceof CommandInterface) {
