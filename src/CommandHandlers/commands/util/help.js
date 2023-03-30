@@ -57,6 +57,7 @@ async function displayCommands() {
 
 async function displayCommand(command) {
     if (!(command.auth?.(this.msg.member) ?? true)) {
+        this.error(', you do not have permission to use this command!');
         return;
     }
 
@@ -73,29 +74,29 @@ async function displayCommand(command) {
         timestamp: new Date(),
         color: 0xf1c40f,
         fields: [{
-            name: "",
-            value: '```Make sure to remove brackets when typing commands!\n[] = optional arguments\n{} = optional user input```'
+            name: "Description",
+            value: command.description
         }]
     };
-
-    if ((command.examples?.length ?? 0) > 0) {
-        embed.fields.unshift({
-            name: "Example usage",
-            value: command.examples.join(", ")
-        })
-    }
-
+    
     if (command.alias.length > 1) {
-        embed.fields.unshift({
+        embed.fields.push({
             name: "Aliases",
             value: command.alias.join(", ")
         })
     }
 
-    embed.fields.unshift({
-        name: "Description",
-        value: command.description
-    })
+    if ((command.examples?.length ?? 0) > 0) {
+        embed.fields.push({
+            name: "Example usage",
+            value: command.examples.join(", ")
+        })
+    }
+
+    embed.fields.push({
+        name: "",
+        value: '```Make sure to remove brackets when typing commands!\n[] = optional arguments\n{} = optional user input```'
+    });
 
     await this.msg.channel.createMessage({ embed });
 }
