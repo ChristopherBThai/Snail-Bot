@@ -14,7 +14,7 @@ module.exports = new CommandInterface({
 		let friendList = user?.friends?.map((id) => `<@${id}>`).join(` `);
 
 		if (!friendList) {
-			this.error(`You don’t have any friends yet! Kidnap some with \`snail addfriend @user\`!`);
+			this.error(`, you don’t have any friends yet! Kidnap some with \`snail addfriend @user\`!`);
 			return;
 		}
 
