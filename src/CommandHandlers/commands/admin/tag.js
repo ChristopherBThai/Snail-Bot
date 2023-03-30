@@ -46,6 +46,13 @@ module.exports = new CommandInterface({
                 this.error(`, that tag already exists!`);
                 return;
             }
+
+            tagName = tagName.toLowerCase();
+
+            if (!/^[a-z0-9]+$/.test(tagName)) {
+                this.error(`, tag names can only contain alphanumeric characters!`);
+                return;
+            }
         } else {
             // all other paths require the tag to exist
             if (!tag) {
