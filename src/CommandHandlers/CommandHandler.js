@@ -12,6 +12,16 @@ class CommandHandler {
 	async execute(msg) {
 		const command = this.commands[msg.command];
 		if (!command) return;
+
+		const channel = await this.bot.db.Channel.findById(msg.channel.id);
+		if (channel.disabledCommands.includes(command.alias[0])) {
+			let msgObj = await msg.channel.createMessage(`🚫 **| ${msg.author.username}**, that command has been disabled in this channel`);
+			setTimeout(() => {
+				msgObj.delete();
+			}, 5000);
+			return;
+		}
+
 		await command.execute(this.constructBind(command, msg));
 
 		console.log(`${msg.author.username}#${msg.author.discriminator} (${msg.author.id}) used "${msg.command}" in ${msg.channel.name}`);
