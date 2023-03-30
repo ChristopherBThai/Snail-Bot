@@ -8,7 +8,7 @@ module.exports = new CommandInterface({
 
     execute: async function () {
         let subcommand = this.msg.args[0];
-        let tag_name = this.msg.args[1];
+        let tagName = this.msg.args[1];
         let data = this.msg.args.splice(2).join(" ");
         let tag = null;
 
@@ -20,13 +20,13 @@ module.exports = new CommandInterface({
             }
 
             // add/edit/delete/raw subcommands require a tag name
-            if (!tag_name) {
+            if (!tagName) {
                 this.error(`, please provide a tag name!`);
                 return;
             }
 
             // All subcommands will need to check wether this exists or not anyway, so I'm fetching it out here instead of inside each switch branch
-            tag = await this.bot.db.Tag.findById(tag_name);
+            tag = await this.bot.db.Tag.findById(tagName);
         } else {
             // If the first arg wasn't one of the subcommands, then it is the tag name
             tag = await this.bot.db.Tag.findById(subcommand);
@@ -57,38 +57,38 @@ module.exports = new CommandInterface({
         switch (subcommand) {
             case "add": {
                 try {
-                    await this.db.Tag.create({ _id: tag_name, data });
+                    await this.db.Tag.create({ _id: tagName, data });
                 } catch (error) {
                     console.log(error);
-                    this.error(`There was a problem creating the \`${tag_name}\` tag. Try again later or check the logs!`);
+                    this.error(`There was a problem creating the \`${tagName}\` tag. Try again later or check the logs!`);
                     break;
                 }
 
-                await this.reply(`, I created the tag \`${tag_name}\`!`);
+                await this.reply(`, I created the tag \`${tagName}\`!`);
                 break;
             }
             case "edit": {
                 try {
-                    await this.db.Tag.updateOne({ _id: tag_name }, { data });
+                    await this.db.Tag.updateOne({ _id: tagName }, { data });
                 } catch (error) {
                     console.log(error);
-                    this.error(`There was a problem updating the \`${tag_name}\` tag. Try again later or check the logs!`);
+                    this.error(`There was a problem updating the \`${tagName}\` tag. Try again later or check the logs!`);
                     break;
                 }
 
-                await this.reply(`, I updated the tag \`${tag_name}\`!`);
+                await this.reply(`, I updated the tag \`${tagName}\`!`);
                 break;
             }
             case "delete": {
                 try {
-                    await this.db.Tag.deleteOne({ _id: tag_name });
+                    await this.db.Tag.deleteOne({ _id: tagName });
                 } catch (error) {
                     console.log(error);
-                    this.error(`There was a problem deleting the \`${tag_name}\` tag. Try again later or check the logs!`);
+                    this.error(`There was a problem deleting the \`${tagName}\` tag. Try again later or check the logs!`);
                     break;
                 }
 
-                await this.reply(`, I deleted the tag \`${tag_name}\`!`);
+                await this.reply(`, I deleted the tag \`${tagName}\`!`);
                 break;
             }
             case "raw": {

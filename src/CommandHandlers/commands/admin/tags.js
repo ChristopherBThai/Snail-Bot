@@ -9,9 +9,9 @@ module.exports = new CommandInterface({
     execute: async function () {
         const tags = await this.db.Tag.find({});
 
-        let tag_list = tags.map((tag) => `\`${tag._id}\``).sort().join(` `);
+        let tagList = tags.map((tag) => `\`${tag._id}\``).sort().join(` `);
 
-        if (!tag_list) {
+        if (!tagList) {
             this.error(`Oh no! I don't have any tags :(`);
             return;
         }
@@ -20,7 +20,7 @@ module.exports = new CommandInterface({
             author: {
                 name: `Tags`,
             },
-            description: tag_list,
+            description: tagList,
             timestamp: new Date(),
             color: 0xf1c40f
         };
