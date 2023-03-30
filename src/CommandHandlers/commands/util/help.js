@@ -6,6 +6,8 @@ module.exports = new CommandInterface({
 
     emoji: '🏓',
 
+    cooldown: 1000,
+
     usage: "snail help {command}",
 
     description: "Displays a list of commands or more information on a specific command",

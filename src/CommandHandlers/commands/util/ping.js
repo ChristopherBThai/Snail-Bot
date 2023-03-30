@@ -5,6 +5,8 @@ module.exports = new CommandInterface({
 
 	emoji: '🏓',
 
+	cooldown: 5000,
+
 	usage: "snail ping",
 
     description: "Pong!",

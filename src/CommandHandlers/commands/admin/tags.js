@@ -6,6 +6,8 @@ module.exports = new CommandInterface({
 
     emoji: '🏷️',
 
+    cooldown: 5000,
+
     usage: "snail tags",
 
     description: "Get a list of existing tags",
