@@ -8,6 +8,10 @@ module.exports = new CommandInterface({
 
 	auth: hasAdminPerms,
 
+	usage: "snail roles",
+
+    description: "View the amount of users assigned to each role!",
+
 	execute: async function () {
 		await this.msg.channel.guild.fetchAllMembers(120000);
 		const roles = {};

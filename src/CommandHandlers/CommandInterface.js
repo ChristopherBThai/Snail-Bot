@@ -4,6 +4,9 @@ module.exports = class CommandInterface {
 		this.emoji = args.emoji;
 		this.executeCommand = args.execute;
 		this.auth = args.auth;
+		this.description = args.description;
+		this.examples = args.examples;
+		this.usage = args.usage;
 	}
 
 	async execute(params) {

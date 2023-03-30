@@ -8,6 +8,10 @@ module.exports = new CommandInterface({
 
 	auth: hasHelperPerms,
 
+	usage: "snail friends",
+
+    description: "View the users on your ping warning bypass list",
+
 	execute: async function () {
 		const user = await this.bot.db.User.findById(this.msg.author.id);
 

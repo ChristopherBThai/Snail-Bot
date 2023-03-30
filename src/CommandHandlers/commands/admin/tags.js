@@ -6,6 +6,10 @@ module.exports = new CommandInterface({
 
     emoji: '🏷️',
 
+    usage: "snail tags",
+
+    description: "Get a list of existing tags",
+
     execute: async function () {
         const tags = await this.db.Tag.find({});
 

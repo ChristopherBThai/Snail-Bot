@@ -8,6 +8,12 @@ module.exports = new CommandInterface({
 
 	auth: hasHelperPerms,
 
+	usage: "snail unfriend {...users}",
+
+    description: "Remove users from your ping warning bypass list",
+
+    examples: ["snail unfriend <@729569334153969705> <@210177401064390658>"],
+
 	execute: async function () {
 		if (!this.msg.mentions.length) {
 			this.error(', please mention at least one friend!');

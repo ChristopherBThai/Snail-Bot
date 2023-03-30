@@ -6,6 +6,10 @@ module.exports = new CommandInterface({
 
     emoji: '🏷️',
 
+    usage: "snail tag {tag}",
+
+    description: "View an existing tag",
+
     execute: async function () {
         let subcommand = this.msg.args[0];
         let tagName = this.msg.args[1];
