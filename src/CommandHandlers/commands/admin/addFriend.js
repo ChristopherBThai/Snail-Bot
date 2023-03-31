@@ -8,6 +8,12 @@ module.exports = new CommandInterface({
 
 	auth: hasHelperPerms,
 
+	usage: "snail addfriend {...users}",
+
+    description: "Add users to your ping warning bypass list",
+
+    examples: ["snail addfriend <@729569334153969705> <@210177401064390658>"],
+
 	execute: async function () {
 		if (!this.msg.mentions.length) {
 			this.error(', please mention at least one friend!');

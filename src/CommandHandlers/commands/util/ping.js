@@ -5,8 +5,16 @@ module.exports = new CommandInterface({
 
 	emoji: '🏓',
 
+	cooldown: 5000,
+
+	usage: "snail ping",
+
+    description: "Pong!",
+
+    examples: ["snail ping", "snail pong"],
+
 	execute: async function () {
-		if (this.commandName == 'ping') {
+		if (this.msg.command == 'ping') {
 			await this.send('Pong!');
 		} else {
 			await this.send('Ping!');

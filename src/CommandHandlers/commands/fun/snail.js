@@ -5,6 +5,12 @@ module.exports = new CommandInterface({
 
 	emoji: '🐌',
 
+	cooldown: 1000,
+
+	usage: "snail snail",
+
+    description: "🐌",
+
 	execute: async function () {
 		await this.msg.channel.createMessage(`🐌`);
 	},

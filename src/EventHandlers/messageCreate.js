@@ -34,7 +34,7 @@ module.exports = class MessageCreateHandler {
 		if (this.bot.config.channels.ignoreMention.includes(msg.channel.id)) return;	// or was sent in a mention ignored channel (only quest help at the moment)
 
 		let warning = `⚠️ **|** ${msg.author.mention}, please refrain from tagging \`offline\` or \`do not disturb\` staff members!`;
-		let mentioned_staff = [];
+		let mentionedStaff = [];
 
 		for (const mention of msg.mentions) {
 			const member = msg.channel.guild.members.get(mention.id);
@@ -44,22 +44,22 @@ module.exports = class MessageCreateHandler {
 			const user = await this.bot.db.User.findById(mention.id);
 			if (user?.friends?.includes(msg.author.id)) continue;					// Ignore if the staff member has the user on their friend list 
 
-			let is_online = member.status == "online";								// If the staff member was online
-			let in_spam = this.bot.config.channels.spam.includes(msg.channel.id)	// If mentioned in a spam channel
+			let isOnline = member.status == "online";								// If the staff member was online
+			let inSpam = this.bot.config.channels.spam.includes(msg.channel.id)	// If mentioned in a spam channel
 
-			if (!is_online || in_spam) mentioned_staff.push(member);
+			if (!isOnline || inSpam) mentionedStaff.push(member);
 			
-			if (in_spam) warning = `⚠️ **|** ${msg.author.mention}, please refrain from tagging staff members in spam channels!`;
+			if (inSpam) warning = `⚠️ **|** ${msg.author.mention}, please refrain from tagging staff members in spam channels!`;
 		}
 
-		if (mentioned_staff.length == 0) return;	// Ignore if no bad mentions were found
+		if (mentionedStaff.length == 0) return;	// Ignore if no bad mentions were found
 
-		let warn_message = await msg.channel.createMessage(warning);
+		let warnMessage = await msg.channel.createMessage(warning);
 
-		let log_message = mentioned_staff.map(
-			member => `⚠️ **|** ${msg.author.mention} tagged ${member.username}#${member.discriminator} in ${msg.channel.mention} ${warn_message.jumpLink}`
+		let logMessage = mentionedStaff.map(
+			member => `⚠️ **|** ${msg.author.mention} tagged ${member.username}#${member.discriminator} in ${msg.channel.mention} ${warnMessage.jumpLink}`
 		).join(`\n`);
 
-		await this.bot.log(log_message);
+		await this.bot.log(logMessage);
 	}
 };

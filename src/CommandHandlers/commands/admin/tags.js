@@ -6,15 +6,19 @@ module.exports = new CommandInterface({
 
     emoji: '🏷️',
 
-    auth: hasAdminPerms,
+    cooldown: 5000,
+
+    usage: "snail tags",
+
+    description: "Get a list of existing tags",
 
     execute: async function () {
         const tags = await this.db.Tag.find({});
 
-        let tag_list = tags.map((tag) => `\`${tag._id}\``).sort().join(` `);
+        let tagList = tags.map((tag) => `\`${tag._id}\``).sort().join(` `);
 
-        if (!tag_list) {
-            this.error(`Oh no! I don't have any tags :(. Create some with \`${this.config.prefix[0]} tag add {tag_name} {data}\`!`);
+        if (!tagList) {
+            this.error(`Oh no! I don't have any tags :(`);
             return;
         }
 
@@ -22,7 +26,7 @@ module.exports = new CommandInterface({
             author: {
                 name: `Tags`,
             },
-            description: tag_list,
+            description: tagList,
             timestamp: new Date(),
             color: 0xf1c40f
         };
