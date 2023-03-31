@@ -7,6 +7,7 @@ class CommandHandler {
 		this.bot = bot;
 		this.commands = {};
 		this.initCommands();
+		console.log(Object.keys(this.commands));
 	}
 
 	async execute(msg) {
@@ -64,24 +65,30 @@ class CommandHandler {
 	initCommands() {
 		const dir = requireDir('./commands', { recurse: true });
 
-		// Repeat #map(file => file instanceof CommandInterface ? file : Object.values(file)).flat() once for each level of folders in "./commands"
-		Object
-			.values(dir)
-			.flat()
-			.map(file => file instanceof CommandInterface ? file : Object.values(file))
-			.flat()
-			.filter(command => command instanceof CommandInterface)
-			.forEach(command => {
-				const aliases = command.alias;
-				aliases.forEach(alias => {
-					if (this.commands[alias]) {
-						const firstInstance = this.commands[alias].alias[0];
-						const secondInstance = command.alias[0];
-						throw new Error(`Duplicate command alias, ${alias}, found in ${firstInstance} and ${secondInstance} commands!`);
+		for (let key in dir) {
+			if (dir[key] instanceof CommandInterface) {
+				this.parseCommand(dir[key]);
+			} else {
+				for (let key2 in dir[key]) {
+					if (dir[key][key2] instanceof CommandInterface) {
+						this.parseCommand(dir[key][key2]);
 					}
-					this.commands[alias] = command;
-				})
-			});
+				}
+			}
+		}
+	}
+
+	parseCommand(command) {
+		const aliases = command.alias;
+
+		aliases.forEach(alias => {
+			if (this.commands[alias]) {
+				const firstInstance = this.commands[alias].alias[0];
+				const secondInstance = command.alias[0];
+				throw new Error(`Duplicate command alias, ${alias}, found in ${firstInstance} and ${secondInstance} commands!`);
+			}
+			this.commands[alias] = command;
+		});
 	}
 }
 
