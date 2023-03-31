@@ -10,16 +10,26 @@ module.exports = new CommandInterface({
 
     usage: "snail echo {channel} {message|embedJsonData}",
 
-    description: "Have snail echo a message into a channel! You can even echo an embed with json data like that which you can copy from this embed builder website! https://atlas.bot/tools/embed-builder",
+    description: "Have snail echo a message into a channel! You can even echo a message with an embed by copying the json data of an embed from this embed builder website! https://atlas.bot/tools/embed-builder",
 
     examples: ["snail echo <#420107107203940362> All hail our ruler lord snail!! 🐌", "snail echo <#420111691507040266> OwO is currently offline, thank you for your patience as we resolve the issue!"],
 
     execute: async function () {
-        let channel = this.msg.channelMentions[0];
+        let channelID = this.msg.channelMentions[0];
         let message = this.msg.args.splice(1).join(" ");
 
-        if (!channel) {
+        if (!channelID) {
             await this.error(', please mention a channel! The proper usage is `snail echo {channel} {message}`');
+            return;
+        }
+
+        if (!message) {
+            await this.error(', please provide a message to echo!');
+            return;
+        }
+
+        if (!this.msg.args[0].includes(channelID)) {
+            await this.error(', please mention a channel before the message! The proper usage is `snail echo {channel} {message}`');
             return;
         }
 
@@ -30,17 +40,17 @@ module.exports = new CommandInterface({
         } catch (error) { }
 
         if (!embed) {
-            await this.bot.createMessage(channel, message);
+            await this.bot.createMessage(channelID, message);
         } else {
             try {
-                await this.bot.createMessage(channel, { embed });
+                await this.bot.createMessage(channelID, { embed });
             } catch (error) {
                 await this.error(", please provide data in atleast one of the embed following embed fields! `Description` `Thumbnail Url` `Title` `Author Name`");
                 return;
             }
         }
 
-        await this.reply(`, I have echoed your message in <#${channel}>!`);
+        await this.reply(`, I have echoed your message in <#${channelID}>!`);
     },
 });
 
