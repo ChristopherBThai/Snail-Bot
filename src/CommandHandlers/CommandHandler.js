@@ -15,7 +15,7 @@ class CommandHandler {
 		if (!command) return;
 
 		const channel = await this.bot.db.Channel.findById(msg.channel.id);
-		if (channel.disabledCommands.includes(command.alias[0])) {
+		if (channel?.disabledCommands.includes(command.alias[0])) {
 			let msgObj = await msg.channel.createMessage(`🚫 **| ${msg.author.username}**, that command has been disabled in this channel`);
 			setTimeout(() => {
 				msgObj.delete();
@@ -89,6 +89,8 @@ class CommandHandler {
 			}
 			this.commands[alias] = command;
 		});
+
+		console.log(`Registered command ${aliases[0]}`);
 	}
 }
 
