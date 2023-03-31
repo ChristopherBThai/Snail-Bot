@@ -50,7 +50,7 @@ async function displayCommands() {
     if (isStaff(this.msg.member)) {
         embed.fields.unshift({
             name: "Admin",
-            value: '`addfriend` `listfriends` `unfriend` `roles` `disable` `enable` `enabled` `echo` `editmessage` `reactionrole`'
+            value: '`addfriend` `listfriends` `unfriend` `roles` `disable` `enable` `enabled` `echo` `editmessage`'
         });
     }
 
