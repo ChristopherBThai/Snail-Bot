@@ -44,11 +44,13 @@ module.exports = class MessageCreateHandler {
 			const user = await this.bot.db.User.findById(mention.id);
 			if (user?.friends?.includes(msg.author.id)) continue;					// Ignore if the staff member has the user on their friend list 
 
-			let isOnline = member.status == "online";								// If the staff member was online
-			let inSpam = this.bot.config.channels.spam.includes(msg.channel.id)	// If mentioned in a spam channel
+			let isDnd = member.status == "dnd";
+			let isOffline = member.status == "offline";
+			let isUndefined = !member.status;
+			let inSpam = this.bot.config.channels.spam.includes(msg.channel.id);	// If mentioned in a spam channel
 
-			if (!isOnline || inSpam) mentionedStaff.push(member);
-			
+			if (isDnd || isOffline || isUndefined || inSpam) mentionedStaff.push(member);
+
 			if (inSpam) warning = `⚠️ **|** ${msg.author.mention}, please refrain from tagging staff members in spam channels!`;
 		}
 
