@@ -6,6 +6,8 @@ module.exports = new CommandInterface({
 
 	emoji: '💞',
 
+	group: "admin",
+
 	auth: hasHelperPerms,
 
 	usage: "snail addfriend {...users}",

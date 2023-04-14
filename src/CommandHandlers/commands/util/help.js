@@ -1,5 +1,4 @@
 const CommandInterface = require('../../CommandInterface.js');
-const {isStaff} = require("../../../utils/global");
 
 module.exports = new CommandInterface({
     alias: ['help'],
@@ -33,25 +32,40 @@ module.exports = new CommandInterface({
 });
 
 async function displayCommands() {
+    const COMMANDS = Object.values(this.commands).reduce((groups, command) => {
+        if (!(command.auth?.(this.msg.member) ?? true)) return groups;                  // If no perms for command, then don't add to lists
+
+        if (!command.group) return groups;                                              // If no group, then skip
+
+        const GROUP = command.group.charAt(0).toUpperCase() + command.group.slice(1);   // Capitalize group name
+
+        const NAME = command.alias[0];
+
+        if (!groups[GROUP]) groups[GROUP] = [];
+
+        if (groups[GROUP].includes(NAME)) return groups;
+
+        groups[GROUP].push(NAME);
+        return groups;
+    }, {});
+
     let embed = {
         author: {
             name: `Command List`,
             icon_url: this.msg.author.avatarURL
         },
-        description: `Here is the list my commands!\nFor more info on a specific command, use \`snail help {command}\``,
+        description: `Here is the list of my commands!\nFor more info on a specific command, use \`snail help {command}\``,
         timestamp: new Date(),
         color: 0xf1c40f,
-        fields: [{
-            name: "Util",
-            value: '`tag` `tags` `ping`'
-        }]
     };
 
-    if (isStaff(this.msg.member)) {
-        embed.fields.unshift({
-            name: "Admin",
-            value: '`addfriend` `listfriends` `unfriend` `roles` `disable` `enable` `enabled` `echo` `editmessage`'
-        });
+    for (const GROUP in COMMANDS) {
+        if (!embed.fields) embed.fields = [];
+
+        embed.fields.push({
+            name: GROUP,
+            value: COMMANDS[GROUP].map(command => `\`${command}\``).join(" ")
+        })
     }
 
     await this.msg.channel.createMessage({ embed });
@@ -80,7 +94,7 @@ async function displayCommand(command) {
             value: command.description
         }]
     };
-    
+
     if (command.alias.length > 1) {
         embed.fields.push({
             name: "Aliases",

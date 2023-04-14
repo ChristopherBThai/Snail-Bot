@@ -11,6 +11,7 @@ module.exports = class CommandInterface {
 		this.examples = args.examples;
 		this.usage = args.usage;
 		this.cooldown = args.cooldown;
+		this.group = args.group;
 	}
 
 	async execute(params) {

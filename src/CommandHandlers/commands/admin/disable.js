@@ -6,7 +6,9 @@ module.exports = new CommandInterface({
 
 	emoji: '❌',
 
-	auth: hasAdminPerms,
+	group: "admin",
+	
+    auth: hasAdminPerms,
 
 	usage: "snail disable {...commands} {...channels}",
 
