@@ -11,3 +11,11 @@ exports.isStaff = (member) => exports.isHelper(member) || exports.isModerator(me
 exports.hasHelperPerms = (member) => exports.isStaff(member);
 exports.hasModeratorPerms = (member) => exports.isModerator(member) || exports.isAdmin(member) || exports.isOwner(member);
 exports.hasAdminPerms = (member) => exports.isAdmin(member) || exports.isOwner(member);
+
+exports.warn = async (msg, text, timeout = 5000) => {
+    let warnMsg = await msg.channel.createMessage(`🚫 **| ${msg.author.username}**, ${text}`);
+    setTimeout(() => {
+        warnMsg.delete();
+    }, timeout);
+    return warnMsg;
+}
