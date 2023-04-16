@@ -164,7 +164,7 @@ module.exports = class MessageCreateHandler {
 			author: {
 				name: `Quest List`,
 			},
-			description: `Use \`owo quest\` to have your quests added to the list! Please read the pins for information and FAQ`,
+			description: `Use \`owo quest\` to have your quests added to the list! Battle and Action quests can be completed in spam channels. Please read the pins for information and FAQ.\n\n<#989702438317617173> <#989702567636394054> <#989702601648009276> <#989702633969295400> <#989702680911954010> <#556183345353064513>`,
 			timestamp: new Date(),
 			color: 0xf1c40f,
 		};
