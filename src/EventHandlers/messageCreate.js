@@ -164,7 +164,7 @@ module.exports = class MessageCreateHandler {
 			author: {
 				name: `Quest List`,
 			},
-			description: `Type \`owo quest\` to have your quests added to the list!`,
+			description: `Use \`owo quest\` to have your quests added to the list!`,
 			timestamp: new Date(),
 			color: 0xf1c40f,
 		};
