@@ -1,5 +1,6 @@
 const CommandInterface = require('../../CommandInterface.js');
 const { hasModeratorPerms } = require("../../../utils/global.js");
+const CONFIG = require("../../../config.json");
 
 module.exports = new CommandInterface({
 	alias: ['questlist', 'ql'],
@@ -12,24 +13,48 @@ module.exports = new CommandInterface({
 
 	usage: "snail questlist [clear|remove|setmax] {...arguments}",
 
-	description: "Pong!",
+	description: "Manage the quest list. Note that when clearing the entire list, users will not be notified.",
 
 	examples: ["snail questlist clear all", "snail ql clear cookie", "snail ql setmax cookie 10", "snail ql remove <@729569334153969705> <@210177401064390658>"],
 
 	execute: async function () {
 		let subcommand = this.msg.args[0].toLowerCase();
 
-		switch(subcommand) {
+		switch (subcommand) {
 			case "clear": {
 				let type = this.msg.args[1].toLowerCase();
+				let users = [];
 
-				switch(type) {
-					case "all": 	this.bot.questList = []; break;
-					case "cookie": 	this.bot.questList = this.bot.questList.filter(quest => quest.type != "cookieBy"); 			break;
-					case "pray": 	this.bot.questList = this.bot.questList.filter(quest => quest.type != "prayBy"); 			break;
-					case "curse": 	this.bot.questList = this.bot.questList.filter(quest => quest.type != "curseBy"); 			break;
-					case "battle": 	this.bot.questList = this.bot.questList.filter(quest => quest.type != "friendlyBattle");	break;
-					case "action": 	this.bot.questList = this.bot.questList.filter(quest => quest.type != "emoteBy"); 			break;
+				switch (type) {
+					case "all": {
+						this.bot.questList = [];
+						break;
+					}
+					case "cookie": {
+						users = this.bot.questList.filter(quest => quest.type == "cookieBy").map(quest => quest.discordID);
+						this.bot.questList = this.bot.questList.filter(quest => quest.type != "cookieBy");
+						break;
+					}
+					case "pray": {
+						users = this.bot.questList.filter(quest => quest.type == "prayBy").map(quest => quest.discordID);
+						this.bot.questList = this.bot.questList.filter(quest => quest.type != "prayBy");
+						break;
+					}
+					case "curse": {
+						users = this.bot.questList.filter(quest => quest.type == "curseBy").map(quest => quest.discordID);
+						this.bot.questList = this.bot.questList.filter(quest => quest.type != "curseBy");
+						break;
+					}
+					case "battle": {
+						users = this.bot.questList.filter(quest => quest.type == "friendlyBattle").map(quest => quest.discordID);
+						this.bot.questList = this.bot.questList.filter(quest => quest.type != "friendlyBattle");
+						break;
+					}
+					case "action": {
+						users = this.bot.questList.filter(quest => quest.type == "emoteBy").map(quest => quest.discordID);
+						this.bot.questList = this.bot.questList.filter(quest => quest.type != "emoteBy");
+						break;
+					}
 					default: {
 						await this.error(", that is not a valid quest type! The valid types are `all`, `cookie`, `pray`, `curse`, `battle`, `action`");
 						return;
@@ -38,6 +63,13 @@ module.exports = new CommandInterface({
 
 				await this.bot.updateQuestList();
 				await this.reply(`, I have cleared the ${type == "all" ? "quest" : type} list!`);
+
+				if (users.length != 0) {
+					users = [...new Set(users)];
+					let message = `The quest list for ${type} was reset and all quests were removed from it. If you want your quest added back, please use \`owo quest\` again.\n\n`
+					message += users.map(id => `<@${id}>`).join(" ");
+					await this.bot.createMessage(CONFIG.channels.questHelp, message);
+				}
 
 				break;
 			}
@@ -50,12 +82,12 @@ module.exports = new CommandInterface({
 					return;
 				}
 
-				switch(type) {
-					case "cookie": 	this.bot.maxQuests["cookieBy"] = amount;		break;
-					case "pray": 	this.bot.maxQuests["prayBy"] = amount;			break;
-					case "curse": 	this.bot.maxQuests["curseBy"] = amount;			break;
-					case "battle": 	this.bot.maxQuests["friendlyBattle"] = amount;	break;
-					case "action": 	this.bot.maxQuests["emoteBy"] = amount;			break;
+				switch (type) {
+					case "cookie": this.bot.maxQuests["cookieBy"] = amount; break;
+					case "pray": this.bot.maxQuests["prayBy"] = amount; break;
+					case "curse": this.bot.maxQuests["curseBy"] = amount; break;
+					case "battle": this.bot.maxQuests["friendlyBattle"] = amount; break;
+					case "action": this.bot.maxQuests["emoteBy"] = amount; break;
 					default: {
 						await this.error(", that is not a valid quest type! The valid types are `cookie`, `pray`, `curse`, `battle`, `action`");
 						return;
