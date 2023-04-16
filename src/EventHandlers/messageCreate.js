@@ -164,7 +164,7 @@ module.exports = class MessageCreateHandler {
 			author: {
 				name: `Quest List`,
 			},
-			description: `Use \`owo quest\` to have your quests added to the list!`,
+			description: `Use \`owo quest\` to have your quests added to the list! Please read the pins for information and FAQ`,
 			timestamp: new Date(),
 			color: 0xf1c40f,
 		};
@@ -192,15 +192,6 @@ module.exports = class MessageCreateHandler {
 				value: text ?? "If you see this, then something broke lol. Tell <@210177401064390658>. Or don't... this will probably fix itself."
 			}
 		});
-
-		embed.fields.push({
-			name: "Quest List FAQ",
-			value: "• Remove a quest from the list or avoid adding it by locking it with `owo quest lock {1/2/3}`\n" +
-				"• The list updates automatically and is reposted every 15 messages\n" +
-				"• Quests finished elsewhere are automatically removed\n" + 
-				"• Not all quests may be displayed at once! The ones not shown are queued. `Pray List 8/12` indicates that 8 quests are shown out of 12 and that 4 are waiting to be added\n" +
-				"• Battle and Action quests can be completed in spam channels\n<#989702438317617173> <#989702567636394054> <#989702601648009276> <#989702633969295400> <#989702680911954010> <#556183345353064513>"
-		})
 
 		if (MESSAGES_SINCE_LAST_POST >= MESSAGES_UNTIL_REPOST || !this.bot.questListMessage) {
 			this.bot.questListMessage = await this.bot.createMessage(CONFIG.channels.questHelp, { embed });
