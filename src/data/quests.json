@@ -1,12 +1,4 @@
 {
-    "emoteBy": {
-        "name": "Emote",
-        "count": [ 1, 3, 5 ],
-        "cowoncy": [ 200, 600, 1000 ],
-        "lootbox": [ 1, 2, 3 ],
-        "crate": [ 1, 2, 3 ],
-        "shards": [ 100, 200, 300 ]
-    },
     "cookieBy": {
         "name": "Cookie",
         "count": [ 2, 4, 6 ],
@@ -38,5 +30,13 @@
         "lootbox": [ 2, 4, 6 ],
         "crate": [ 2, 4, 6 ],
         "shards": [ 200, 400, 600 ]
+    },
+    "emoteBy": {
+        "name": "Action",
+        "count": [ 1, 3, 5 ],
+        "cowoncy": [ 200, 600, 1000 ],
+        "lootbox": [ 1, 2, 3 ],
+        "crate": [ 1, 2, 3 ],
+        "shards": [ 100, 200, 300 ]
     }
 }
