@@ -8,14 +8,16 @@ const OWO_QUEST_COMMAND = ["owo quest", "owoquest", "owoq", "owo q"];
 const MESSAGE_TIMEOUT = 15000;
 const EMBED_FIELD_CHARACTER_LIMIT = 1023;	// One less just to be safe
 const MESSAGES_UNTIL_REPOST = 15;
-
-let QUEST_LIST = [];
-let QUEST_LIST_MESSAGE = null;
-let MESSAGES_SINCE_LAST_POST = 15;
+const WARNINGS = {};
+let MESSAGES_SINCE_LAST_POST = MESSAGES_UNTIL_REPOST;
 
 module.exports = class MessageCreateHandler {
 	constructor(bot) {
 		this.bot = bot;
+		this.bot.questList = [];
+		this.bot.questListMessage = null;
+		this.bot.updateQuestList = this.updateQuestListMessage.bind(this);
+		this.bot.maxQuests = {};
 		this.prefixes = bot.config.prefix;
 		this.command = new CommandHandler(bot);
 	}
@@ -79,8 +81,7 @@ module.exports = class MessageCreateHandler {
 	}
 
 	async manageQuestHelp(msg) {
-		const SENDER_ID = msg.author.id;
-		const MESSAGE = msg.content;
+		const SENDER_ID = msg.author.id, MESSAGE = msg.content;
 
 		if (SENDER_ID == CONFIG['owo-bot']) {
 			if (msg.embeds?.[0]?.author?.name.endsWith("Quest Log")) msg.delete();										// Delete quest logs to keep channel clean
@@ -102,15 +103,23 @@ module.exports = class MessageCreateHandler {
 
 		// Filter for the quests that can be added to the list
 		const new_quests = result.filter(newQuest => {
-			return Object.keys(QUEST_DATA).includes(newQuest.type)				// Check that it is a type of quest that can be added to the list
-				&& newQuest.locked == 0 										// Check that the quest is unlocked
-				&& !QUEST_LIST.some(quest => areSameQuest(newQuest, quest));	// Check that the quest is not already on the list
+			return Object.keys(QUEST_DATA).includes(newQuest.type)						// Check that it is a type of quest that can be added to the list
+				&& newQuest.locked == 0 												// Check that the quest is unlocked
+				&& !this.bot.questList.some(quest => areSameQuest(newQuest, quest));	// Check that the quest is not already on the list
 		});
 
-		QUEST_LIST.push(...new_quests);		// Add the new quests to the list
+		this.bot.questList.push(...new_quests);		// Add the new quests to the list
 
 		if (new_quests.length == 0) {
-			await global.ephemeralReply(msg, `🚫 **|** <@${SENDER_ID}>, You don't have any new quests to add to the list! Only unlocked Cookie, Pray, Curse, Battle, and Emote quests can be added!`, MESSAGE_TIMEOUT);
+			const lastWarned = WARNINGS[SENDER_ID] ?? new Date(0);
+			const now = Date.now();
+			const difference = now - lastWarned;
+
+			// If not longer on warning cooldown
+			if (difference > MESSAGE_TIMEOUT) {
+				await global.ephemeralReply(msg, `🚫 **|** <@${SENDER_ID}>, You don't have any new quests to add to the list! Only unlocked Cookie, Pray, Curse, Battle, and Emote quests can be added!`, MESSAGE_TIMEOUT);
+				WARNINGS[SENDER_ID] = now;
+			}
 		} else {
 			let text = `<@${SENDER_ID}>, I have added your quest(s) to the list!\n` + new_quests.map(quest => {
 				let count = QUEST_DATA[quest.type].count[quest.level];
@@ -139,13 +148,13 @@ module.exports = class MessageCreateHandler {
 	}
 
 	async updateQuestListMessage() {
-		const USERS_ON_LIST = [...new Set(QUEST_LIST.map(quest => quest.discordID))];
+		const USERS_ON_LIST = [...new Set(this.bot.questList.map(quest => quest.discordID))];
 		const UPDATED_QUESTS = await this.getUsersQuests(USERS_ON_LIST);
 
 		// From the list of all the quests of users on the list, keep the ones that are already on the list and are still unlocked
-		QUEST_LIST = UPDATED_QUESTS.filter(updatedQuest => QUEST_LIST.some(quest => areSameQuest(quest, updatedQuest) && updatedQuest.locked == 0));
+		this.bot.questList = UPDATED_QUESTS.filter(updatedQuest => this.bot.questList.some(quest => areSameQuest(quest, updatedQuest) && updatedQuest.locked == 0));
 
-		const GROUPED_QUESTS = QUEST_LIST.reduce((groups, quest) => {
+		const GROUPED_QUESTS = this.bot.questList.reduce((groups, quest) => {
 			const TYPE = quest.type;
 			groups[TYPE] = [...groups[TYPE] ?? [], quest];
 			return groups;
@@ -174,6 +183,8 @@ module.exports = class MessageCreateHandler {
 
 				text += QUEST_STRING;
 				questCount++;
+
+				if (questCount >= this.bot.maxQuests[type]) break;
 			}
 
 			return {
@@ -182,11 +193,20 @@ module.exports = class MessageCreateHandler {
 			}
 		});
 
-		if (MESSAGES_SINCE_LAST_POST >= MESSAGES_UNTIL_REPOST || !QUEST_LIST_MESSAGE) {
-			QUEST_LIST_MESSAGE = await this.bot.createMessage(CONFIG.channels.questHelp, { embed });
+		embed.fields.push({
+			name: "Quest List FAQ",
+			value: "• Remove a quest from the list or avoid adding it by locking it with `owo quest lock {1/2/3}`\n" +
+				"• The list updates automatically and is reposted every 15 messages\n" +
+				"• Quests finished elsewhere are automatically removed\n" + 
+				"• Not all quests may be displayed at once! The ones not shown are queued. `Pray List 8/12` indicates that 8 quests are shown out of 12 and that 4 are waiting to be added\n" +
+				"• Battle and Action quests can be completed in spam channels\n<#989702438317617173> <#989702567636394054> <#989702601648009276> <#989702633969295400> <#989702680911954010> <#556183345353064513>"
+		})
+
+		if (MESSAGES_SINCE_LAST_POST >= MESSAGES_UNTIL_REPOST || !this.bot.questListMessage) {
+			this.bot.questListMessage = await this.bot.createMessage(CONFIG.channels.questHelp, { embed });
 			MESSAGES_SINCE_LAST_POST = 0;
 		} else {
-			QUEST_LIST_MESSAGE.edit({ embed });
+			this.bot.questListMessage.edit({ embed });
 		}
 	}
 };
