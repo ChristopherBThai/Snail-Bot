@@ -5,13 +5,15 @@ module.exports = new CommandInterface({
 
 	emoji: '🏓',
 
+	group: "util",
+
 	cooldown: 5000,
 
 	usage: "snail ping",
 
-    description: "Pong!",
+	description: "Pong!",
 
-    examples: ["snail ping", "snail pong"],
+	examples: ["snail ping", "snail pong"],
 
 	execute: async function () {
 		if (this.msg.command == 'ping') {

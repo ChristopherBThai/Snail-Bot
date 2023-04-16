@@ -6,6 +6,8 @@ module.exports = new CommandInterface({
 
     emoji: '📝',
 
+    group: "admin",
+
     auth: hasAdminPerms,
 
     usage: "snail editmessage {channel} {messageID} {message|embedJsonData}",
@@ -55,7 +57,7 @@ module.exports = new CommandInterface({
         } catch (error) { }
 
         if (!embed) {
-            await messageObj.edit({content: message, embeds: []});
+            await messageObj.edit({ content: message, embeds: [] });
         } else {
             try {
                 await messageObj.edit({ content: "", embed });

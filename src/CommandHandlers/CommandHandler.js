@@ -7,7 +7,6 @@ class CommandHandler {
 		this.bot = bot;
 		this.commands = {};
 		this.initCommands();
-		console.log(Object.keys(this.commands));
 	}
 
 	async execute(msg) {
@@ -89,8 +88,6 @@ class CommandHandler {
 			}
 			this.commands[alias] = command;
 		});
-
-		console.log(`Registered command ${aliases[0]}`);
 	}
 }
 

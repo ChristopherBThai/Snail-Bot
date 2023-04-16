@@ -1,20 +1,22 @@
 const CommandInterface = require('../../CommandInterface.js');
-const {hasAdminPerms} = require('../../../utils/global.js');
+const { hasAdminPerms } = require('../../../utils/global.js');
 
 module.exports = new CommandInterface({
-	alias: ['enable'],
+    alias: ['enable'],
 
-	emoji: '✔',
+    emoji: '✔',
 
-	auth: hasAdminPerms,
+    group: "admin",
 
-	usage: "snail enable {...commands} {...channels}",
+    auth: hasAdminPerms,
+
+    usage: "snail enable {...commands} {...channels}",
 
     description: "Enable command(s) in a set of channels or the current channel. You can list multiple commands to enable multiple at once.",
 
     examples: ["snail enable tag ping <#420107107203940362> <#696528295084425336>", "snail enable tag"],
 
-	execute: async function () {
+    execute: async function () {
         const args = this.msg.args.map(cmd => cmd.toLowerCase());
         const channels = this.msg.channelMentions.length == 0 ? [this.msg.channel.id] : this.msg.channelMentions;
         let enabledCommands = args
@@ -37,11 +39,11 @@ module.exports = new CommandInterface({
         for (const channel of channels) {
             await this.db.Channel.updateOne(
                 { _id: channel },
-                { $pull: {disabledCommands: { $in: enabledCommands }} },
+                { $pull: { disabledCommands: { $in: enabledCommands } } },
                 { upsert: true }
             );
         }
 
-		await this.reply(`, I enabled ${enabledCommands.map(command => `\`${command}\``).join(", ")} in ${channels.map(channel => `<#${channel}>`).join(", ")}`);
-	},
+        await this.reply(`, I enabled ${enabledCommands.map(command => `\`${command}\``).join(", ")} in ${channels.map(channel => `<#${channel}>`).join(", ")}`);
+    },
 });

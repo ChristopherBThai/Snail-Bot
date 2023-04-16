@@ -1,18 +1,20 @@
 const CommandInterface = require('../../CommandInterface.js');
-const {hasHelperPerms} = require('../../../utils/global.js');
+const { hasHelperPerms } = require('../../../utils/global.js');
 
 module.exports = new CommandInterface({
 	alias: ['addfriend', 'addfren'],
 
 	emoji: '💞',
 
+	group: "admin",
+
 	auth: hasHelperPerms,
 
 	usage: "snail addfriend {...users}",
 
-    description: "Add users to your ping warning bypass list",
+	description: "Add users to your ping warning bypass list",
 
-    examples: ["snail addfriend <@729569334153969705> <@210177401064390658>"],
+	examples: ["snail addfriend <@729569334153969705> <@210177401064390658>"],
 
 	execute: async function () {
 		if (!this.msg.mentions.length) {
@@ -24,7 +26,7 @@ module.exports = new CommandInterface({
 
 		await this.db.User.updateOne(
 			{ _id: this.msg.member.id },
-			{ $addToSet: {friends} },
+			{ $addToSet: { friends } },
 			{ upsert: true }
 		);
 
