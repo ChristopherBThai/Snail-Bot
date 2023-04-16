@@ -1,5 +1,5 @@
 const CommandInterface = require('../../CommandInterface.js');
-const {hasAdminPerms} = require('../../../utils/global.js');
+const { hasAdminPerms } = require('../../../utils/global.js');
 
 module.exports = new CommandInterface({
     alias: ['tags'],
@@ -7,7 +7,7 @@ module.exports = new CommandInterface({
     emoji: '🏷️',
 
     group: "util",
-	
+
     cooldown: 5000,
 
     usage: "snail tags",

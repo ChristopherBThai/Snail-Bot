@@ -1,5 +1,5 @@
 const CommandInterface = require('../../CommandInterface.js');
-const {hasHelperPerms} = require('../../../utils/global.js');
+const { hasHelperPerms } = require('../../../utils/global.js');
 
 module.exports = new CommandInterface({
 	alias: ['unfriend', 'unfren'],
@@ -7,14 +7,14 @@ module.exports = new CommandInterface({
 	emoji: '💔',
 
 	group: "admin",
-	
-    auth: hasHelperPerms,
+
+	auth: hasHelperPerms,
 
 	usage: "snail unfriend {...users}",
 
-    description: "Remove users from your ping warning bypass list",
+	description: "Remove users from your ping warning bypass list",
 
-    examples: ["snail unfriend <@729569334153969705> <@210177401064390658>"],
+	examples: ["snail unfriend <@729569334153969705> <@210177401064390658>"],
 
 	execute: async function () {
 		if (!this.msg.mentions.length) {

@@ -1,22 +1,22 @@
 const CommandInterface = require('../../CommandInterface.js');
-const {hasAdminPerms} = require('../../../utils/global.js');
+const { hasAdminPerms } = require('../../../utils/global.js');
 
 module.exports = new CommandInterface({
-	alias: ['enabled'],
+    alias: ['enabled'],
 
-	emoji: '📃',
+    emoji: '📃',
 
     group: "admin",
-	
+
     auth: hasAdminPerms,
 
-	usage: "snail enabled {...channels}",
+    usage: "snail enabled {...channels}",
 
     description: "Get a list of the command(s) enabled in a set of channels or the current channel.",
 
     examples: ["snail enabled <#420107107203940362> <#696528295084425336>", "snail enabled"],
 
-	execute: async function () {
+    execute: async function () {
         const channels = this.msg.channelMentions.length == 0 ? [this.msg.channel.id] : this.msg.channelMentions;
         const allCommands = [...new Set(Object.values(this.commands).map(command => command.alias[0]))].sort();
         const fields = [];
@@ -36,14 +36,14 @@ module.exports = new CommandInterface({
         }
 
         let embed = {
-			author: {
-				name: `Enabled Commands`,
-			},
-			timestamp: new Date(),
-			color: 0xf1c40f,
+            author: {
+                name: `Enabled Commands`,
+            },
+            timestamp: new Date(),
+            color: 0xf1c40f,
             fields
-		};
+        };
 
-		await this.msg.channel.createMessage({ embed });
-	},
+        await this.msg.channel.createMessage({ embed });
+    },
 });

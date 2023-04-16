@@ -7,7 +7,7 @@ module.exports = new CommandInterface({
     emoji: '🏷️',
 
     group: "util",
-	
+
     cooldown: 15000,
 
     usage: "snail tag {tag}",

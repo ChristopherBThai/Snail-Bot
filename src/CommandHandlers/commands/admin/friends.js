@@ -1,5 +1,5 @@
 const CommandInterface = require('../../CommandInterface.js');
-const {hasHelperPerms} = require('../../../utils/global.js');
+const { hasHelperPerms } = require('../../../utils/global.js');
 
 module.exports = new CommandInterface({
 	alias: ['friends', 'frens'],
@@ -7,12 +7,12 @@ module.exports = new CommandInterface({
 	emoji: '❤',
 
 	group: "admin",
-	
-    auth: hasHelperPerms,
+
+	auth: hasHelperPerms,
 
 	usage: "snail friends",
 
-    description: "View the users on your ping warning bypass list",
+	description: "View the users on your ping warning bypass list",
 
 	execute: async function () {
 		const user = await this.bot.db.User.findById(this.msg.author.id);

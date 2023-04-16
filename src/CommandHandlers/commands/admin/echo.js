@@ -7,7 +7,7 @@ module.exports = new CommandInterface({
     emoji: '📢',
 
     group: "admin",
-	
+
     auth: hasAdminPerms,
 
     usage: "snail echo {channel} {message|embedJsonData}",

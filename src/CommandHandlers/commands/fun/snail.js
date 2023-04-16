@@ -9,7 +9,7 @@ module.exports = new CommandInterface({
 
 	usage: "snail snail",
 
-    description: "🐌",
+	description: "🐌",
 
 	execute: async function () {
 		await this.msg.channel.createMessage(`🐌`);
