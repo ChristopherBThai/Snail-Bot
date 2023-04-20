@@ -23,14 +23,6 @@
         "crate": [ 2, 4, 6 ],
         "shards": [ 200, 400, 600 ]
     },
-    "friendlyBattle": {
-        "name": "Battle",
-        "count": [ 3, 5, 15 ],
-        "cowoncy": [ 500, 2500, 20000 ],
-        "lootbox": [ 2, 4, 6 ],
-        "crate": [ 2, 4, 6 ],
-        "shards": [ 200, 400, 600 ]
-    },
     "emoteBy": {
         "name": "Action",
         "count": [ 1, 3, 5 ],

@@ -117,7 +117,7 @@ module.exports = class MessageCreateHandler {
 
 			// If not longer on warning cooldown
 			if (difference > MESSAGE_TIMEOUT) {
-				await global.ephemeralReply(msg, `🚫 **|** <@${SENDER_ID}>, You don't have any new quests to add to the list! Only unlocked Cookie, Pray, Curse, Battle, and Emote quests can be added!`, MESSAGE_TIMEOUT);
+				await global.ephemeralReply(msg, `🚫 **|** <@${SENDER_ID}>, You don't have any new quests to add to the list! Only unlocked Cookie, Pray, Curse, and Emote quests can be added!`, MESSAGE_TIMEOUT);
 				WARNINGS[SENDER_ID] = now;
 			}
 		} else {
@@ -128,7 +128,6 @@ module.exports = class MessageCreateHandler {
 					cookieBy: `Receive a cookie from ${count} friends!`,
 					prayBy: `Have a friend pray to you ${count} times!`,
 					curseBy: `Have a friend curse you ${count} times!`,
-					friendlyBattle: `Battle with a friend ${count} times!`,
 				}[quest.type] ?? "Invalid Quest!";
 				
 				return `- \`${questString}\``;

@@ -45,18 +45,13 @@ module.exports = new CommandInterface({
 						this.bot.questList = this.bot.questList.filter(quest => quest.type != "curseBy");
 						break;
 					}
-					case "battle": {
-						users = this.bot.questList.filter(quest => quest.type == "friendlyBattle").map(quest => quest.discordID);
-						this.bot.questList = this.bot.questList.filter(quest => quest.type != "friendlyBattle");
-						break;
-					}
 					case "action": {
 						users = this.bot.questList.filter(quest => quest.type == "emoteBy").map(quest => quest.discordID);
 						this.bot.questList = this.bot.questList.filter(quest => quest.type != "emoteBy");
 						break;
 					}
 					default: {
-						await this.error(", that is not a valid quest type! The valid types are `all`, `cookie`, `pray`, `curse`, `battle`, `action`");
+						await this.error(", that is not a valid quest type! The valid types are `all`, `cookie`, `pray`, `curse`, and `action`");
 						return;
 					};
 				}
@@ -86,10 +81,9 @@ module.exports = new CommandInterface({
 					case "cookie": this.bot.maxQuests["cookieBy"] = amount; break;
 					case "pray": this.bot.maxQuests["prayBy"] = amount; break;
 					case "curse": this.bot.maxQuests["curseBy"] = amount; break;
-					case "battle": this.bot.maxQuests["friendlyBattle"] = amount; break;
 					case "action": this.bot.maxQuests["emoteBy"] = amount; break;
 					default: {
-						await this.error(", that is not a valid quest type! The valid types are `cookie`, `pray`, `curse`, `battle`, `action`");
+						await this.error(", that is not a valid quest type! The valid types are `cookie`, `pray`, `curse`, and `action`");
 						return;
 					};
 				}
