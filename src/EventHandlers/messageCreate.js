@@ -3,7 +3,8 @@ const global = require('../utils/global.js');
 const CONFIG = require("../config.json");
 const QUEST_DATA = require("../data/quests.json");
 
-const UPDATE_TRIGGER_PHRASES = ["You finished a quest and earned", "prays for", "puts a curse on", "You got a cookie from"];
+const COMPLETED_QUEST_TRIGGER = "You finished a quest and earned";
+const UPDATE_TRIGGER_PHRASES = [COMPLETED_QUEST_TRIGGER, "prays for", "puts a curse on", "You got a cookie from"];
 const OWO_QUEST_COMMAND = ["owo quest", "owoquest", "owoq", "owo q"];
 const MESSAGE_TIMEOUT = 15000;
 const EMBED_FIELD_CHARACTER_LIMIT = 1023;	// One less just to be safe
@@ -90,6 +91,7 @@ module.exports = class MessageCreateHandler {
 			}
 			MESSAGES_SINCE_LAST_POST++; 																				// Any other message from OwO can count towards the counter
 			if (UPDATE_TRIGGER_PHRASES.some(phrase => MESSAGE.includes(phrase))) await this.updateQuestListMessage();	// Update whenever a quest is completed, someone is prayed to, someone is cursed, or receives a cookie 
+			if (MESSAGE.includes(COMPLETED_QUEST_TRIGGER)) await msg.addReaction("🎉");									// React "🎉" to completed quests
 			return;
 		}
 
