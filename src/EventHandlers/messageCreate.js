@@ -129,7 +129,7 @@ module.exports = class MessageCreateHandler {
 					prayBy: `Have a friend pray to you ${count} times!`,
 					curseBy: `Have a friend curse you ${count} times!`,
 				}[quest.type] ?? "Invalid Quest!";
-				
+
 				return `- \`${questString}\``;
 			}).join("\n") + "\nPlease note that older quests will be shown first! If you don't see your quest it is in the queue!";
 
@@ -174,9 +174,9 @@ module.exports = class MessageCreateHandler {
 
 			for (const QUEST of GROUPED_QUESTS[type]) {
 				let { count, level, discordID } = QUEST;
-				let { username, discriminator } = this.bot.users.get(discordID);
+				let { nick, username } = this.bot.guilds.get(CONFIG.guild).members.get(discordID);
 
-				const QUEST_STRING = `\`${count}/${data.count[level]}\` \`${username}#${discriminator}\` <@${discordID}>\n`;
+				const QUEST_STRING = `\`${count}/${data.count[level]}\` \`${nick ?? username}\` <@${discordID}>\n`;
 
 				if (text.length + QUEST_STRING.length > EMBED_FIELD_CHARACTER_LIMIT) break;
 
