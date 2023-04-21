@@ -123,7 +123,7 @@ module.exports = class MessageCreateHandler {
 
 			// If not longer on warning cooldown
 			if (difference > MESSAGE_TIMEOUT) {
-				await global.ephemeralReply(msg, `🚫 **|** <@${SENDER_ID}>, You don't have any new quests to add to the list! Only unlocked Cookie, Pray, Curse, and Emote quests can be added!`, MESSAGE_TIMEOUT);
+				await global.ephemeralReply(msg, `🚫 **|** <@${SENDER_ID}>, You don't have any new quests to add to the list! Only unlocked Cookie, Pray, Curse, and Action quests can be added!`, MESSAGE_TIMEOUT);
 				WARNINGS[SENDER_ID] = now;
 			}
 		} else {
