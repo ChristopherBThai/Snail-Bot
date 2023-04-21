@@ -1,7 +1,7 @@
 {
     "cookieBy": {
         "name": "Cookie",
-        "count": [ 2, 4, 6 ],
+        "count": [ 1, 2, 4 ],
         "cowoncy": [ 500, 2500, 25000 ],
         "lootbox": [ 2, 4, 8 ],
         "crate": [ 2, 4, 8 ],
