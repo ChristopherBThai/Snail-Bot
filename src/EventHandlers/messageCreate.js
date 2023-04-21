@@ -193,8 +193,8 @@ module.exports = class MessageCreateHandler {
 		});
 
 		if (MESSAGES_SINCE_LAST_POST >= MESSAGES_UNTIL_REPOST || !this.bot.questListMessage) {
-			this.bot.questListMessage = await this.bot.createMessage(CONFIG.channels.questHelp, { embed });
 			MESSAGES_SINCE_LAST_POST = 0;
+			this.bot.questListMessage = await this.bot.createMessage(CONFIG.channels.questHelp, { embed });
 		} else {
 			this.bot.questListMessage.edit({ embed });
 		}
