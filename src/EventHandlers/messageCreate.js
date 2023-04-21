@@ -84,8 +84,11 @@ module.exports = class MessageCreateHandler {
 		const SENDER_ID = msg.author.id, MESSAGE = msg.content;
 
 		if (SENDER_ID == CONFIG['owo-bot']) {
-			if (msg.embeds?.[0]?.author?.name.endsWith("Quest Log")) msg.delete();										// Delete quest logs to keep channel clean
-			if (UPDATE_TRIGGER_PHRASES.some(phrase => MESSAGE.includes(phrase))) await this.updateQuestListMessage();	// Update whenever a quest is completed, someone is prayed to, someone is cursed, or receives a cookie 
+			if (msg.embeds?.[0]?.author?.name.endsWith("Quest Log")) msg.delete();	// Delete quest logs to keep channel clean
+			if (UPDATE_TRIGGER_PHRASES.some(phrase => MESSAGE.includes(phrase))) {	// Update whenever a quest is completed, someone is prayed to, someone is cursed, or receives a cookie 
+				MESSAGES_SINCE_LAST_POST++;
+				await this.updateQuestListMessage();
+			}
 			return;
 		}
 
