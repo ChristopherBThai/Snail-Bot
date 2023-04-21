@@ -157,7 +157,7 @@ module.exports = class MessageCreateHandler {
 		const UPDATED_QUESTS = await this.getUsersQuests(USERS_ON_LIST);
 
 		// From the list of all the quests of users on the list, keep the ones that are already on the list and are still unlocked
-		this.bot.questList = UPDATED_QUESTS.filter(updatedQuest => this.bot.questList.some(quest => areSameQuest(quest, updatedQuest) && updatedQuest.locked == 0));
+		this.bot.questList = this.bot.questList.filter(quest => UPDATED_QUESTS.some(updatedQuest => areSameQuest(updatedQuest, quest) && updatedQuest.locked == 0));
 
 		const GROUPED_QUESTS = this.bot.questList.reduce((groups, quest) => {
 			const TYPE = quest.type;
