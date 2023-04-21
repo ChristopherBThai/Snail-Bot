@@ -187,7 +187,7 @@ module.exports = class MessageCreateHandler {
 			}
 
 			return {
-				name: `${data.name} List ${questCount}/${GROUPED_QUESTS[type].length}`,
+				name: `${data.emoji} ${data.name} List ${questCount}/${GROUPED_QUESTS[type].length}`,
 				value: text ?? "If you see this, then something broke lol. Tell <@210177401064390658>. Or don't... this will probably fix itself."
 			}
 		});

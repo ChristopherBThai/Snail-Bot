@@ -5,7 +5,8 @@
         "cowoncy": [ 500, 2500, 25000 ],
         "lootbox": [ 2, 4, 8 ],
         "crate": [ 2, 4, 8 ],
-        "shards": [ 200, 400, 800 ]
+        "shards": [ 200, 400, 800 ],
+        "emoji": ":cookie:"
     },
     "prayBy": {
         "name": "Pray",
@@ -13,7 +14,8 @@
         "cowoncy": [ 500, 2500, 20000 ],
         "lootbox": [ 2, 4, 6 ],
         "crate": [ 2, 4, 6 ],
-        "shards": [ 200, 400, 600 ]
+        "shards": [ 200, 400, 600 ],
+        "emoji": ":pray:"
     },
     "curseBy": {
         "name": "Curse",
@@ -21,7 +23,8 @@
         "cowoncy": [ 500, 2500, 20000 ],
         "lootbox": [ 2, 4, 6 ],
         "crate": [ 2, 4, 6 ],
-        "shards": [ 200, 400, 600 ]
+        "shards": [ 200, 400, 600 ],
+        "emoji": ":skull:"
     },
     "emoteBy": {
         "name": "Action",
@@ -29,6 +32,7 @@
         "cowoncy": [ 200, 600, 1000 ],
         "lootbox": [ 1, 2, 3 ],
         "crate": [ 1, 2, 3 ],
-        "shards": [ 100, 200, 300 ]
+        "shards": [ 100, 200, 300 ],
+        "emoji": ":cowboy:"
     }
 }
