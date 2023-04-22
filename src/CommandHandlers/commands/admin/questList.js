@@ -1,6 +1,7 @@
 const CommandInterface = require('../../CommandInterface.js');
 const { hasModeratorPerms } = require("../../../utils/global.js");
 const CONFIG = require("../../../config.json");
+const DATA = require("../../../data/quests.json");
 
 module.exports = new CommandInterface({
 	alias: ['questlist', 'ql'],
@@ -105,6 +106,28 @@ module.exports = new CommandInterface({
 				await this.bot.updateQuestList();
 				await this.reply(`, I removed ${this.msg.mentions.length} users from the quest list!`);
 
+				break;
+			}
+			case "settings": {
+				let value = Object.entries(DATA).map(([type, data]) => {
+					return `${data.name}: ${this.bot.maxQuests[type] ?? "infinity"}`
+				}).join("\n");
+
+				const embed = {
+					author: {
+						name: `Quest List Settings`,
+					},
+					fields: [
+						{
+							name: "Max Quests",
+							value
+						}
+					],
+					timestamp: new Date(),
+					color: 0xf1c40f,
+				};
+
+				await this.msg.channel.createMessage({ embed });
 				break;
 			}
 			default: {
