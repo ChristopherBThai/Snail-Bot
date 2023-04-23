@@ -22,7 +22,8 @@ module.exports = new CommandInterface({
 		let subcommand = this.msg.args[0]?.toLowerCase();
 
 		switch (subcommand) {
-			case "clear": {
+			case "clear":
+			case "notifyclear": {
 				let type = this.msg.args[1]?.toLowerCase();
 				let users = [];
 
@@ -60,7 +61,7 @@ module.exports = new CommandInterface({
 				await this.bot.updateQuestList();
 				await this.reply(`, I have cleared the ${type == "all" ? "quest" : type} list!`);
 
-				if (users.length != 0) {
+				if (subcommand == "notifyclear" && users.length != 0) {
 					users = [...new Set(users)];
 					let message = `The quest list for ${type} was reset and all quests were removed from it. If you want your quest added back, please use \`owo quest\` again.\n\n`
 					message += users.map(id => `<@${id}>`).join(" ");
@@ -146,7 +147,7 @@ module.exports = new CommandInterface({
 				break;
 			}
 			default: {
-				await this.error(", that is not a valid subcommand! The proper usage is `snail questlist [clear|remove|setmax|settings|setrepostinterval] {...arguments}`");
+				await this.error(", that is not a valid subcommand! The proper usage is `snail questlist [clear|notifyclear|remove|setmax|settings|setrepostinterval] {...arguments}`");
 			}
 		}
 	},
