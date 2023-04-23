@@ -159,8 +159,8 @@ module.exports = class MessageCreateHandler {
 		const USERS_ON_LIST = [...new Set(this.bot.questList.quests.map(quest => quest.discordID))];
 		const UPDATED_QUESTS = await this.getUsersQuests(USERS_ON_LIST);
 
-		// From the list of all the quests of users on the list, keep the ones that are already on the list and are still unlocked
-		this.bot.questList.quests = this.bot.questList.quests.filter(quest => UPDATED_QUESTS.some(updatedQuest => areSameQuest(updatedQuest, quest) && updatedQuest.locked == 0));
+		// Map old quests to updated quests setting quests that have been removed as undefined and then filter for quests that still exist and aren't locked
+		this.bot.questList.quests = this.bot.questList.quests.map(quest => UPDATED_QUESTS.find(updatedQuest => areSameQuest(updatedQuest, quest))).filter(quest => quest?.locked == 0);
 
 		const QUESTS_GROUPED_BY_TYPE = this.bot.questList.quests.reduce((groups, quest) => {
 			const TYPE = quest.type;
