@@ -140,7 +140,7 @@ module.exports = class MessageCreateHandler {
 				}[quest.type] ?? "Invalid Quest!";
 
 				return `- \`${questString}\``;
-			}).join("\n") + "\nPlease note that older quests will be shown first! If you don't see your quest it is in the queue!";
+			}).join("\n") + "\nPlease note that older quests will be shown first! If you don't see your quest it is in the queue! You can help out others with their quests to advance the queue faster!";
 
 			await global.ephemeralReply(msg, text, MESSAGE_TIMEOUT);
 			await this.updateQuestListMessage();
