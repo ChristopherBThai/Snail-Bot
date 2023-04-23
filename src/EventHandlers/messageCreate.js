@@ -185,7 +185,7 @@ module.exports = class MessageCreateHandler {
 				let { count, level, discordID } = QUEST;
 				let { nick, username } = this.bot.guilds.get(CONFIG.guild).members.get(discordID);
 
-				const QUEST_STRING = `\`${count}/${data.count[level]}\` \`${nick ?? username}\` <@${discordID}>\n`;
+				const QUEST_STRING = `\`${count.toString().padStart(2, "0")}/${data.count[level].toString().padStart(2, "0")}\` \`${nick ?? username}\` <@${discordID}>\n`;
 
 				if (text.length + QUEST_STRING.length > EMBED_FIELD_CHARACTER_LIMIT) break;
 
