@@ -130,8 +130,23 @@ module.exports = new CommandInterface({
 				await this.msg.channel.createMessage({ embed });
 				break;
 			}
+			case "setrepostinterval": {
+				let amount = parseInt(this.msg.args[1]);
+
+				if (!amount || amount < 1) {
+					await this.error(`, ${this.msg.args[1]} is not a valid number! Please select a number greater than 0.`);
+					return;
+				}
+
+				this.bot.questList.messageCountRepostInterval = amount;
+
+				await this.bot.updateQuestList();
+				await this.reply(`, I have set the quest list to repost every ${amount} messages!`);
+
+				break;
+			}
 			default: {
-				await this.error(", that is not a valid subcommand! The proper usage is `snail questlist [clear|remove|setmax|settings] {...arguments}`");
+				await this.error(", that is not a valid subcommand! The proper usage is `snail questlist [clear|remove|setmax|settings|setrepostinterval] {...arguments}`");
 			}
 		}
 	},
