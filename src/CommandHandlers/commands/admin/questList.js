@@ -145,6 +145,11 @@ module.exports = new CommandInterface({
 				await this.msg.channel.createMessage({ embed });
 				break;
 			}
+			case "forceupdate": {
+				await this.bot.updateQuestList();
+				await this.reply(`, I have updated the quest list!`);
+				break;
+			}
 			case "setrepostinterval": {
 				let amount = parseInt(this.msg.args[1]);
 
