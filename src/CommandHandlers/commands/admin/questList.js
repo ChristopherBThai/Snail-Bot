@@ -6,7 +6,7 @@ const DATA = require("../../../data/quests.json");
 module.exports = new CommandInterface({
 	alias: ['questlist', 'ql'],
 
-	emoji: '🏓',
+	emoji: '📃',
 
 	group: "admin",
 
