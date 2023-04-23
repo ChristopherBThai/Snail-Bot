@@ -8,17 +8,20 @@ const UPDATE_TRIGGER_PHRASES = [COMPLETED_QUEST_TRIGGER, "prays for", "puts a cu
 const OWO_QUEST_COMMAND = ["owo quest", "owoquest", "owoq", "owo q"];
 const MESSAGE_TIMEOUT = 15000;
 const EMBED_FIELD_CHARACTER_LIMIT = 1023;	// One less just to be safe
-const MESSAGES_UNTIL_REPOST = 15;
 const WARNINGS = {};
-let MESSAGES_SINCE_LAST_POST = MESSAGES_UNTIL_REPOST;
+const DEFAULT_MESSAGES_UNTIL_REPOST = 15;
 
 module.exports = class MessageCreateHandler {
 	constructor(bot) {
 		this.bot = bot;
-		this.bot.questList = [];
-		this.bot.questListMessage = null;
+		this.bot.questList = {
+			quests: [],
+			message: null,
+			maxQuests: {},
+			messageCountRepostInterval: DEFAULT_MESSAGES_UNTIL_REPOST,
+			messagesSinceLastPost: DEFAULT_MESSAGES_UNTIL_REPOST
+		}
 		this.bot.updateQuestList = this.updateQuestListMessage.bind(this);
-		this.bot.maxQuests = {};
 		this.prefixes = bot.config.prefix;
 		this.command = new CommandHandler(bot);
 	}
@@ -89,7 +92,7 @@ module.exports = class MessageCreateHandler {
 				msg.delete();
 				return;
 			}
-			MESSAGES_SINCE_LAST_POST++; 																				// Any other message from OwO can count towards the counter
+			this.bot.questList.messagesSinceLastPost++; 																// Any other message from OwO can count towards the counter
 			if (UPDATE_TRIGGER_PHRASES.some(phrase => MESSAGE.includes(phrase))) await this.updateQuestListMessage();	// Update whenever a quest is completed, someone is prayed to, someone is cursed, or receives a cookie 
 			if (MESSAGE.includes(COMPLETED_QUEST_TRIGGER)) await msg.addReaction("🎉");									// React "🎉" to completed quests
 			return;
@@ -100,7 +103,7 @@ module.exports = class MessageCreateHandler {
 
 		// Ignore if message is not quest command
 		if (OWO_QUEST_COMMAND.every(command => !MESSAGE.toLowerCase().startsWith(command))) {
-			if (++MESSAGES_SINCE_LAST_POST >= MESSAGES_UNTIL_REPOST) await this.updateQuestListMessage();	// If the list hasn't been sent for `MESSAGES_UNTIL_REPOST` messages, then call the update method to repost the list
+			if (++this.bot.questList.messagesSinceLastPost >= this.bot.questList.messageCountRepostInterval) await this.updateQuestListMessage();	// If the list hasn't been sent for `MESSAGES_UNTIL_REPOST` messages, then call the update method to repost the list
 			return;
 		};
 
@@ -109,12 +112,12 @@ module.exports = class MessageCreateHandler {
 
 		// Filter for the quests that can be added to the list
 		const new_quests = result.filter(newQuest => {
-			return Object.keys(QUEST_DATA).includes(newQuest.type)						// Check that it is a type of quest that can be added to the list
-				&& newQuest.locked == 0 												// Check that the quest is unlocked
-				&& !this.bot.questList.some(quest => areSameQuest(newQuest, quest));	// Check that the quest is not already on the list
+			return Object.keys(QUEST_DATA).includes(newQuest.type)							// Check that it is a type of quest that can be added to the list
+				&& newQuest.locked == 0 													// Check that the quest is unlocked
+				&& !this.bot.questList.quests.some(quest => areSameQuest(newQuest, quest));	// Check that the quest is not already on the list
 		});
 
-		this.bot.questList.push(...new_quests);		// Add the new quests to the list
+		this.bot.questList.quests.push(...new_quests);		// Add the new quests to the list
 
 		if (new_quests.length == 0) {
 			const lastWarned = WARNINGS[SENDER_ID] ?? new Date(0);
@@ -153,13 +156,13 @@ module.exports = class MessageCreateHandler {
 	}
 
 	async updateQuestListMessage() {
-		const USERS_ON_LIST = [...new Set(this.bot.questList.map(quest => quest.discordID))];
+		const USERS_ON_LIST = [...new Set(this.bot.questList.quests.map(quest => quest.discordID))];
 		const UPDATED_QUESTS = await this.getUsersQuests(USERS_ON_LIST);
 
 		// From the list of all the quests of users on the list, keep the ones that are already on the list and are still unlocked
-		this.bot.questList = this.bot.questList.filter(quest => UPDATED_QUESTS.some(updatedQuest => areSameQuest(updatedQuest, quest) && updatedQuest.locked == 0));
+		this.bot.quests.questList = this.bot.questList.quests.filter(quest => UPDATED_QUESTS.some(updatedQuest => areSameQuest(updatedQuest, quest) && updatedQuest.locked == 0));
 
-		const GROUPED_QUESTS = this.bot.questList.reduce((groups, quest) => {
+		const GROUPED_QUESTS = this.bot.questList.quests.reduce((groups, quest) => {
 			const TYPE = quest.type;
 			groups[TYPE] = [...groups[TYPE] ?? [], quest];
 			return groups;
@@ -189,7 +192,7 @@ module.exports = class MessageCreateHandler {
 				text += QUEST_STRING;
 				questCount++;
 
-				if (questCount >= this.bot.maxQuests[type]) break;
+				if (questCount >= this.bot.questList.maxQuests[type]) break;
 			}
 
 			return {
@@ -198,11 +201,11 @@ module.exports = class MessageCreateHandler {
 			}
 		});
 
-		if (MESSAGES_SINCE_LAST_POST >= MESSAGES_UNTIL_REPOST || !this.bot.questListMessage) {
-			MESSAGES_SINCE_LAST_POST = 0;
-			this.bot.questListMessage = await this.bot.createMessage(CONFIG.channels.questHelp, { embed });
+		if (this.bot.questList.messagesSinceLastPost >= this.bot.questList.messageCountRepostInterval || !this.bot.questList.message) {
+			this.bot.questList.messagesSinceLastPost = 0;
+			this.bot.questList.message = await this.bot.createMessage(CONFIG.channels.questHelp, { embed });
 		} else {
-			this.bot.questListMessage.edit({ embed });
+			this.bot.questList.message.edit({ embed });
 		}
 	}
 };
