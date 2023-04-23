@@ -96,13 +96,27 @@ module.exports = new CommandInterface({
 				break;
 			}
 			case "remove": {
+				let type = this.msg.args[1]?.toLowerCase();
+
+				switch (type) {
+					case "all": type = "all"; break;
+					case "cookie": type = "cookieBy"; break;
+					case "pray": type = "prayBy"; break;
+					case "curse": type = "curseBy"; break;
+					case "action": type = "emoteBy"; break;
+					default: {
+						await this.error(", that is not a valid quest type! The valid types are `all`, `cookie`, `pray`, `curse`, and `action` and the command is `snail questlist remove [type] {@users...}`");
+						return;
+					};
+				}
+
 				if (!this.msg.mentions.length) {
 					this.error(', please mention at least one user!');
 					return;
 				}
 
 				let users = this.msg.mentions.map((member) => member.id);
-				this.bot.questList.quests = this.bot.questList.quests.filter(quest => !users.includes(quest.discordID));
+				this.bot.questList.quests = this.bot.questList.quests.filter(quest => !((quest.type == type || type == "all") && users.includes(quest.discordID)));
 
 				await this.bot.updateQuestList();
 				await this.reply(`, I removed ${this.msg.mentions.length} users from the quest list!`);
