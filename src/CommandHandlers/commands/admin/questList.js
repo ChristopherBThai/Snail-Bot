@@ -19,11 +19,11 @@ module.exports = new CommandInterface({
 	examples: ["snail questlist clear all", "snail ql clear cookie", "snail ql setmax cookie 10", "snail ql remove <@729569334153969705> <@210177401064390658>"],
 
 	execute: async function () {
-		let subcommand = this.msg.args[0].toLowerCase();
+		let subcommand = this.msg.args[0]?.toLowerCase();
 
 		switch (subcommand) {
 			case "clear": {
-				let type = this.msg.args[1].toLowerCase();
+				let type = this.msg.args[1]?.toLowerCase();
 				let users = [];
 
 				switch (type) {
@@ -70,11 +70,11 @@ module.exports = new CommandInterface({
 				break;
 			}
 			case "setmax": {
-				let type = this.msg.args[1].toLowerCase();
+				let type = this.msg.args[1]?.toLowerCase();
 				let amount = parseInt(this.msg.args[2]);
 
-				if (!amount) {
-					await this.error(`, ${this.msg.args[2]} is not a number!`);
+				if (!amount || amount < 1) {
+					await this.error(`, ${this.msg.args[2]} is not a valid number! Please select a number greater than 0.`);
 					return;
 				}
 
@@ -109,8 +109,8 @@ module.exports = new CommandInterface({
 				break;
 			}
 			case "settings": {
-				let value = Object.entries(DATA).map(([type, data]) => {
-					return `${data.name}: ${this.bot.maxQuests[type] ?? "infinity"}`
+				let maxQuests = Object.entries(DATA).map(([type, data]) => {
+					return `**${data.name}:** ${this.bot.maxQuests[type] ?? "infinity"}`
 				}).join("\n");
 
 				const embed = {
@@ -120,7 +120,7 @@ module.exports = new CommandInterface({
 					fields: [
 						{
 							name: "Max Quests",
-							value
+							value: maxQuests
 						}
 					],
 					timestamp: new Date(),
@@ -131,7 +131,7 @@ module.exports = new CommandInterface({
 				break;
 			}
 			default: {
-				await this.error(", that is not a valid subcommand! The proper usage is `snail questlist [clear|remove|set] {...arguments}`");
+				await this.error(", that is not a valid subcommand! The proper usage is `snail questlist [clear|remove|setmax] {...arguments}`");
 			}
 		}
 	},
