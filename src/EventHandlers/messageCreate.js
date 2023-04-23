@@ -162,7 +162,7 @@ module.exports = class MessageCreateHandler {
 		// From the list of all the quests of users on the list, keep the ones that are already on the list and are still unlocked
 		this.bot.questList.quests = this.bot.questList.quests.filter(quest => UPDATED_QUESTS.some(updatedQuest => areSameQuest(updatedQuest, quest) && updatedQuest.locked == 0));
 
-		const GROUPED_QUESTS = this.bot.questList.quests.reduce((groups, quest) => {
+		const QUESTS_GROUPED_BY_TYPE = this.bot.questList.quests.reduce((groups, quest) => {
 			const TYPE = quest.type;
 			groups[TYPE] = [...groups[TYPE] ?? [], quest];
 			return groups;
@@ -177,15 +177,21 @@ module.exports = class MessageCreateHandler {
 			color: 0xf1c40f,
 		};
 
-		embed.fields = Object.entries(QUEST_DATA).filter(([type]) => GROUPED_QUESTS[type]).map(([type, data]) => {
+		embed.fields = Object.entries(QUEST_DATA).filter(([type]) => QUESTS_GROUPED_BY_TYPE[type]).map(([type, data]) => {
 			let questCount = 0;
 			let text = "";
 
-			for (const QUEST of GROUPED_QUESTS[type]) {
-				let { count, level, discordID } = QUEST;
-				let { nick, username } = this.bot.guilds.get(CONFIG.guild).members.get(discordID);
+			const QUESTS_GROUPED_BY_USER = QUESTS_GROUPED_BY_TYPE[type].reduce((groups, quest) => {
+				const USER = quest.discordID;
+				groups[USER] = [...groups[USER] ?? [], quest];
+				return groups;
+			}, {});
 
-				const QUEST_STRING = `\`${count.toString().padStart(2, "0")}/${data.count[level].toString().padStart(2, "0")}\` \`${nick ?? username}\` <@${discordID}>\n`;
+			for (const USER in QUESTS_GROUPED_BY_USER) {
+				let { nick, username } = this.bot.guilds.get(CONFIG.guild).members.get(USER);
+				let counts = QUESTS_GROUPED_BY_USER[USER].map(({count, level}) => `\`${count.toString().padStart(2, "0")}/${data.count[level].toString().padStart(2, "0")}\``).join(" + ");
+
+				const QUEST_STRING = `${counts} \`${nick ?? username}\` <@${USER}>\n`;
 
 				if (text.length + QUEST_STRING.length > EMBED_FIELD_CHARACTER_LIMIT) break;
 
@@ -196,7 +202,7 @@ module.exports = class MessageCreateHandler {
 			}
 
 			return {
-				name: `${data.emoji} ${data.name} List ${questCount}/${GROUPED_QUESTS[type].length}`,
+				name: `${data.emoji} ${data.name} List ${questCount}/${Object.keys(QUESTS_GROUPED_BY_USER).length}`,
 				value: text ?? "If you see this, then something broke lol. Tell <@210177401064390658>. Or don't... this will probably fix itself."
 			}
 		});
