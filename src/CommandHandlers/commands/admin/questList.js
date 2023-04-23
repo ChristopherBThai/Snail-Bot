@@ -28,27 +28,27 @@ module.exports = new CommandInterface({
 
 				switch (type) {
 					case "all": {
-						this.bot.questList = [];
+						this.bot.questList.quests = [];
 						break;
 					}
 					case "cookie": {
-						users = this.bot.questList.filter(quest => quest.type == "cookieBy").map(quest => quest.discordID);
-						this.bot.questList = this.bot.questList.filter(quest => quest.type != "cookieBy");
+						users = this.bot.questList.quests.filter(quest => quest.type == "cookieBy").map(quest => quest.discordID);
+						this.bot.questList.quests = this.bot.questList.quests.filter(quest => quest.type != "cookieBy");
 						break;
 					}
 					case "pray": {
-						users = this.bot.questList.filter(quest => quest.type == "prayBy").map(quest => quest.discordID);
-						this.bot.questList = this.bot.questList.filter(quest => quest.type != "prayBy");
+						users = this.bot.questList.quests.filter(quest => quest.type == "prayBy").map(quest => quest.discordID);
+						this.bot.questList.quests = this.bot.questList.quests.filter(quest => quest.type != "prayBy");
 						break;
 					}
 					case "curse": {
-						users = this.bot.questList.filter(quest => quest.type == "curseBy").map(quest => quest.discordID);
-						this.bot.questList = this.bot.questList.filter(quest => quest.type != "curseBy");
+						users = this.bot.questList.quests.filter(quest => quest.type == "curseBy").map(quest => quest.discordID);
+						this.bot.questList.quests = this.bot.questList.quests.filter(quest => quest.type != "curseBy");
 						break;
 					}
 					case "action": {
-						users = this.bot.questList.filter(quest => quest.type == "emoteBy").map(quest => quest.discordID);
-						this.bot.questList = this.bot.questList.filter(quest => quest.type != "emoteBy");
+						users = this.bot.questList.quests.filter(quest => quest.type == "emoteBy").map(quest => quest.discordID);
+						this.bot.questList.quests = this.bot.questList.quests.filter(quest => quest.type != "emoteBy");
 						break;
 					}
 					default: {
@@ -79,10 +79,10 @@ module.exports = new CommandInterface({
 				}
 
 				switch (type) {
-					case "cookie": this.bot.maxQuests["cookieBy"] = amount; break;
-					case "pray": this.bot.maxQuests["prayBy"] = amount; break;
-					case "curse": this.bot.maxQuests["curseBy"] = amount; break;
-					case "action": this.bot.maxQuests["emoteBy"] = amount; break;
+					case "cookie": this.bot.questList.maxQuests["cookieBy"] = amount; break;
+					case "pray": this.bot.questList.maxQuests["prayBy"] = amount; break;
+					case "curse": this.bot.questList.maxQuests["curseBy"] = amount; break;
+					case "action": this.bot.questList.maxQuests["emoteBy"] = amount; break;
 					default: {
 						await this.error(", that is not a valid quest type! The valid types are `cookie`, `pray`, `curse`, and `action`");
 						return;
@@ -101,7 +101,7 @@ module.exports = new CommandInterface({
 				}
 
 				let users = this.msg.mentions.map((member) => member.id);
-				this.bot.questList = this.bot.questList.filter(quest => !users.includes(quest.discordID));
+				this.bot.questList.quests = this.bot.questList.quests.filter(quest => !users.includes(quest.discordID));
 
 				await this.bot.updateQuestList();
 				await this.reply(`, I removed ${this.msg.mentions.length} users from the quest list!`);
@@ -110,7 +110,7 @@ module.exports = new CommandInterface({
 			}
 			case "settings": {
 				let maxQuests = Object.entries(DATA).map(([type, data]) => {
-					return `**${data.name}:** ${this.bot.maxQuests[type] ?? "infinity"}`
+					return `**${data.name}:** ${this.bot.questList.maxQuests[type] ?? "infinity"}`
 				}).join("\n");
 
 				const embed = {
@@ -131,7 +131,7 @@ module.exports = new CommandInterface({
 				break;
 			}
 			default: {
-				await this.error(", that is not a valid subcommand! The proper usage is `snail questlist [clear|remove|setmax] {...arguments}`");
+				await this.error(", that is not a valid subcommand! The proper usage is `snail questlist [clear|remove|setmax|settings] {...arguments}`");
 			}
 		}
 	},
