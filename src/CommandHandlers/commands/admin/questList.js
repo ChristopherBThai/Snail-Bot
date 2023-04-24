@@ -1,7 +1,8 @@
 const CommandInterface = require('../../CommandInterface.js');
 const { hasModeratorPerms } = require("../../../utils/global.js");
 const CONFIG = require("../../../config.json");
-const DATA = require("../../../data/quests.json");
+const QUEST_DATA = require("../../../data/quests.json");
+const MAX_MESSAGE_LENGTH = 1980;
 
 module.exports = new CommandInterface({
 	alias: ['questlist', 'ql'],
@@ -125,7 +126,7 @@ module.exports = new CommandInterface({
 				break;
 			}
 			case "settings": {
-				let maxQuests = Object.entries(DATA).map(([type, data]) => {
+				let maxQuests = Object.entries(QUEST_DATA).map(([type, data]) => {
 					return `**${data.name}:** ${this.bot.questList.maxQuests[type] ?? "infinity"}`
 				}).join("\n");
 
@@ -149,6 +150,35 @@ module.exports = new CommandInterface({
 			case "forceupdate": {
 				await this.bot.updateQuestList();
 				await this.reply(`, I have updated the quest list!`);
+				break;
+			}
+			case "viewqueue": {
+				const QUESTS_GROUPED_BY_TYPE = this.bot.questList.quests.reduce((groups, quest) => {
+					const TYPE = quest.type;
+					groups[TYPE] = [...groups[TYPE] ?? [], quest];
+					return groups;
+				}, {});
+
+				const MESSAGES = Object.entries(QUEST_DATA).filter(([type]) => QUESTS_GROUPED_BY_TYPE[type]).map(([type, data]) => {
+					let usersOnList = [...new Set(QUESTS_GROUPED_BY_TYPE[type].map(quest => quest.discordID))];
+
+					let text = usersOnList.reduce((list, user) => {
+						let { nick, username } = this.bot.guilds.get(CONFIG.guild).members.get(user);
+						return list += `${user} ${nick ?? username}\n`;
+					}, "");
+
+					return `${data.emoji} __**${data.name} List (${usersOnList.length})**__\n${text}`;
+				}).join("\n").match(new RegExp('(.|[\r\n]){1,' + MAX_MESSAGE_LENGTH + '}', 'g')) ?? [];
+
+				if (MESSAGES.length == 0) {
+					this.reply(", The list is empty!");
+					break;
+				}
+
+				for (const message of MESSAGES) {
+					await this.msg.channel.createMessage(message);
+				}
+
 				break;
 			}
 			case "setrepostinterval": {
