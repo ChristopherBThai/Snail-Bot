@@ -13,11 +13,16 @@ module.exports = new CommandInterface({
 
 	auth: hasModeratorPerms,
 
-	usage: "snail questlist [clear|remove|setmax] {...arguments}",
+	usage: "snail questlist [clear|notifyclear|remove|setmax|settings|setrepostinterval] {...arguments}",
 
-	description: "Manage the quest list. Note that when clearing the entire list, users will not be notified.",
+	description: "`snail ql clear [all, cookie, pray, curse, action]` - Will clear a list without notifying users\n" +
+		"`snail ql notifyclear [all, cookie, pray, curse, action]` - Will clear a list AND notify all users that were cleared\n" +
+		"`snail ql remove [all, cookie, pray, curse, action] {...mentions}` - Will remove users from the specified list. Only works with mentions, but can mention many users\n" +
+		"`snail ql setmax [cookie, pray, curse, action] {number}` - Sets the max number of quests shown at a time of the specified type\n" +
+		"`snail ql settings` - See the current quest list settings\n" +
+		"`snail ql setrepostinterval {number}` - Sets how often the quest list is reposted; The list will be reposted every {number} messages\n",
 
-	examples: ["snail questlist clear all", "snail ql clear cookie", "snail ql setmax cookie 10", "snail ql remove <@729569334153969705> <@210177401064390658>"],
+	examples: ["snail questlist clear all", "snail ql clear cookie", "snail ql setmax cookie 10", "snail ql remove all <@729569334153969705> <@210177401064390658>"],
 
 	execute: async function () {
 		let subcommand = this.msg.args[0]?.toLowerCase();
@@ -136,8 +141,12 @@ module.exports = new CommandInterface({
 					},
 					fields: [
 						{
-							name: "Max Quests",
+							name: "__Max Quests__",
 							value: maxQuests
+						},
+						{
+							name: "__Repost Interval__",
+							value: `The quest list is reposted every \`${this.bot.questList.messageCountRepostInterval}\` messages`
 						}
 					],
 					timestamp: new Date(),
