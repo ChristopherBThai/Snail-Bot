@@ -35,6 +35,7 @@ module.exports = new CommandInterface({
 
 				switch (type) {
 					case "all": {
+						users = this.bot.questList.quests.map(quest => quest.discordID);
 						this.bot.questList.quests = [];
 						break;
 					}
