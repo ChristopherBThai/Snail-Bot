@@ -91,6 +91,7 @@ module.exports = new CommandInterface({
 				}
 
 				await this.bot.updateQuestList();
+				await this.db.QuestListSetting.updateOne({ _id: type + "Max" }, { value: amount }, { upsert: true })
 				await this.reply(`, I have set the max number of quests for the ${type} list to ${amount}!`);
 
 				break;
@@ -161,6 +162,7 @@ module.exports = new CommandInterface({
 				this.bot.questList.messageCountRepostInterval = amount;
 
 				await this.bot.updateQuestList();
+				await this.db.QuestListSetting.updateOne({ _id: "MessageCountRepostInterval" }, { value: amount }, { upsert: true });
 				await this.reply(`, I have set the quest list to repost every ${amount} messages!`);
 
 				break;
