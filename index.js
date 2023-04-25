@@ -14,4 +14,15 @@ bot.log = async (message) => {
 const eventHandlers = new (require('./src/EventHandlers/EventHandler.js'))(bot);
 const socket = new (require('./src/socket'))(bot);
 
+(async () => {
+    bot.questList.maxQuests = {
+        cookieBy: (await bot.db.QuestListSetting.findOne({ _id: "cookieMax" }))?.value,
+        prayBy: (await bot.db.QuestListSetting.findOne({ _id: "prayMax" }))?.value,
+        curseBy: (await bot.db.QuestListSetting.findOne({ _id: "curseMax" }))?.value,
+        emoteBy: (await bot.db.QuestListSetting.findOne({ _id: "actionMax" }))?.value,
+    }
+
+    bot.questList.messageCountRepostInterval = (await bot.db.QuestListSetting.findOne({ _id: "MessageCountRepostInterval" }))?.value ?? bot.questList.messageCountRepostInterval;
+})();
+
 bot.connect();
