@@ -207,11 +207,26 @@ module.exports = class MessageCreateHandler {
 			}
 		});
 
+		let components = [
+			{
+				"type": 1,
+				"components": [
+					{
+						"type": 2,
+						"label": "My position",
+						"style": 1,
+						"custom_id": "questlist_position"
+					}
+				]
+
+			}
+		];
+
 		if (this.bot.questList.messagesSinceLastPost >= this.bot.questList.messageCountRepostInterval || !this.bot.questList.message) {
 			this.bot.questList.messagesSinceLastPost = 0;
-			this.bot.questList.message = await this.bot.createMessage(CONFIG.channels.questHelp, { embed });
+			this.bot.questList.message = await this.bot.createMessage(CONFIG.channels.questHelp, { embed, components });
 		} else {
-			this.bot.questList.message.edit({ embed });
+			this.bot.questList.message.edit({ embed, components });
 		}
 	}
 };
