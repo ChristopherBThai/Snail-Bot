@@ -189,7 +189,7 @@ module.exports = class MessageCreateHandler {
 
 			for (const USER in QUESTS_GROUPED_BY_USER) {
 				let { nick, username } = this.bot.guilds.get(CONFIG.guild).members.get(USER);
-				let counts = QUESTS_GROUPED_BY_USER[USER].map(({count, level}) => `\`${count.toString().padStart(2, "0")}/${data.count[level].toString().padStart(2, "0")}\``).join(" + ");
+				let counts = QUESTS_GROUPED_BY_USER[USER].map(({ count, level }) => `\`${count.toString().padStart(2, "0")}/${data.count[level].toString().padStart(2, "0")}\``).join(" + ");
 
 				const QUEST_STRING = `${counts} \`${nick ?? username}\` <@${USER}>\n`;
 
