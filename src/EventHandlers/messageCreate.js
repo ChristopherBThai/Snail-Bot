@@ -102,7 +102,7 @@ module.exports = class MessageCreateHandler {
 		if (SENDER_ID == this.bot.user.id) return;
 
 		// Ignore if message is not quest command
-		if (OWO_QUEST_COMMAND.every(command => !MESSAGE.toLowerCase().startsWith(command))) {
+		if (OWO_QUEST_COMMAND.every(command => !(MESSAGE.toLowerCase() == command))) {
 			if (++this.bot.questList.messagesSinceLastPost >= this.bot.questList.messageCountRepostInterval) await this.updateQuestListMessage();	// If the list hasn't been sent for `MESSAGES_UNTIL_REPOST` messages, then call the update method to repost the list
 			return;
 		};
