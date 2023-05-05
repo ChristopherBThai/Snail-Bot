@@ -19,7 +19,9 @@ module.exports = new CommandInterface({
 		"`snail ql remove [all, cookie, pray, curse, action] {...mentions}` - Will remove users from the specified list. Only works with mentions, but can mention many users\n" +
 		"`snail ql setmax [cookie, pray, curse, action] {number}` - Sets the max number of quests shown at a time of the specified type\n" +
 		"`snail ql settings` - See the current quest list settings\n" +
-		"`snail ql setrepostinterval {number}` - Sets how often the quest list is reposted; The list will be reposted every {number} messages\n",
+		"`snail ql setrepostinterval {number}` - Sets how often the quest list is reposted; The list will be reposted every {number} messages\n" +
+		"`snail ql forceupdate` - Force the quest list to update\n" +
+		"`snail ql viewqueue` - See all the users on the quest list in a raw format\n",
 
 	examples: ["snail questlist clear all", "snail ql clear cookie", "snail ql setmax cookie 10", "snail ql remove all <@729569334153969705> <@210177401064390658>"],
 
