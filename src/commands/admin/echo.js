@@ -7,7 +7,7 @@ module.exports = new CommandInterface({
 
     group: "admin",
 
-    auth: require('../../utils/permissions.js').hasAdminPerms,
+    auth: require('../../utils/permissions.js').hasModeratorPerms,
 
     usage: "snail echo {channel} {message|embedJsonData}",
 
