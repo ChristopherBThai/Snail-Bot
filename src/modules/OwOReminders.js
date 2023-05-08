@@ -1,4 +1,4 @@
-const OWO_PRAY_CURSE_COMMAND = ["owo pray", "owo curse"];
+const OWO_PRAY_CURSE_COMMAND = ["owo pray", "owo curse", "owopray", "owocurse"];
 const OWO_PRAY_CURSE_COOLDOWN = 300000;
 let REMINDERS = [];
 
