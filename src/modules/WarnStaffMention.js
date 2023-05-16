@@ -9,6 +9,8 @@ module.exports = class WarnStaffMention {
     }
 
     async checkStaffMention({author, channel, member, mentions}) {
+		if (author.bot) return;
+		
 		if (mentions?.length == 0) return;								// Ignore if there are no mentions,
 		if (permissions.isStaff(member)) return;						// was sent by a staff member,  
 		if (this.bot.config.channels.questHelp == channel.id) return;	// or was sent in quest help
