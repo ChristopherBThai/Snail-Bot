@@ -13,6 +13,8 @@ module.exports = class CommandHandler {
     async checkReminder(message) {
         if (message.author.bot) return;
 
+        if (message.channel.id != this.bot.config.channels.questHelp) return;
+
         const SENDER_ID = message.author.id, MESSAGE = message.content;
         const ENABLED = (await this.bot.snail_db.User.findById(SENDER_ID))?.reminders?.luck?.enabled;
 
