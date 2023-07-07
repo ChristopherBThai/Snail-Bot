@@ -1,16 +1,15 @@
 const { Server } = require('socket.io');
 const io = new Server();
 
-const requireDir = require('require-dir');
-const dir = requireDir('./');
+const LISTENERS = require('require-dir')('./');
 
 class SocketHandler {
 	constructor(bot) {
 		this.handlers = [];
 		let filename = __filename.slice(__dirname.length + 1, -3);
-		for (let listener in dir) {
+		for (let listener in LISTENERS) {
 			if (listener != filename) {
-				const handler = new dir[listener](bot);
+				const handler = new LISTENERS[listener](bot);
 				handler.name = listener;
 				this.handlers.push(handler);
 				setTimeout(() => {
@@ -38,6 +37,7 @@ class SocketHandler {
 			});
 		});
 
+		// @ts-ignore
 		io.listen(process.env.SOCKET_PORT);
 	}
 }
