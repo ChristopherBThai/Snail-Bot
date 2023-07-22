@@ -18,10 +18,18 @@ db.once('open', function () {
 class Mongo {
 	constructor() {
 		this.connection = db;
+		
+		// I didn't want to @ts-ignore every time I used these...
+        this.Channel = undefined;
+        this.Config = undefined;
+        this.Quest = undefined;
+		this.Tag = undefined;
+        this.User = undefined;
+		
 		for (let i in dir) {
 			const Schema = dir[i];
 			this[Schema.name] = mongoose.model(Schema.name, Schema.schema);
-		}
+		};
 	}
 }
 

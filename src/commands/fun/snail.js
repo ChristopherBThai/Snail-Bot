@@ -1,9 +1,9 @@
-const CommandInterface = require('../CommandInterface.js');
+const Command = require('../Command.js');
 
-module.exports = new CommandInterface({
+module.exports = new Command({
 	alias: ['snail', '🐌'],
 
-	emoji: '🐌',
+	group: "Fun",
 
 	cooldown: 1000,
 
@@ -12,6 +12,6 @@ module.exports = new CommandInterface({
 	description: "🐌",
 
 	execute: async function () {
-		await this.message.channel.createMessage(`🐌`);
+		await this.send(`🐌`);
 	},
 });
