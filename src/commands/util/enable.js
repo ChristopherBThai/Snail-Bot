@@ -3,7 +3,7 @@ const Command = require('../Command.js');
 module.exports = new Command({
     alias: ['enable', 'disable', 'enabled'],
 
-    group: "Manager",
+    group: "Util",
 
     auth: require('../../utils/permissions.js').hasManagerPerms,
 

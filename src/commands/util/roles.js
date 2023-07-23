@@ -4,7 +4,7 @@ const MAX_SECTION_SIZE = 1900;
 module.exports = new Command({
     alias: ['roles'],
 
-    group: "Manager",
+    group: "Util",
 
     auth: require('../../utils/permissions.js').hasManagerPerms,
 
