@@ -1,4 +1,5 @@
 const Command = require('../Command.js');
+const { parseChannelID } = require("../../utils/global.js");
 
 module.exports = new Command({
     alias: ['enable', 'disable', 'enabled'],
@@ -11,15 +12,16 @@ module.exports = new Command({
 
     description: "Toggle command in a set of channels. You can list multiple commands and channels at once!",
 
-    examples: ["snail [enable|disable] tag ping <#420107107203940362> <#696528295084425336>", "snail enable tag", "snail enabled"],
+    examples: ["snail [enable|disable] tag ping <#420107107203940362> 696528295084425336", "snail enable tag", "snail enabled"],
 
     execute: async function () {
-        const channels = this.message.channelMentions.length == 0 ? [this.message.channel.id] : this.message.channelMentions;
+        let channels = this.message.args.map(channel => parseChannelID(channel)).filter(channel => channel);
+        if (channels.length == 0) channels = [this.message.channel.id];
 
         switch (this.message.command) {
             case "enable":
             case "disable": {
-                let cmds = this.message.args.filter(cmd => (!/<#\d+>/.test(cmd)))   // Filter out channel mentions
+                let cmds = this.message.args.filter(cmd => !parseChannelID(cmd))    // Filter out channels
                     .map(cmd => cmd.toLowerCase())                                  // Make all lowercase 
                     .filter(cmd => this.commands[cmd] || cmd == "all")              // Filter out command names that don't exist unless it's the "all" argument
 
@@ -54,7 +56,7 @@ module.exports = new Command({
                     const channel = await this.snail_db.Channel.findById(channelID);
 
                     const commandList = commands.map(cmd => {
-                        if (channel.disabledCommands.includes(cmd)) return `~~\`${cmd}\`~~`;
+                        if (channel?.disabledCommands.includes(cmd)) return `~~\`${cmd}\`~~`;
                         else return `\`${cmd}\``;
                     });
 
