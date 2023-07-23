@@ -65,7 +65,7 @@ module.exports = class Logger extends require("./Module") {
             }
             case "mute": {
                 USER_ID = parseUserID(args.shift());
-                DURATION = args.shift().match(DURATION_REGEX)?.[0];
+                DURATION = args.shift()?.match(DURATION_REGEX)?.[0];
                 REASON = args.length ? args.join(" ") : undefined;
 
                 if (!DURATION) return;
@@ -83,7 +83,7 @@ module.exports = class Logger extends require("./Module") {
                 // Dyno is case sensitive for these
                 if (args[0] == "save" || args[0] == "noappeal") args.shift();
                 USER_ID = parseUserID(args.shift());
-                DURATION = args.shift().match(DURATION_REGEX)?.[0];
+                DURATION = args.shift()?.match(DURATION_REGEX)?.[0];
                 REASON = args.length ? args.join(" ") : undefined;
 
                 if (!DURATION) return;
