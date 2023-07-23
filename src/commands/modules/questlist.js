@@ -21,7 +21,7 @@ module.exports = new Command({
 		"- `snail ql setrepostinterval {number}`\n - Sets how often the quest list is reposted; The list will be reposted every {number} messages\n" +
 		"- `snail ql setemptymessage {message}`\n - Sets a message to display when the list is empty\n" +
 		"- `snail ql forceupdate`\n - Force the quest list to update\n" +
-		"- `snail ql viewqueue`\n - See all the users on the quest list in a raw format\n",
+		"- `snail ql view`\n - See all the users on the quest list in a raw format\n",
 
 	examples: [
 		"snail questlist clear all",
@@ -32,7 +32,7 @@ module.exports = new Command({
 		"snail ql setrepostinterval 15",
 		"snail ql setemptymessage Wow! The list is empty. Yay!",
 		"snail ql forceupdate",
-		"snail ql viewqueue",
+		"snail ql view",
 	],
 
 	execute: async function () {
@@ -184,7 +184,7 @@ module.exports = new Command({
 				await this.send(`I have updated the quest list!`);
 				break;
 			}
-			case "viewqueue": {
+			case "view": {
 				if (QuestList.quests.length == 0) {
 					await this.send("The list is empty!");
 					break;
@@ -225,7 +225,7 @@ module.exports = new Command({
 				break;
 			}
 			default: {
-				await this.error("that is not a valid subcommand! The proper usage is `snail ql [clear|notifyclear|remove|setchannel|setmax|setrepostinterval|setemptymessage|forceupdate|viewqueue] {...arguments}`");
+				await this.error("that is not a valid subcommand! The proper usage is `snail ql [clear|notifyclear|remove|setchannel|setmax|setrepostinterval|setemptymessage|forceupdate|view] {...arguments}`");
 				break;
 			}
 		}
