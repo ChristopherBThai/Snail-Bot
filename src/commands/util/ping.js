@@ -1,11 +1,9 @@
-const CommandInterface = require('../CommandInterface.js');
+const Command = require('../Command.js');
 
-module.exports = new CommandInterface({
+module.exports = new Command({
 	alias: ['ping', 'pong'],
 
-	emoji: '🏓',
-
-	group: "util",
+    group: "Util",
 
 	cooldown: 5000,
 
@@ -13,13 +11,8 @@ module.exports = new CommandInterface({
 
 	description: "Pong!",
 
-	examples: ["snail ping", "snail pong"],
-
 	execute: async function () {
-		if (this.message.command == 'ping') {
-			await this.send('Pong!');
-		} else {
-			await this.send('Ping!');
-		}
+        if (this.message.command == "ping") await this.send(`Pong!`);
+        else await this.send(`Ping!`);
 	},
 });

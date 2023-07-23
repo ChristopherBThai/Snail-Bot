@@ -1,118 +1,105 @@
-const CommandInterface = require('../CommandInterface.js');
+const Command = require('../Command.js');
 
-module.exports = new CommandInterface({
+module.exports = new Command({
     alias: ['help'],
 
-    emoji: '🏓',
-
-    cooldown: 1000,
+    cooldown: 5000,
 
     usage: "snail help {command}",
 
-    description: "Displays a list of commands or more information on a specific command",
-
-    examples: ["snail help ping", "snail help"],
+    description: "Displays a list of commands or more information on a specific command!",
 
     execute: async function () {
-
-        if (this.message.args.length == 0) displayCommands.bind(this)();
+        if (this.message.args.length == 0) await displayCommands.bind(this)();
         else {
-            let commandAlias = this.message.args[0];
-            const command = this.bot.commands[commandAlias];
+            let alias = this.message.args[0].toLowerCase();
+            const command = this.commands[alias];
 
             if (!command) {
-                this.error(", I could not find that command! :c");
+                await this.error("I could not find that command! :c");
                 return;
             }
 
-            displayCommand.bind(this)(command);
+            await displayCommand.bind(this)(command);
         }
-
     },
 });
 
 async function displayCommands() {
-    const COMMANDS = Object.values(this.bot.commands).reduce((groups, command) => {
-        if (!(command.auth?.(this.message.member) ?? true)) return groups;                  // If no perms for command, then don't add to lists
+    const commands = Object.values(this.commands).reduce((groups, command) => {
+        // If no authorization, then do not add to groups
+        if (!command.auth(this.message.member)) return groups;
 
-        if (!command.group) return groups;                                              // If no group, then skip
+        // If no defined group, then do not add to groups
+        if (!command.group) return groups;
 
-        const GROUP = command.group.charAt(0).toUpperCase() + command.group.slice(1);   // Capitalize group name
+        const group = command.group;
+        const name = command.alias[0];
 
-        const NAME = command.alias[0];
+        // If the group is not already defined, then instanciate it
+        if (!groups[group]) groups[group] = [];
 
-        if (!groups[GROUP]) groups[GROUP] = [];
+        // If the command has multiple aliases, then only include it once
+        if (groups[group].includes(name)) return groups;
 
-        if (groups[GROUP].includes(NAME)) return groups;
-
-        groups[GROUP].push(NAME);
+        groups[group].push(name);
         return groups;
     }, {});
 
-    let embed = {
+    const embed = {
         author: {
             name: `Command List`,
-            icon_url: this.message.author.avatarURL
+            icon_url: this.bot.user.avatarURL
         },
-        description: `Here is the list of my commands!\nFor more info on a specific command, use \`snail help {command}\``,
+        description: `Here is the list of my commands!\nFor more info on a specific command, use \`snail help {command}\`!`,
         timestamp: new Date(),
-        color: 0xf1c40f,
+        color: this.config.embedcolor
     };
 
-    for (const GROUP in COMMANDS) {
+    for (const group in commands) {
         if (!embed.fields) embed.fields = [];
 
         embed.fields.push({
-            name: GROUP,
-            value: COMMANDS[GROUP].map(command => `\`${command}\``).join(" ")
-        })
+            name: group,
+            value: commands[group].map(command => `\`${command}\``).join(" ")
+        });
     }
 
-    await this.message.channel.createMessage({ embed });
+    await this.send({ embed });
 }
 
 async function displayCommand(command) {
-    if (!(command.auth?.(this.message.member) ?? true)) {
-        this.error(', you do not have permission to use this command!');
+    if (!command.auth(this.message.member) || !command.usage || !command.description) {
+        await this.error("I don't have information on that command! :c")
         return;
     }
 
-    if (!command.usage || !command.description) {
-        this.error(", I don't have information on that command! :c")
-        return;
-    }
-
-    let embed = {
+    const embed = {
         author: {
             name: command.usage,
-            icon_url: this.message.author.avatarURL
+            icon_url: this.bot.user.avatarURL
         },
-        timestamp: new Date(),
-        color: 0xf1c40f,
         fields: [{
             name: "Description",
             value: command.description
-        }]
+        }],
+        timestamp: new Date(),
+        color: this.config.embedcolor
     };
 
     if (command.alias.length > 1) {
-        embed.fields.push({
+        embed.fields.unshift({
             name: "Aliases",
             value: command.alias.join(", ")
-        })
+        });
     }
 
-    if ((command.examples?.length ?? 0) > 0) {
+    if (command.examples?.length) {
         embed.fields.push({
             name: "Example usage",
-            value: command.examples.join(", ")
-        })
+            value: command.examples.map(example => `- ${example}`).join("\n")
+        });
     }
 
-    embed.fields.push({
-        name: "",
-        value: '```Make sure to remove brackets when typing commands!\n[] = optional arguments\n{} = optional user input```'
-    });
-
-    await this.message.channel.createMessage({ embed });
+    await this.send({ embed });
 }

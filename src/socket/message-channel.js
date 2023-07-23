@@ -32,8 +32,7 @@ module.exports = class MessageChannel {
 		}
 
 		const { channelId, contents } = payload;
-		channel.queue.length &&
-			console.log(channelId + ' has queue: ' + channel.queue.length);
+		if (channel.queue.length && channel.queue.length > 10) console.log(channelId + ' has queue: ' + channel.queue.length);
 		this.bot.createMessage(channelId, contents);
 	}
 };

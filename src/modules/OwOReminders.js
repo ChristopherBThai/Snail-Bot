@@ -1,34 +1,37 @@
-const OWO_PRAY_CURSE_COMMAND = ["owo pray", "owo curse", "owopray", "owocurse"];
 const OWO_PRAY_CURSE_COOLDOWN = 300000;
-let REMINDERS = [];
 
-module.exports = class CommandHandler {
+module.exports = class OwOReminders extends require("./Module") {
     constructor(bot) {
-        this.bot = bot;
-        this.events = {
-            "messageCreate": this.checkReminder,
-        }
+        super(bot, {
+            id: "oworeminders",
+            name: "OwO Reminders",
+            description: `Handlers reminders for commands like \`pray\`, \`curse\`, \`hunt\`, and \`battle\`.`,
+            toggleable: true
+        });
+
+        this.reminders = {};
+
+        this.addEvent("OwOCommand", this.checkReminder);
     }
 
-    async checkReminder(message) {
-        if (message.author.bot) return;
+    async checkReminder({ command, args, message }) {
+        if (!["pray", "curse"].includes(command)) return;
 
-        const SENDER_ID = message.author.id, MESSAGE = message.content;
+        const SENDER_ID = message.author.id;
+        const CHANNEL_ID = message.channel.id;
         const ENABLED = (await this.bot.snail_db.User.findById(SENDER_ID))?.reminders?.luck?.enabled;
 
         if (!ENABLED) return;
 
-        if (OWO_PRAY_CURSE_COMMAND.some(command => MESSAGE.toLowerCase().startsWith(command))) {
-            if (!REMINDERS.includes(SENDER_ID)) {
-                REMINDERS.push(SENDER_ID);
-                setTimeout(async () => {
-                    REMINDERS = REMINDERS.filter(userID => userID != SENDER_ID);
-                    let enabled = (await this.bot.snail_db.User.findById(SENDER_ID))?.reminders?.luck?.enabled;
-                    if (enabled) await this.bot.createMessage(this.bot.config.channels.questHelp, `<@${SENDER_ID}> your pray/curse cooldown is over!`);
-                }, OWO_PRAY_CURSE_COOLDOWN);
-            }
-            return;
-        }
+        if (!this.reminders[SENDER_ID]) this.reminders[SENDER_ID] = {};
 
+        if (!this.reminders[SENDER_ID].luck) {
+            this.reminders[SENDER_ID].luck = CHANNEL_ID;
+            setTimeout(async () => {
+                const ENABLED = (await this.bot.snail_db.User.findById(SENDER_ID))?.reminders?.luck?.enabled;
+                if (ENABLED) await this.bot.createMessage(this.reminders[SENDER_ID].luck, `<@${SENDER_ID}> your pray/curse cooldown is over!`);
+                this.reminders[SENDER_ID].luck = undefined;
+            }, OWO_PRAY_CURSE_COOLDOWN);
+        }
     }
-};
+}

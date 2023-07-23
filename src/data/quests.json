@@ -6,7 +6,8 @@
         "lootbox": [ 2, 4, 8 ],
         "crate": [ 2, 4, 8 ],
         "shards": [ 200, 400, 800 ],
-        "emoji": ":cookie:"
+        "emoji": ":cookie:",
+        "text": "Receive a cookie from %count% friends!"
     },
     "prayBy": {
         "name": "Pray",
@@ -15,7 +16,8 @@
         "lootbox": [ 2, 4, 6 ],
         "crate": [ 2, 4, 6 ],
         "shards": [ 200, 400, 600 ],
-        "emoji": ":pray:"
+        "emoji": ":pray:",
+        "text": "Have a friend pray to you %count% times!"
     },
     "curseBy": {
         "name": "Curse",
@@ -24,7 +26,8 @@
         "lootbox": [ 2, 4, 6 ],
         "crate": [ 2, 4, 6 ],
         "shards": [ 200, 400, 600 ],
-        "emoji": ":skull:"
+        "emoji": ":skull:",
+        "text": "Have a friend curse you %count% times!"
     },
     "emoteBy": {
         "name": "Action",
@@ -33,6 +36,7 @@
         "lootbox": [ 1, 2, 3 ],
         "crate": [ 1, 2, 3 ],
         "shards": [ 100, 200, 300 ],
-        "emoji": ":cowboy:"
+        "emoji": ":cowboy:",
+        "text": "Have a friend use an action command on you %count% times!"
     }
 }
