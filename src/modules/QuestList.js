@@ -84,7 +84,6 @@ module.exports = class QuestList extends require("./Module") {
         this.quests = SAVED_QUESTS
             .map(quest => { return { ...QUESTS.find(other => areSameQuest(quest, other)), added: quest.added } })
             .filter(quest => quest.locked == 0);
-        await this.update();
     }
 
     async onUserMessage(message) {
