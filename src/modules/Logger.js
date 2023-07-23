@@ -126,7 +126,7 @@ module.exports = class Logger extends require("./Module") {
             case "ban": embed.color = this.bot.config.color.red; break;
         }
 
-        await this.publicLog({ embed });
+        await this.publicLog({ content: `<@${USER_ID}>`, embed });
         await message.addReaction("📝");
     }
 

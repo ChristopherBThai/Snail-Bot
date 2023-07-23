@@ -29,6 +29,7 @@ module.exports = class BanBotBannedUsers extends require("./Module") {
 			}
 
 			if (this.bot.modules["logger"]?.tracking.dyno) this.bot.modules["logger"].publicLog({
+				content: `<@${member.id}>`,
 				embed: {
 					title: `**Ban**`,
 					description: `**• User:** <@${member.id}> (\`${member.id}\`)\n**• Reason:** ${auditLogMessage}`,
