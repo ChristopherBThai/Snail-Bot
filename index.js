@@ -24,9 +24,9 @@ class Client extends require('eris').Client {
                 if (message.author.id == CONFIG.owobot) {
                     // Message from OwO
                     this.emit("OwOMessage", message);
-                } else {
-                    // Message from a bot that is not OwO
-                    this.emit("BotMessage", message);
+                } else if (CONFIG.dynobot.includes(message.author.id)) {
+                    // Message from Dyno
+                    this.emit("DynoMessage", message);
                 }
             } else {
                 // Message from a non-bot user

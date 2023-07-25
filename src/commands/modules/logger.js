@@ -11,7 +11,7 @@ module.exports = new Command({
 	usage: "snail logger {...arguments}",
 
 	description: "- `snail logger setpublicchannel {channel}`\n - Set the channel for public logs\n" +
-		"- `snail logger setprivatechannel {channel}`\n - Set the channel for private logs (staff only) (at the moment this channel is unused)\n" +
+		"- `snail logger setprivatechannel {channel}`\n - Set the channel where Dyno logs can be parsed in order to log publicly\n" +
 		"- `snail logger trackdyno {true|false}`\n - Whether or not dyno logs and Snail's perma ban logs are posted in the public logs\n",
 
 	examples: [
