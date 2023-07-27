@@ -1,18 +1,18 @@
 const Command = require('../Command.js');
 
 module.exports = new Command({
-	alias: ['ping', 'pong'],
+    alias: ['ping', 'pong'],
 
-    group: "Util",
+    group: 'Util',
 
-	cooldown: 5000,
+    cooldown: 5000,
 
-	usage: "snail ping",
+    usage: 'snail ping',
 
-	description: "Pong!",
+    description: 'Pong!',
 
-	execute: async function () {
-        if (this.message.command == "ping") await this.send(`Pong!`);
+    execute: async function () {
+        if (this.message.command == 'ping') await this.send(`Pong!`);
         else await this.send(`Ping!`);
-	},
+    },
 });

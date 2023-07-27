@@ -10,39 +10,39 @@ class Client extends require('eris').Client {
         this.config = CONFIG;
 
         // Miscellaneous events
-        this.on("error", (err, id) => {
+        this.on('error', (err, id) => {
             console.error(`[${id}] ${err}`);
         });
 
-        this.on("ready", () => {
-            console.log("Bot is ready!");
+        this.on('ready', () => {
+            console.log('Bot is ready!');
         });
 
         // Custom events
-        this.on("messageCreate", (message) => {
+        this.on('messageCreate', (message) => {
             if (message.author.bot) {
                 if (message.author.id == CONFIG.owobot) {
                     // Message from OwO
-                    this.emit("OwOMessage", message);
+                    this.emit('OwOMessage', message);
                 } else if (CONFIG.dynobot.includes(message.author.id)) {
                     // Message from Dyno
-                    this.emit("DynoMessage", message);
+                    this.emit('DynoMessage', message);
                 }
             } else {
                 // Message from a non-bot user
-                this.emit("UserMessage", message);
+                this.emit('UserMessage', message);
 
                 if (message.content.toLowerCase().startsWith(CONFIG.owoprefix)) {
                     let args = message.content.slice(CONFIG.owoprefix.length).trim().split(/ +/g);
                     let command = args.shift()?.toLowerCase();
-    
+
                     // A message that could be an OwO command
-                    this.emit("OwOCommand", { command, args, message });
+                    this.emit('OwOCommand', { command, args, message });
                 }
             }
         });
 
-        // Realtime OwO-Snail websocket 
+        // Realtime OwO-Snail websocket
         this.socket = new (require('./src/socket'))(this);
 
         // Snail's own mongo database for snail stuff
@@ -52,10 +52,10 @@ class Client extends require('eris').Client {
         this.query_owo_db = require('./src/databases/mysql/mysql.js');
 
         // Load modules and thier commands
-        this.modules = Object.values(requireDir("./src/modules"))
-            // Ignore the Module interface class 
-            .filter(module => module.name != "Module")
-            .map(module => new module(this))
+        this.modules = Object.values(requireDir('./src/modules'))
+            // Ignore the Module interface class
+            .filter((module) => module.name != 'Module')
+            .map((module) => new module(this))
             .reduce((modules, module) => {
                 modules[module.id] = module;
                 return modules;
@@ -67,10 +67,10 @@ class Client extends require('eris').Client {
         return (await this.snail_db.Config.findOne({ _id }))?.value;
     }
 
-    async setConfiguration (_id, value) {
+    async setConfiguration(_id, value) {
         return await this.snail_db.Config.updateOne({ _id }, { value }, { upsert: true });
     }
-    
+
     async getUser(userID) {
         if (!userID) return undefined;
         return this.users.get(userID) || this.getRESTUser(userID).catch(() => {});
