@@ -59,6 +59,7 @@ module.exports = class QuestList extends require("./Module") {
         this.addEvent("UserMessage", this.onUserMessage);
         this.addEvent("OwOMessage", this.onOwOMessage);
         this.addEvent("OwOCommand", this.onOwOCommand);
+        this.addEvent("guildMemberRemove", this.onLeave);
         this.addEvent("interactionCreate", this.onButtonPress);
     }
 
@@ -84,7 +85,6 @@ module.exports = class QuestList extends require("./Module") {
         this.quests = SAVED_QUESTS
             .map(quest => { return { ...QUESTS.find(other => areSameQuest(quest, other)), added: quest.added } })
             .filter(quest => quest.locked == 0);
-        await this.update();
     }
 
     async onUserMessage(message) {
@@ -154,6 +154,11 @@ module.exports = class QuestList extends require("./Module") {
         }
 
         message.delete();
+    }
+
+    async onLeave(guild, member) {
+        this.quests = this.quests.filter(quest => member.id != quest.discordID);
+        await this.update();
     }
 
     async getUsersQuests(users) {

@@ -1,6 +1,6 @@
 const Command = require('../Command.js');
 const QUEST_DATA = require("../../data/quests.json");
-const { parseChannelID } = require("../../utils/global.js");
+const { parseChannelID, parseUserID } = require("../../utils/global.js");
 const { getUniqueUsername } = require("../../utils/global.js");
 const MAX_SECTION_SIZE = 1984;
 
@@ -15,13 +15,13 @@ module.exports = new Command({
 
 	description: "- `snail ql clear [all, cookie, pray, curse, action]`\n - Will clear a list without notifying users\n" +
 		"- `snail ql notifyclear [all, cookie, pray, curse, action]`\n - Will clear a list AND notify all users that were cleared\n" +
-		"- `snail ql remove [all, cookie, pray, curse, action] {...mentions}`\n - Will remove users from the specified list. Only works with mentions, but can mention many users\n" +
+		"- `snail ql remove [all, cookie, pray, curse, action] {...users}`\n - Will remove users from the specified list\n" +
 		"- `snail ql setchannel {channel}`\n - Sets the channel the quest list will be maintained in\n" +
 		"- `snail ql setmax [cookie, pray, curse, action] {number}`\n - Sets the max number of quests shown at a time of the specified type\n" +
 		"- `snail ql setrepostinterval {number}`\n - Sets how often the quest list is reposted; The list will be reposted every {number} messages\n" +
 		"- `snail ql setemptymessage {message}`\n - Sets a message to display when the list is empty\n" +
 		"- `snail ql forceupdate`\n - Force the quest list to update\n" +
-		"- `snail ql viewqueue`\n - See all the users on the quest list in a raw format\n",
+		"- `snail ql view`\n - See all the users on the quest list in a raw format\n",
 
 	examples: [
 		"snail questlist clear all",
@@ -32,7 +32,7 @@ module.exports = new Command({
 		"snail ql setrepostinterval 15",
 		"snail ql setemptymessage Wow! The list is empty. Yay!",
 		"snail ql forceupdate",
-		"snail ql viewqueue",
+		"snail ql view",
 	],
 
 	execute: async function () {
@@ -92,16 +92,17 @@ module.exports = new Command({
 					};
 				}
 
-				if (!this.message.mentions.length) {
-					await this.error('please mention at least one user!');
+				let users = this.message.args.map(user => parseUserID(user)).filter(user => user);
+
+				if (users.length == 0) {
+					await this.error('please list at least one valid user!');
 					return;
 				}
 
-				let users = this.message.mentions.map((member) => member.id);
 				QuestList.quests = QuestList.quests.filter(quest => !((quest.type == type || type == "all") && users.includes(quest.discordID)));
 
 				await QuestList.update();
-				await this.send(`I removed ${this.message.mentions.length} users from the quest list!`);
+				await this.send(`I removed ${users.length} users from the quest list!`);
 
 				break;
 			}
@@ -184,7 +185,7 @@ module.exports = new Command({
 				await this.send(`I have updated the quest list!`);
 				break;
 			}
-			case "viewqueue": {
+			case "view": {
 				if (QuestList.quests.length == 0) {
 					await this.send("The list is empty!");
 					break;
@@ -225,7 +226,7 @@ module.exports = new Command({
 				break;
 			}
 			default: {
-				await this.error("that is not a valid subcommand! The proper usage is `snail ql [clear|notifyclear|remove|setchannel|setmax|setrepostinterval|setemptymessage|forceupdate|viewqueue] {...arguments}`");
+				await this.error("that is not a valid subcommand! The proper usage is `snail ql [clear|notifyclear|remove|setchannel|setmax|setrepostinterval|setemptymessage|forceupdate|view] {...arguments}`");
 				break;
 			}
 		}

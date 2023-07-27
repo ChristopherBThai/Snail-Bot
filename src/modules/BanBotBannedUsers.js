@@ -1,3 +1,4 @@
+const { getUniqueUsername } = require("../utils/global");
 const PERMANENT_BAN_THRESHOLD = 99999;
 
 module.exports = class BanBotBannedUsers extends require("./Module") {
@@ -29,10 +30,21 @@ module.exports = class BanBotBannedUsers extends require("./Module") {
 			}
 
 			if (this.bot.modules["logger"]?.tracking.dyno) this.bot.modules["logger"].publicLog({
+				content: `<@${member.id}>`,
+				allowedMentions: { users: [member.id] },
 				embed: {
-					title: `**Ban**`,
-					description: `**• User:** <@${member.id}> (\`${member.id}\`)\n**• Reason:** ${auditLogMessage}`,
-					color: this.bot.config.color.red
+					timestamp: new Date().toISOString(),
+					footer: { text: `ID: ${member.id}` },
+					fields: [
+						{ value: member.mention, name: "User", inline: true },
+						{ value: auditLogMessage, name: "Reason", inline: true }
+					],
+					// Dyno red color
+					color: 15747399,
+					author: {
+						name: `Ban | ${getUniqueUsername(member)}`,
+						icon_url: member.avatarURL
+					}
 				}
 			});
 			await guild.banMember(member.id, 0, auditLogMessage);

@@ -14,7 +14,8 @@ module.exports = class CommandHandler extends require("./Module") {
             toggleable: false
         });
 
-        this.prefixes = [];   // Future proofing for custom prefixes
+        // Default
+        this.prefix = undefined;
         /** @type {Object<string, Command>} */
         this.commands = {};
         this.cooldowns = {};
@@ -42,9 +43,15 @@ module.exports = class CommandHandler extends require("./Module") {
         this.addEvent("UserMessage", this.processMessage);
     }
 
+    async onceReady() {
+        await super.onceReady();
+
+        this.prefix = await this.bot.getConfiguration(`prefix`) ?? this.prefix;
+    }
+
     async processMessage(message) {
         // Check if message starts with prefix
-        const prefix = [...this.bot.config.prefixes, ...this.prefixes].find(prefix => message.content.toLowerCase().trim().startsWith(prefix));
+        const prefix = [this.prefix, ...this.bot.config.prefixes].find(prefix => message.content.toLowerCase().trim().startsWith(prefix));
         if (!prefix) return;
 
         // Parse command name/args

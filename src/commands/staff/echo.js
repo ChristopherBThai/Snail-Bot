@@ -4,7 +4,7 @@ const { parseChannelID } = require("../../utils/global.js");
 module.exports = new Command({
     alias: ['echo'],
 
-    group: "Manager",
+    group: "Staff",
 
     auth: require('../../utils/permissions.js').hasManagerPerms,
 

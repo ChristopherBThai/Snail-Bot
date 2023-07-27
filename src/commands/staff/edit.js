@@ -4,7 +4,7 @@ const { parseMessageLink } = require("../../utils/global.js");
 module.exports = new Command({
     alias: ['edit'],
 
-    group: "Manager",
+    group: "Staff",
 
     auth: require('../../utils/permissions.js').hasManagerPerms,
 

@@ -4,7 +4,7 @@ const MAX_SECTION_SIZE = 1900;
 module.exports = new Command({
     alias: ['roles'],
 
-    group: "Manager",
+    group: "Util",
 
     auth: require('../../utils/permissions.js').hasManagerPerms,
 
@@ -13,7 +13,8 @@ module.exports = new Command({
     description: "View the amount of users assigned to each role!",
 
     execute: async function () {
-        await this.message.channel.guild.fetchAllMembers(120000);
+        let result = await this.message.channel.guild.fetchAllMembers(120000);
+        console.log(`Fetched ${JSON.stringify(result, null, 2)} members!`);
         const roleMap = {};
 
         for (const [id, { name, position }] of this.message.channel.guild.roles) {
