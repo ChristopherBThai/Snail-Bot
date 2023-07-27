@@ -1,7 +1,14 @@
-const requireDir = require('require-dir');
-const CONFIG = require('./config.json');
-
 require('dotenv').config();
+
+let configPath;
+if (process.env.DEBUG) {
+    configPath = './config.debug.json';
+} else {
+    configPath = './config.json';
+}
+
+const requireDir = require('require-dir');
+const CONFIG = require(configPath);
 
 class Client extends require('eris').Client {
     constructor(token, options) {

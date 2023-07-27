@@ -1,41 +1,33 @@
 {
-	"debug": false,
-	"prefixes": [
-		"snail",
-		"🐌",
-		":snail:",
-		"s!"
-	],
-	"owobot": "408785106942164992",
-	"dynobot": [
-		"347378323418251264",
-		"155149108183695360"
-	],
-	"owoprefix": "owo",
-	"guild": "420104212895105044",
-	"roles": {
-		"owner": "420104532085964819",
-		"admin": "420112323278143489",
-		"manager": "959380828838850590",
-		"helper": "729574996556382298",
-		"ownerhoist": "1126562739402313798",
-		"adminhoist": "1126562522212880555",
-		"managerhoist": "1126562353949978635",
-		"helperhoist": "1126562082763059390"
-	},
-	"color": {
-		"red": 16737891,
-		"orange": 16691524,
-		"yellow": 16645527,
-		"green": 10412190
-	},
-	"embedcolor": 15844367,
-	"eris": {
-		"allowMentions": {
-			"everyone": false
-		},
-		"getAllUsers": true,
-		"restMode": true,
-		"intents": 33603
-	}
+    "debug": false,
+    "prefixes": ["snail", "🐌", ":snail:", "s!"],
+    "owobot": "408785106942164992",
+    "dynobot": ["347378323418251264", "155149108183695360"],
+    "owoprefix": "owo",
+    "guild": "420104212895105044",
+    "roles": {
+        "owner": "420104532085964819",
+        "admin": "420112323278143489",
+        "manager": "959380828838850590",
+        "helper": "729574996556382298",
+        "ownerhoist": "1126562739402313798",
+        "adminhoist": "1126562522212880555",
+        "managerhoist": "1126562353949978635",
+        "helperhoist": "1126562082763059390"
+    },
+    "color": {
+        "red": 16737891,
+        "orange": 16691524,
+        "yellow": 16645527,
+        "green": 10412190
+    },
+    "embedcolor": 15844367,
+    "eris": {
+        "allowMentions": {
+            "everyone": false
+        },
+        "getAllUsers": true,
+        "restMode": true,
+        "intents": 33603
+    }
 }
