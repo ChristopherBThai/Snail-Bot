@@ -14,7 +14,7 @@ module.exports = class OwOReminders extends require('./Module') {
         this.addEvent('OwOCommand', this.checkReminder);
     }
 
-    async checkReminder({ command, args, message }) {
+    async checkReminder({ command, message }) {
         if (!['pray', 'curse'].includes(command)) return;
 
         const SENDER_ID = message.author.id;

@@ -3,7 +3,7 @@ module.exports = class MessageChannel {
         this.bot = bot;
     }
 
-    async handle(payload) {
+    async handle() {
         // Not Connected to OwO. Will be very useful once it is though!
     }
 };
