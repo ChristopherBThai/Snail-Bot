@@ -1,17 +1,17 @@
 const Command = require('../Command.js');
 
 module.exports = new Command({
-	alias: ['snail', '🐌'],
+    alias: ['snail', '🐌'],
 
-	group: "Fun",
+    group: 'Fun',
 
-	cooldown: 1000,
+    cooldown: 1000,
 
-	usage: "snail snail",
+    usage: 'snail snail',
 
-	description: "🐌",
+    description: '🐌',
 
-	execute: async function () {
-		await this.send(`🐌`);
-	},
+    execute: async function () {
+        await this.send(`🐌`);
+    },
 });

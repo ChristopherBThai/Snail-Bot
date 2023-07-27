@@ -1,28 +1,33 @@
 const Command = require('../Command.js');
-const { hasManagerPerms } = require("../../utils/permissions.js");
+const { hasManagerPerms } = require('../../utils/permissions.js');
 
 module.exports = new Command({
     alias: ['tag', 'tags'],
 
-    group: "Util",
+    group: 'Util',
 
     cooldown: 5000,
 
-    usage: "snail [tag|tags] [add|edit|delete] {data}",
+    usage: 'snail [tag|tags] [add|edit|delete] {data}',
 
-    description: "Manage or view existing tags!",
+    description: 'Manage or view existing tags!',
 
-    examples: ["snail tags", "snail tag add gems Gems improve your hunt!", "snail tag edit gems Gems improve your hunt and give you a chance to find gem tier pets!", "snail tag delete gems"],
-    
+    examples: [
+        'snail tags',
+        'snail tag add gems Gems improve your hunt!',
+        'snail tag edit gems Gems improve your hunt and give you a chance to find gem tier pets!',
+        'snail tag delete gems',
+    ],
+
     execute: async function () {
         switch (this.message.command) {
-            case "tag": {
+            case 'tag': {
                 let subcommand = this.message.args.shift()?.toLowerCase();
                 let name = this.message.args.shift()?.toLowerCase();
-                let data = this.message.args.join(" ");
+                let data = this.message.args.join(' ');
                 let tag;
 
-                if (["add", "edit", "delete"].includes(subcommand)) {
+                if (['add', 'edit', 'delete'].includes(subcommand)) {
                     // Only managers+ can add/edit/delete tags
                     if (!hasManagerPerms(this.message.member)) {
                         await this.error('you do not have permission to use this command!');
@@ -47,20 +52,20 @@ module.exports = new Command({
                     tag = await this.bot.snail_db.Tag.findById(subcommand);
                 }
 
-                if (["add", "edit"].includes(subcommand)) {
+                if (['add', 'edit'].includes(subcommand)) {
                     // add/edit subcommands require data
                     if (!data) {
                         await this.error(`please provide some data for the tag!`);
                         return;
                     }
                 }
-        
-                if (subcommand == "add") {
+
+                if (subcommand == 'add') {
                     if (tag) {
                         await this.error(`that tag already exists!`);
                         return;
                     }
-                
+
                     if (!/^[a-z0-9]+$/.test(name)) {
                         await this.error(`tag names can only contain alphanumeric characters!`);
                         return;
@@ -74,17 +79,17 @@ module.exports = new Command({
                 }
 
                 switch (subcommand) {
-                    case "add": {
+                    case 'add': {
                         await this.snail_db.Tag.create({ _id: name, data });
                         await this.send(`I created the tag \`${name}\`!`);
                         break;
                     }
-                    case "edit": {
+                    case 'edit': {
                         await this.snail_db.Tag.updateOne({ _id: name }, { data });
                         await this.send(`I updated the tag \`${name}\`!`);
                         break;
                     }
-                    case "delete": {
+                    case 'delete': {
                         await this.snail_db.Tag.deleteOne({ _id: name });
                         await this.send(`I deleted the tag \`${name}\`!`);
                         break;
@@ -97,8 +102,8 @@ module.exports = new Command({
 
                 break;
             }
-            case "tags": {
-                const tags = (await this.snail_db.Tag.find({})).map(tag => `\`${tag._id}\``).sort();
+            case 'tags': {
+                const tags = (await this.snail_db.Tag.find({})).map((tag) => `\`${tag._id}\``).sort();
 
                 if (!tags) {
                     await this.error(`Oh no! I don't have any tags :(`);
@@ -109,7 +114,7 @@ module.exports = new Command({
                     title: `Tags (${tags.length})`,
                     description: tags.join(` `),
                     timestamp: new Date(),
-                    color: this.config.embedcolor
+                    color: this.config.embedcolor,
                 };
 
                 await this.send({ embed });

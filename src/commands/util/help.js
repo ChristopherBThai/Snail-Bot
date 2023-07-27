@@ -5,9 +5,9 @@ module.exports = new Command({
 
     cooldown: 5000,
 
-    usage: "snail help {command}",
+    usage: 'snail help {command}',
 
-    description: "Displays a list of commands or more information on a specific command!",
+    description: 'Displays a list of commands or more information on a specific command!',
 
     execute: async function () {
         if (this.message.args.length == 0) await displayCommands.bind(this)();
@@ -16,7 +16,7 @@ module.exports = new Command({
             const command = this.commands[alias];
 
             if (!command) {
-                await this.error("I could not find that command! :c");
+                await this.error('I could not find that command! :c');
                 return;
             }
 
@@ -49,11 +49,11 @@ async function displayCommands() {
     const embed = {
         author: {
             name: `Command List`,
-            icon_url: this.bot.user.avatarURL
+            icon_url: this.bot.user.avatarURL,
         },
         description: `Here is the list of my commands!\nFor more info on a specific command, use \`snail help {command}\`!`,
         timestamp: new Date(),
-        color: this.config.embedcolor
+        color: this.config.embedcolor,
     };
 
     for (const group in commands) {
@@ -61,7 +61,7 @@ async function displayCommands() {
 
         embed.fields.push({
             name: group,
-            value: commands[group].map(command => `\`${command}\``).join(" ")
+            value: commands[group].map((command) => `\`${command}\``).join(' '),
         });
     }
 
@@ -70,34 +70,36 @@ async function displayCommands() {
 
 async function displayCommand(command) {
     if (!command.auth(this.message.member) || !command.usage || !command.description) {
-        await this.error("I don't have information on that command! :c")
+        await this.error("I don't have information on that command! :c");
         return;
     }
 
     const embed = {
         author: {
             name: command.usage,
-            icon_url: this.bot.user.avatarURL
+            icon_url: this.bot.user.avatarURL,
         },
-        fields: [{
-            name: "Description",
-            value: command.description
-        }],
+        fields: [
+            {
+                name: 'Description',
+                value: command.description,
+            },
+        ],
         timestamp: new Date(),
-        color: this.config.embedcolor
+        color: this.config.embedcolor,
     };
 
     if (command.alias.length > 1) {
         embed.fields.unshift({
-            name: "Aliases",
-            value: command.alias.join(", ")
+            name: 'Aliases',
+            value: command.alias.join(', '),
         });
     }
 
     if (command.examples?.length) {
         embed.fields.push({
-            name: "Example usage",
-            value: command.examples.map(example => `- ${example}`).join("\n")
+            name: 'Example usage',
+            value: command.examples.map((example) => `- ${example}`).join('\n'),
         });
     }
 

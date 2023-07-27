@@ -4,13 +4,13 @@ const MAX_SECTION_SIZE = 1900;
 module.exports = new Command({
     alias: ['roles'],
 
-    group: "Util",
+    group: 'Util',
 
     auth: require('../../utils/permissions.js').hasManagerPerms,
 
-    usage: "snail roles",
+    usage: 'snail roles',
 
-    description: "View the amount of users assigned to each role!",
+    description: 'View the amount of users assigned to each role!',
 
     execute: async function () {
         let result = await this.message.channel.guild.fetchAllMembers(120000);
@@ -18,7 +18,7 @@ module.exports = new Command({
         const roleMap = {};
 
         for (const [id, { name, position }] of this.message.channel.guild.roles) {
-            roleMap[id] = { name, position, members: 0 }
+            roleMap[id] = { name, position, members: 0 };
         }
 
         for (const [, { roles }] of this.message.channel.guild.members) {
@@ -27,7 +27,7 @@ module.exports = new Command({
 
         const roles = Object.values(roleMap)
             .sort((a, b) => b.position - a.position)
-            .map(role => `${role.name.padEnd(25, ' ')} (${role.members})\n`);
+            .map((role) => `${role.name.padEnd(25, ' ')} (${role.members})\n`);
 
         let text = '';
         for (const roleText of roles) {
