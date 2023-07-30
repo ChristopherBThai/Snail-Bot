@@ -14,7 +14,7 @@ module.exports = new Command({
 
     execute: async function () {
         await this.send({
-            content: 'Button Menu Example',
+            content: this.description,
             components: [
                 {
                     type: Constants.ComponentTypes.ACTION_ROW,
@@ -34,8 +34,8 @@ module.exports = new Command({
                         {
                             type: Constants.ComponentTypes.BUTTON,
                             style: 1,
-                            label: 'Ping Command',
-                            custom_id: 'ping'
+                            label: 'Roles Command',
+                            custom_id: 'help snail'
                         },
                     ],
                 },
