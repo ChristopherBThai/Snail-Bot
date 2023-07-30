@@ -146,7 +146,7 @@ module.exports = class QuestList extends require('./Module') {
             // If not longer on warning cooldown
             if (difference > MESSAGE_TIMEOUT) {
                 await ephemeralResponse(
-                    message,
+                    message.channel,
                     `🚫 **|** <@${USER_ID}>, You don't have any new quests to add to the list! Only unlocked Cookie, Pray, Curse, and Action quests can be added!`,
                     MESSAGE_TIMEOUT
                 );
@@ -164,7 +164,7 @@ module.exports = class QuestList extends require('./Module') {
                     .join('\n') +
                 "\nPlease note that older quests will be shown first! If you don't see your quest it is in the queue! You can help out others with their quests to advance the queue faster!";
 
-            await ephemeralResponse(message, text, MESSAGE_TIMEOUT);
+            await ephemeralResponse(message.channel, text, MESSAGE_TIMEOUT);
             await this.update();
         }
 
@@ -250,9 +250,7 @@ module.exports = class QuestList extends require('./Module') {
                 }
 
                 return {
-                    name: `${data.emoji} __${data.name} List__ (${questCount}/${
-                        Object.keys(QUESTS_GROUPED_BY_USER).length
-                    })`,
+                    name: `${data.emoji} __${data.name} List__ (${questCount}/${Object.keys(QUESTS_GROUPED_BY_USER).length})`,
                     value:
                         text ??
                         "If you see this, then something broke lol. Tell <@210177401064390658>. Or don't... this will probably fix itself.",
