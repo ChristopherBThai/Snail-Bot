@@ -22,7 +22,9 @@ module.exports = new Command({
         const channelID = parseChannelID(ctx.args[0]);
 
         if (!channelID) {
-            await ctx.error('please provide a channel mention or ID! The proper usage is `snail echo {channel} {message}`');
+            await ctx.error(
+                'please provide a channel mention or ID! The proper usage is `snail echo {channel} {message}`'
+            );
             return;
         }
 
@@ -43,7 +45,7 @@ module.exports = new Command({
 
         try {
             embed = JSON.parse(message);
-        } catch (error) { }
+        } catch (error) {}
 
         if (!embed) {
             await ctx.bot.createMessage(channelID, message);
@@ -52,7 +54,9 @@ module.exports = new Command({
                 if (embed.embed || embed.embeds) await ctx.bot.createMessage(channelID, embed);
                 else await ctx.bot.createMessage(channelID, { embed });
             } catch (error) {
-                await ctx.error('please provide data in atleast one of the embed following embed fields! `Description` `Thumbnail Url` `Title` `Author Name`');
+                await ctx.error(
+                    'please provide data in atleast one of the embed following embed fields! `Description` `Thumbnail Url` `Title` `Author Name`'
+                );
                 return;
             }
         }

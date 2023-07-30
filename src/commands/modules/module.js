@@ -32,14 +32,18 @@ module.exports = new Command({
                 }
 
                 if (!moduleID) {
-                    await ctx.error(`Please provide a module ID. Use \`snail modules\` to view my modules and their IDs!`);
+                    await ctx.error(
+                        `Please provide a module ID. Use \`snail modules\` to view my modules and their IDs!`
+                    );
                     return;
                 }
 
                 const module = ctx.bot.modules[moduleID];
 
                 if (!module) {
-                    await ctx.error(`I don't have a module with the ID \`${moduleID}\`. Use \`snail modules\` to view my modules and their IDs!`);
+                    await ctx.error(
+                        `I don't have a module with the ID \`${moduleID}\`. Use \`snail modules\` to view my modules and their IDs!`
+                    );
                     return;
                 }
 

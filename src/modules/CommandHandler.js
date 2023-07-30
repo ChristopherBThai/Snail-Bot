@@ -79,7 +79,9 @@ module.exports = class CommandHandler extends require('./Module') {
         const command = this.commands[ctx.command];
         if (!command) return;
         if (!command.auth(ctx.member)) {
-            await ctx.error(`you do not have permission to use this ${event instanceof Message ? 'command' : 'component'}!`);
+            await ctx.error(
+                `you do not have permission to use this ${event instanceof Message ? 'command' : 'component'}!`
+            );
             return;
         }
 
@@ -94,7 +96,9 @@ module.exports = class CommandHandler extends require('./Module') {
                 if (this.disabledCooldowns[ctx.member?.id + alias]) return;
 
                 this.disabledCooldowns[ctx.member?.id + alias] = true;
-                setTimeout(() => { delete this.disabledCooldowns[ctx.member?.id + alias]; }, DISABLED_WARNING_TIMEOUT);
+                setTimeout(() => {
+                    delete this.disabledCooldowns[ctx.member?.id + alias];
+                }, DISABLED_WARNING_TIMEOUT);
                 await ephemeralResponse(
                     ctx.channel,
                     `🚫 **| ${getUniqueUsername(ctx.member)}**, that command has been disabled in this channel!`,
@@ -121,7 +125,11 @@ module.exports = class CommandHandler extends require('./Module') {
                     if (cooldown.warned) return;
 
                     this.cooldowns[key].warned = true;
-                    await ctx.error(`slow down and try the command again **<t:${((command.cooldown - diff + now) / 1000).toFixed(0)}:R>**`);
+                    await ctx.error(
+                        `slow down and try the command again **<t:${((command.cooldown - diff + now) / 1000).toFixed(
+                            0
+                        )}:R>**`
+                    );
                     return;
                 } else {
                     this.cooldowns[key] = { lastused: now, warned: false };
@@ -134,7 +142,7 @@ module.exports = class CommandHandler extends require('./Module') {
 
     /**
      * Creates a context variable from an event
-     * @param {ComponentInteraction | Message} event 
+     * @param {ComponentInteraction | Message} event
      * @returns {Context | undefined}
      */
     createContext(event) {
@@ -159,13 +167,15 @@ module.exports = class CommandHandler extends require('./Module') {
                 error: async (message) => {
                     await event.createMessage({
                         flags: 64,
-                        content: `🚫 **| ${getUniqueUsername(event.member)}**, ${message}`
+                        content: `🚫 **| ${getUniqueUsername(event.member)}**, ${message}`,
                     });
-                }
+                },
             };
         } else {
             // Check if message starts with prefix
-            const prefix = [this.prefix, ...this.bot.config.prefixes].find((prefix) => event.content.toLowerCase().trim().startsWith(prefix));
+            const prefix = [this.prefix, ...this.bot.config.prefixes].find((prefix) =>
+                event.content.toLowerCase().trim().startsWith(prefix)
+            );
             if (!prefix) return;
 
             const [command, ...args] = event.content.trim().slice(prefix.length).trim().split(/ +/g);
@@ -186,7 +196,7 @@ module.exports = class CommandHandler extends require('./Module') {
                 },
                 error: async (message) => {
                     await ephemeralResponse(event.channel, `🚫 **| ${getUniqueUsername(event.member)}**, ${message}`);
-                }
+                },
             };
         }
     }

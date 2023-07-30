@@ -25,7 +25,9 @@ module.exports = new Command({
         const Logger = await ctx.bot.modules['logger'];
 
         if (!Logger) {
-            await ctx.error("I don't have a Logger module. Did Wifu forget to delete this command or was the module deleted?");
+            await ctx.error(
+                "I don't have a Logger module. Did Wifu forget to delete this command or was the module deleted?"
+            );
             return;
         }
 
@@ -85,7 +87,9 @@ module.exports = new Command({
                 break;
             }
             default: {
-                await ctx.error('that is not a valid subcommand! The proper usage is `snail logger [setpublicchannel|setprivatechannel|trackdyno] {...arguments}`');
+                await ctx.error(
+                    'that is not a valid subcommand! The proper usage is `snail logger [setpublicchannel|setprivatechannel|trackdyno] {...arguments}`'
+                );
                 break;
             }
         }

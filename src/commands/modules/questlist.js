@@ -40,7 +40,9 @@ module.exports = new Command({
         const QuestList = await ctx.bot.modules['questlist'];
 
         if (!QuestList) {
-            await ctx.error("I don't have a Quest List module. Did Wifu forget to delete this command or was the module deleted?");
+            await ctx.error(
+                "I don't have a Quest List module. Did Wifu forget to delete this command or was the module deleted?"
+            );
             return;
         }
 
@@ -63,20 +65,29 @@ module.exports = new Command({
                         type = 'emoteBy';
                         break;
                     default: {
-                        await ctx.error('that is not a valid quest type! The valid types are `all`, `cookie`, `pray`, `curse`, and `action`');
+                        await ctx.error(
+                            'that is not a valid quest type! The valid types are `all`, `cookie`, `pray`, `curse`, and `action`'
+                        );
                         return;
                     }
                 }
 
-                let users = (type == 'all' ? QuestList.quests : QuestList.quests.filter((quest) => quest.type == type)).map((quest) => quest.discordID);
+                let users = (
+                    type == 'all' ? QuestList.quests : QuestList.quests.filter((quest) => quest.type == type)
+                ).map((quest) => quest.discordID);
                 QuestList.quests = type == 'all' ? [] : QuestList.quests.filter((quest) => quest.type != type);
 
                 await QuestList.update();
-                await ctx.send(`I have cleared the ${type == 'all' ? 'quest' : QUEST_DATA[type].name.toLowerCase()} list!`);
+                await ctx.send(
+                    `I have cleared the ${type == 'all' ? 'quest' : QUEST_DATA[type].name.toLowerCase()} list!`
+                );
 
                 if (subcommand == 'notifyclear' && users.length != 0) {
                     users = [...new Set(users)];
-                    let message = `The quest list for ${type.slice(0, -2)} was reset and all quests were removed from it. If you want your quest added back, please use \`owo quest\` again.\n\n`;
+                    let message = `The quest list for ${type.slice(
+                        0,
+                        -2
+                    )} was reset and all quests were removed from it. If you want your quest added back, please use \`owo quest\` again.\n\n`;
                     message += users.map((id) => `<@${id}>`).join(' ');
                     await ctx.bot.createMessage(QuestList.channel, message);
                 }
@@ -98,7 +109,9 @@ module.exports = new Command({
                         type = 'emoteBy';
                         break;
                     default: {
-                        await ctx.error('that is not a valid quest type! The valid types are `all`, `cookie`, `pray`, `curse`, and `action` and the command is `snail ql remove [type] {@users...}`');
+                        await ctx.error(
+                            'that is not a valid quest type! The valid types are `all`, `cookie`, `pray`, `curse`, and `action` and the command is `snail ql remove [type] {@users...}`'
+                        );
                         return;
                     }
                 }
@@ -110,7 +123,9 @@ module.exports = new Command({
                     return;
                 }
 
-                QuestList.quests = QuestList.quests.filter((quest) => !((quest.type == type || type == 'all') && users.includes(quest.discordID)));
+                QuestList.quests = QuestList.quests.filter(
+                    (quest) => !((quest.type == type || type == 'all') && users.includes(quest.discordID))
+                );
 
                 await QuestList.update();
                 await ctx.send(`I removed ${users.length} users from the quest list!`);
@@ -156,7 +171,9 @@ module.exports = new Command({
                         type = 'emoteBy';
                         break;
                     default: {
-                        await ctx.error('that is not a valid quest type! The valid types are `cookie`, `pray`, `curse`, and `action`');
+                        await ctx.error(
+                            'that is not a valid quest type! The valid types are `cookie`, `pray`, `curse`, and `action`'
+                        );
                         return;
                     }
                 }
@@ -243,7 +260,9 @@ module.exports = new Command({
                 break;
             }
             default: {
-                await ctx.error('that is not a valid subcommand! The proper usage is `snail ql [clear|notifyclear|remove|setchannel|setmax|setrepostinterval|setemptymessage|forceupdate|view] {...arguments}`');
+                await ctx.error(
+                    'that is not a valid subcommand! The proper usage is `snail ql [clear|notifyclear|remove|setchannel|setmax|setrepostinterval|setemptymessage|forceupdate|view] {...arguments}`'
+                );
                 break;
             }
         }

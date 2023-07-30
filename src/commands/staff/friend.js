@@ -32,7 +32,9 @@ module.exports = new Command({
                 const operation = add ? { $addToSet: { friends } } : { $pull: { friends: { $in: friends } } };
 
                 await ctx.snail_db.User.updateOne({ _id: ctx.member?.id }, operation, { upsert: true });
-                await ctx.send(`I ${add ? 'added' : 'removed'} ${friends.length} users ${add ? 'to' : 'from'} your friends list!`);
+                await ctx.send(
+                    `I ${add ? 'added' : 'removed'} ${friends.length} users ${add ? 'to' : 'from'} your friends list!`
+                );
                 break;
             }
             case 'friends':

@@ -250,7 +250,9 @@ module.exports = class QuestList extends require('./Module') {
                 }
 
                 return {
-                    name: `${data.emoji} __${data.name} List__ (${questCount}/${Object.keys(QUESTS_GROUPED_BY_USER).length})`,
+                    name: `${data.emoji} __${data.name} List__ (${questCount}/${
+                        Object.keys(QUESTS_GROUPED_BY_USER).length
+                    })`,
                     value:
                         text ??
                         "If you see this, then something broke lol. Tell <@210177401064390658>. Or don't... this will probably fix itself.",
