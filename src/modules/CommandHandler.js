@@ -59,10 +59,6 @@ module.exports = class CommandHandler extends require('./Module') {
                     }
                     this.commands[alias] = command;
                 });
-                // register event handlers
-                if (command.interactionHandler) {
-                    bot.on('interactionCreate', command.interactionHandler);
-                }
             });
 
         this.addEvent('UserMessage', this.processMessage);
