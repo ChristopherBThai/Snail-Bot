@@ -36,22 +36,20 @@ module.exports = new Command({
         'snail ql view',
     ],
 
-    execute: async function () {
-        const QuestList = await this.bot.modules['questlist'];
+    execute: async function (ctx) {
+        const QuestList = await ctx.bot.modules['questlist'];
 
         if (!QuestList) {
-            await this.error(
-                "I don't have a Quest List module. Did Wifu forget to delete this command or was the module deleted?"
-            );
+            await ctx.error("I don't have a Quest List module. Did Wifu forget to delete this command or was the module deleted?");
             return;
         }
 
-        let subcommand = this.message.args.shift()?.toLowerCase();
+        let subcommand = ctx.args.shift()?.toLowerCase();
 
         switch (subcommand) {
             case 'clear':
             case 'notifyclear': {
-                let type = this.message.args.shift()?.toLowerCase();
+                let type = ctx.args.shift()?.toLowerCase();
 
                 switch (type) {
                     case 'all':
@@ -65,37 +63,28 @@ module.exports = new Command({
                         type = 'emoteBy';
                         break;
                     default: {
-                        await this.error(
-                            'that is not a valid quest type! The valid types are `all`, `cookie`, `pray`, `curse`, and `action`'
-                        );
+                        await ctx.error('that is not a valid quest type! The valid types are `all`, `cookie`, `pray`, `curse`, and `action`');
                         return;
                     }
                 }
 
-                let users = (
-                    type == 'all' ? QuestList.quests : QuestList.quests.filter((quest) => quest.type == type)
-                ).map((quest) => quest.discordID);
+                let users = (type == 'all' ? QuestList.quests : QuestList.quests.filter((quest) => quest.type == type)).map((quest) => quest.discordID);
                 QuestList.quests = type == 'all' ? [] : QuestList.quests.filter((quest) => quest.type != type);
 
                 await QuestList.update();
-                await this.send(
-                    `I have cleared the ${type == 'all' ? 'quest' : QUEST_DATA[type].name.toLowerCase()} list!`
-                );
+                await ctx.send(`I have cleared the ${type == 'all' ? 'quest' : QUEST_DATA[type].name.toLowerCase()} list!`);
 
                 if (subcommand == 'notifyclear' && users.length != 0) {
                     users = [...new Set(users)];
-                    let message = `The quest list for ${type.slice(
-                        0,
-                        -2
-                    )} was reset and all quests were removed from it. If you want your quest added back, please use \`owo quest\` again.\n\n`;
+                    let message = `The quest list for ${type.slice(0, -2)} was reset and all quests were removed from it. If you want your quest added back, please use \`owo quest\` again.\n\n`;
                     message += users.map((id) => `<@${id}>`).join(' ');
-                    await this.bot.createMessage(QuestList.channel, message);
+                    await ctx.bot.createMessage(QuestList.channel, message);
                 }
 
                 break;
             }
             case 'remove': {
-                let type = this.message.args.shift()?.toLowerCase();
+                let type = ctx.args.shift()?.toLowerCase();
 
                 switch (type) {
                     case 'all':
@@ -109,57 +98,51 @@ module.exports = new Command({
                         type = 'emoteBy';
                         break;
                     default: {
-                        await this.error(
-                            'that is not a valid quest type! The valid types are `all`, `cookie`, `pray`, `curse`, and `action` and the command is `snail ql remove [type] {@users...}`'
-                        );
+                        await ctx.error('that is not a valid quest type! The valid types are `all`, `cookie`, `pray`, `curse`, and `action` and the command is `snail ql remove [type] {@users...}`');
                         return;
                     }
                 }
 
-                let users = this.message.args.map((user) => parseUserID(user)).filter((user) => user);
+                let users = ctx.args.map((user) => parseUserID(user)).filter((user) => user);
 
                 if (users.length == 0) {
-                    await this.error('please list at least one valid user!');
+                    await ctx.error('please list at least one valid user!');
                     return;
                 }
 
-                QuestList.quests = QuestList.quests.filter(
-                    (quest) => !((quest.type == type || type == 'all') && users.includes(quest.discordID))
-                );
+                QuestList.quests = QuestList.quests.filter((quest) => !((quest.type == type || type == 'all') && users.includes(quest.discordID)));
 
                 await QuestList.update();
-                await this.send(`I removed ${users.length} users from the quest list!`);
+                await ctx.send(`I removed ${users.length} users from the quest list!`);
 
                 break;
             }
             case 'setchannel': {
-                let channelID = parseChannelID(this.message.args.shift());
+                let channelID = parseChannelID(ctx.args.shift());
                 if (!channelID) {
-                    await this.error('please provide a channel mention or ID!');
+                    await ctx.error('please provide a channel mention or ID!');
                     return;
                 }
 
-                const channel = this.bot.getChannel(channelID);
+                const channel = ctx.bot.getChannel(channelID);
                 if (!channel) {
-                    await this.error(`I do not have access to <#${channelID}>! :c`);
+                    await ctx.error(`I do not have access to <#${channelID}>! :c`);
                     return;
                 }
 
                 QuestList.channel = channelID;
-                await this.bot.setConfiguration(`${QuestList.id}_channel`, channelID);
+                await ctx.bot.setConfiguration(`${QuestList.id}_channel`, channelID);
                 QuestList.lastSent = QuestList.repostInterval;
                 await QuestList.update();
-                await this.send(`I have set the Quest List channel to <#${channelID}>!`);
+                await ctx.send(`I have set the Quest List channel to <#${channelID}>!`);
                 break;
             }
             case 'setmax': {
-                let type = this.message.args.shift()?.toLowerCase();
-                let amount = parseInt(this.message.args[0]);
+                let type = ctx.args.shift()?.toLowerCase();
+                let amount = parseInt(ctx.args[0]);
 
                 if (!amount || amount < 1) {
-                    await this.error(
-                        `${this.message.args[0]} is not a valid number! Please select a number greater than 0.`
-                    );
+                    await ctx.error(`${ctx.args[0]} is not a valid number! Please select a number greater than 0.`);
                     return;
                 }
 
@@ -173,57 +156,53 @@ module.exports = new Command({
                         type = 'emoteBy';
                         break;
                     default: {
-                        await this.error(
-                            'that is not a valid quest type! The valid types are `cookie`, `pray`, `curse`, and `action`'
-                        );
+                        await ctx.error('that is not a valid quest type! The valid types are `cookie`, `pray`, `curse`, and `action`');
                         return;
                     }
                 }
 
                 QuestList.capacity[type] = amount;
                 await QuestList.update();
-                await this.bot.setConfiguration(`${QuestList.id}_${type.slice(0, -2)}_capacity`, amount);
-                await this.send(`I have set the max number of quests for the ${type.slice(0, -2)} list to ${amount}!`);
+                await ctx.bot.setConfiguration(`${QuestList.id}_${type.slice(0, -2)}_capacity`, amount);
+                await ctx.send(`I have set the max number of quests for the ${type.slice(0, -2)} list to ${amount}!`);
                 break;
             }
             case 'setrepostinterval': {
-                let amount = parseInt(this.message.args[0]);
+                let amount = parseInt(ctx.args[0]);
 
                 if (!amount || amount < 1) {
-                    await this.error(
-                        `${this.message.args[0]} is not a valid number! Please select a number greater than 0.`
-                    );
+                    await ctx.error(`${ctx.args[0]} is not a valid number! Please select a number greater than 0.`);
                     return;
                 }
 
                 QuestList.repostInterval = amount;
                 await QuestList.update();
-                await this.bot.setConfiguration(`${QuestList.id}_repost_interval`, amount);
-                await this.send(`I have set the quest list to repost every ${amount} messages!`);
+                await ctx.bot.setConfiguration(`${QuestList.id}_repost_interval`, amount);
+                await ctx.send(`I have set the quest list to repost every ${amount} messages!`);
                 break;
             }
             case 'setemptymessage': {
-                let message = this.message.args.join(' ');
+                let message = ctx.args.join(' ');
 
                 if (!message) {
-                    await this.error('please provide a message!');
+                    await ctx.error('please provide a message!');
                     return;
                 }
 
                 QuestList.emptyMessage = message;
                 await QuestList.update();
-                await this.bot.setConfiguration(`${QuestList.id}_empty_message`, message);
-                await this.send(`I have set the quest list empty message to \n\`\`\`${message}\`\`\``);
+                await ctx.bot.setConfiguration(`${QuestList.id}_empty_message`, message);
+                await ctx.send(`I have set the quest list empty message to \n\`\`\`${message}\`\`\``);
                 break;
             }
             case 'forceupdate': {
                 await QuestList.update();
-                await this.send(`I have updated the quest list!`);
+                await ctx.send(`I have updated the quest list!`);
                 break;
             }
             case 'view': {
                 if (QuestList.quests.length == 0) {
-                    await this.send('The list is empty!');
+                    await ctx.send('The list is empty!');
                     break;
                 }
 
@@ -241,18 +220,18 @@ module.exports = new Command({
                     const typeText = `${data.emoji} __**${data.name} List (${userIDs.length})**__\n`;
 
                     if (text.length + typeText.length > MAX_SECTION_SIZE) {
-                        await this.send(text);
+                        await ctx.send(text);
                         text = typeText;
                     } else {
                         text += typeText;
                     }
 
                     for (const id of userIDs) {
-                        let user = await this.bot.getUser(id);
+                        let user = await ctx.bot.getUser(id);
                         const userText = `${id} ${getUniqueUsername(user)}\n`;
 
                         if (text.length + userText.length > MAX_SECTION_SIZE) {
-                            await this.send(text);
+                            await ctx.send(text);
                             text = userText;
                         } else {
                             text += userText;
@@ -260,13 +239,11 @@ module.exports = new Command({
                     }
                 }
 
-                await this.send(text);
+                await ctx.send(text);
                 break;
             }
             default: {
-                await this.error(
-                    'that is not a valid subcommand! The proper usage is `snail ql [clear|notifyclear|remove|setchannel|setmax|setrepostinterval|setemptymessage|forceupdate|view] {...arguments}`'
-                );
+                await ctx.error('that is not a valid subcommand! The proper usage is `snail ql [clear|notifyclear|remove|setchannel|setmax|setrepostinterval|setemptymessage|forceupdate|view] {...arguments}`');
                 break;
             }
         }

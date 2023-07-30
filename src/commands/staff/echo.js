@@ -18,26 +18,24 @@ module.exports = new Command({
         'snail echo <#420111691507040266> OwO is currently offline, thank you for your patience as we resolve the issue!',
     ],
 
-    execute: async function () {
-        const channelID = parseChannelID(this.message.args[0]);
+    execute: async function (ctx) {
+        const channelID = parseChannelID(ctx.args[0]);
 
         if (!channelID) {
-            await this.error(
-                'please provide a channel mention or ID! The proper usage is `snail echo {channel} {message}`'
-            );
+            await ctx.error('please provide a channel mention or ID! The proper usage is `snail echo {channel} {message}`');
             return;
         }
 
-        const channel = this.bot.getChannel(channelID);
+        const channel = ctx.bot.getChannel(channelID);
         if (!channel) {
-            await this.error(`I do not have access to <#${channelID}>! :c`);
+            await ctx.error(`I do not have access to <#${channelID}>! :c`);
             return;
         }
 
-        const message = this.message.args.splice(1).join(' ');
+        const message = ctx.args.splice(1).join(' ');
 
         if (!message) {
-            await this.error('please provide a message!');
+            await ctx.error('please provide a message!');
             return;
         }
 
@@ -45,22 +43,20 @@ module.exports = new Command({
 
         try {
             embed = JSON.parse(message);
-        } catch (error) {}
+        } catch (error) { }
 
         if (!embed) {
-            await this.bot.createMessage(channelID, message);
+            await ctx.bot.createMessage(channelID, message);
         } else {
             try {
-                if (embed.embed || embed.embeds) await this.bot.createMessage(channelID, embed);
-                else await this.bot.createMessage(channelID, { embed });
+                if (embed.embed || embed.embeds) await ctx.bot.createMessage(channelID, embed);
+                else await ctx.bot.createMessage(channelID, { embed });
             } catch (error) {
-                await this.error(
-                    'please provide data in atleast one of the embed following embed fields! `Description` `Thumbnail Url` `Title` `Author Name`'
-                );
+                await ctx.error('please provide data in atleast one of the embed following embed fields! `Description` `Thumbnail Url` `Title` `Author Name`');
                 return;
             }
         }
 
-        await this.send(`I have echoed your message in <#${channelID}>!`);
+        await ctx.send(`I have echoed your message in <#${channelID}>!`);
     },
 });

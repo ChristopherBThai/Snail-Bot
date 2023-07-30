@@ -11,15 +11,15 @@ module.exports = new Command({
 
     description: 'View or set a custom prefix for snail!',
 
-    execute: async function () {
-        const prefix = this.message.args.shift()?.toLowerCase();
+    execute: async function (ctx) {
+        const prefix = ctx.args.shift()?.toLowerCase();
         if (!prefix) {
-            await this.send(`The current prefix is \`${await this.bot.getConfiguration(`prefix`)}\``);
+            await ctx.send(`The current prefix is \`${await ctx.bot.getConfiguration(`prefix`)}\``);
             return;
         }
 
-        this.bot.modules['commandhandler'].prefix = prefix;
-        await this.bot.setConfiguration(`prefix`, prefix);
-        await this.send(`I have set the prefix to \`${prefix}\`!`);
+        ctx.bot.modules['commandhandler'].prefix = prefix;
+        await ctx.bot.setConfiguration(`prefix`, prefix);
+        await ctx.send(`I have set the prefix to \`${prefix}\`!`);
     },
 });

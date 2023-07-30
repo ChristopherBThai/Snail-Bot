@@ -11,7 +11,7 @@ module.exports = new Command({
 
     description: '🐌',
 
-    execute: async function () {
-        await this.send(`🐌`);
+    execute: async function (ctx) {
+        await ctx.send(`🐌`);
     },
 });

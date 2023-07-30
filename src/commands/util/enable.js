@@ -18,42 +18,42 @@ module.exports = new Command({
         'snail enabled',
     ],
 
-    execute: async function () {
-        let channels = this.message.args.map((channel) => parseChannelID(channel)).filter((channel) => channel);
-        if (channels.length == 0) channels = [this.message.channel.id];
+    execute: async function (ctx) {
+        let channels = ctx.args.map((channel) => parseChannelID(channel)).filter((channel) => channel);
+        if (channels.length == 0) channels = [ctx.channel.id];
 
-        switch (this.message.command) {
+        switch (ctx.command) {
             case 'enable':
             case 'disable': {
-                let cmds = this.message.args
+                let cmds = ctx.args
                     .filter((cmd) => !parseChannelID(cmd)) // Filter out channels
                     .map((cmd) => cmd.toLowerCase()) // Make all lowercase
-                    .filter((cmd) => this.commands[cmd] || cmd == 'all'); // Filter out command names that don't exist unless it's the "all" argument
+                    .filter((cmd) => ctx.commands[cmd] || cmd == 'all'); // Filter out command names that don't exist unless it's the "all" argument
 
                 if (cmds.includes('all')) {
-                    cmds = [...new Set(Object.values(this.commands).map((cmd) => cmd.alias[0]))];
+                    cmds = [...new Set(Object.values(ctx.commands).map((cmd) => cmd.alias[0]))];
                 } else {
-                    cmds = cmds.map((cmd) => this.commands[cmd].alias[0]);
+                    cmds = cmds.map((cmd) => ctx.commands[cmd].alias[0]);
                 }
 
-                cmds = cmds.filter((cmd) => !this.command.alias.includes(cmd)); // Filter out this command and its aliases
+                cmds = cmds.filter((cmd) => !this.alias.includes(cmd)); // Filter out this command and its aliases
 
                 if (cmds.length == 0) {
-                    await this.error('please list at least one valid command!');
+                    await ctx.error('please list at least one valid command!');
                     return;
                 }
 
                 const operation =
-                    this.message.command == 'enable'
+                    ctx.command == 'enable'
                         ? { $pull: { disabledCommands: { $in: cmds } } }
                         : { $addToSet: { disabledCommands: cmds } };
 
                 for (const channel of channels) {
-                    await this.snail_db.Channel.updateOne({ _id: channel }, operation, { upsert: true });
+                    await ctx.snail_db.Channel.updateOne({ _id: channel }, operation, { upsert: true });
                 }
 
-                await this.send(
-                    `I ${this.message.command}d ${cmds.map((cmd) => `\`${cmd}\``).join(', ')} in ${channels
+                await ctx.send(
+                    `I ${ctx.command}d ${cmds.map((cmd) => `\`${cmd}\``).join(', ')} in ${channels
                         .map((id) => `<#${id}>`)
                         .join(', ')}!`
                 );
@@ -61,11 +61,11 @@ module.exports = new Command({
                 break;
             }
             case 'enabled': {
-                const commands = [...new Set(Object.values(this.commands).map((cmd) => cmd.alias[0]))].sort();
+                const commands = [...new Set(Object.values(ctx.commands).map((cmd) => cmd.alias[0]))].sort();
                 const fields = [];
 
                 for (const channelID of channels) {
-                    const channel = await this.snail_db.Channel.findById(channelID);
+                    const channel = await ctx.snail_db.Channel.findById(channelID);
 
                     const commandList = commands.map((cmd) => {
                         if (channel?.disabledCommands.includes(cmd)) return `~~\`${cmd}\`~~`;
@@ -83,11 +83,11 @@ module.exports = new Command({
                         name: `Enabled Commands`,
                     },
                     timestamp: new Date(),
-                    color: this.config.embedcolor,
+                    color: ctx.config.embedcolor,
                     fields,
                 };
 
-                await this.send({ embed });
+                await ctx.send({ embed });
                 break;
             }
         }

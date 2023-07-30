@@ -13,36 +13,39 @@ module.exports = new Command({
 
     examples: ['snail modules', 'snail module questlist'],
 
-    execute: async function () {
-        switch (this.message.command) {
+    execute: async function (ctx) {
+        switch (ctx.command) {
             case 'module': {
                 let option;
                 let moduleID;
 
-                switch (this.message.args[0]?.toLowerCase()) {
+                switch (ctx.args[0]?.toLowerCase()) {
                     case 'enable':
                     case 'disable': {
-                        option = this.message.args.shift()?.toLowerCase();
-                        moduleID = this.message.args.shift()?.toLowerCase();
+                        option = ctx.args.shift()?.toLowerCase();
+                        moduleID = ctx.args.shift()?.toLowerCase();
                         break;
                     }
                     default: {
-                        moduleID = this.message.args.shift()?.toLowerCase();
+                        moduleID = ctx.args.shift()?.toLowerCase();
                     }
                 }
 
-                const module = this.bot.modules[moduleID];
+                if (!moduleID) {
+                    await ctx.error(`Please provide a module ID. Use \`snail modules\` to view my modules and their IDs!`);
+                    return;
+                }
+
+                const module = ctx.bot.modules[moduleID];
 
                 if (!module) {
-                    await this.error(
-                        `I don't have a module with the ID \`${moduleID}\`. Use \`snail modules\` to view my modules and their IDs!`
-                    );
+                    await ctx.error(`I don't have a module with the ID \`${moduleID}\`. Use \`snail modules\` to view my modules and their IDs!`);
                     return;
                 }
 
                 if (option) {
                     if (!module.toggleable) {
-                        await this.error(`Nice try! You can't toggle that module ;)`);
+                        await ctx.error(`Nice try! You can't toggle that module ;)`);
                         return;
                     }
 
@@ -55,25 +58,25 @@ module.exports = new Command({
 
                 const embed = {
                     title: module.name,
-                    color: this.config.embedcolor,
+                    color: ctx.config.embedcolor,
                     description: `${module.description}\n\n${module.getConfigurationOverview()}`,
                 };
 
-                await this.send({ embed });
+                await ctx.send({ embed });
                 break;
             }
             case 'modules': {
                 const embed = {
                     title: 'Modules',
-                    color: this.config.embedcolor,
+                    color: ctx.config.embedcolor,
                     description: '',
                 };
 
-                for (const { enabled, name, id } of Object.values(this.bot.modules)) {
+                for (const { enabled, name, id } of Object.values(ctx.bot.modules)) {
                     embed.description += `${enabled ? '✅' : '❌'} ${name} \`${id}\`\n`;
                 }
 
-                await this.send({ embed });
+                await ctx.send({ embed });
                 break;
             }
         }

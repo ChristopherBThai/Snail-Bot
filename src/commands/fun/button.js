@@ -12,8 +12,8 @@ module.exports = new Command({
 
     description: 'make a button',
 
-    execute: async function () {
-        await this.send({
+    execute: async function (ctx) {
+        await ctx.send({
             content: this.description,
             components: [
                 {
@@ -22,7 +22,7 @@ module.exports = new Command({
                         {
                             type: Constants.ComponentTypes.BUTTON,
                             style: 1,
-                            label: 'Button one',
+                            label: 'Button Command',
                             custom_id: 'button'
                         },
                         {
@@ -34,9 +34,38 @@ module.exports = new Command({
                         {
                             type: Constants.ComponentTypes.BUTTON,
                             style: 1,
-                            label: 'Roles Command',
+                            label: 'Help Snail',
                             custom_id: 'help snail'
                         },
+                        {
+                            type: Constants.ComponentTypes.BUTTON,
+                            style: 1,
+                            label: 'Ping Command',
+                            custom_id: 'ping'
+                        },
+                        {
+                            type: Constants.ComponentTypes.BUTTON,
+                            style: 1,
+                            label: 'Nick Command',
+                            custom_id: 'nick A very cool nick'
+                        },
+                    ],
+                },
+                {
+                    type: Constants.ComponentTypes.ACTION_ROW,
+                    components: [
+                        {
+                            type: Constants.ComponentTypes.BUTTON,
+                            style: 1,
+                            label: 'Tags command',
+                            custom_id: 'tags'
+                        },
+                        {
+                            type: Constants.ComponentTypes.BUTTON,
+                            style: 1,
+                            label: 'Markdown Tag',
+                            custom_id: 'tag markdown'
+                        }
                     ],
                 },
             ],

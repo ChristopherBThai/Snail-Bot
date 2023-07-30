@@ -84,6 +84,7 @@ module.exports = class CommandHandler extends require('./Module') {
         if (!command) return;
         if (!command.auth(ctx.member)) {
             await ctx.error(`you do not have permission to use this ${event instanceof Message ? 'command' : 'component'}!`);
+            return;
         }
 
         if (event instanceof Message) {
@@ -109,7 +110,7 @@ module.exports = class CommandHandler extends require('./Module') {
             await event.channel.sendTyping();
 
             // Staff are not bound by the chains of cooldowns >:)
-            if (!isStaff(ctx.member)) {
+            if (!isStaff(ctx.member) && command.cooldown) {
                 const key = `${event.author.id}_${alias}`;
 
                 const cooldown = this.cooldowns[key] ?? { lastused: new Date(0), warned: false };
@@ -119,7 +120,7 @@ module.exports = class CommandHandler extends require('./Module') {
                 const diff = now - cooldown.lastused;
 
                 // If still on cooldown
-                if (diff < (command.cooldown ?? 0)) {
+                if (diff < command.cooldown) {
                     // If not already warned, warn, otherwise ignore
                     if (cooldown.warned) return;
 
@@ -149,7 +150,8 @@ module.exports = class CommandHandler extends require('./Module') {
                 snail_db: this.bot.snail_db,
                 bot: this.bot,
                 commands: this.commands,
-                member: event.message.member,
+                // @ts-ignore We do not plan on send components in dms so this will always exist
+                member: event.member,
                 channel: event.channel,
                 // @ts-ignore
                 guild: event.message.channel.guild,
@@ -161,7 +163,7 @@ module.exports = class CommandHandler extends require('./Module') {
                 error: async (message) => {
                     await event.createMessage({
                         flags: 64,
-                        content: `🚫 **| ${getUniqueUsername(event.message.member)}**, ${message}`
+                        content: `🚫 **| ${getUniqueUsername(event.member)}**, ${message}`
                     });
                 }
             };

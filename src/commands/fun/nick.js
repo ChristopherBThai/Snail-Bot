@@ -11,23 +11,23 @@ module.exports = new Command({
 
     description: "Set Snail's nickname!",
 
-    execute: async function () {
-        const nick = this.message.args.join(' ');
+    execute: async function (ctx) {
+        const nick = ctx.args.join(' ');
         if (!nick) {
-            await this.error('please provide a nickname!');
+            await ctx.error('please provide a nickname!');
             return;
         }
 
         if (nick.length > 32 || nick.length < 1) {
-            await this.error('the name must be between 1 and 32 characters long (inclusive)!');
+            await ctx.error('the name must be between 1 and 32 characters long (inclusive)!');
             return;
         }
 
-        await this.bot.editGuildMember(this.config.guild, '@me', {
+        await ctx.bot.editGuildMember(ctx.config.guild, '@me', {
             nick: nick.toLowerCase() == 'reset' ? '' : nick,
         });
 
-        if (nick.toLowerCase() == 'reset') await this.send('I have reset my nickname!');
-        else await this.send(`I have set my nickname to \`${nick}\`!`);
+        if (nick.toLowerCase() == 'reset') await ctx.send('I have reset my nickname!');
+        else await ctx.send(`I have set my nickname to \`${nick}\`!`);
     },
 });

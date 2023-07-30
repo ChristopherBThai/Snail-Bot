@@ -11,8 +11,8 @@ module.exports = new Command({
 
     description: 'Pong!',
 
-    execute: async function () {
-        if (this.message.command == 'ping') await this.send(`Pong!`);
-        else await this.send(`Ping!`);
+    execute: async function (ctx) {
+        if (ctx.command == 'ping') await ctx.send(`Pong!`);
+        else await ctx.send(`Ping!`);
     },
 });

@@ -12,16 +12,15 @@ module.exports = new Command({
 
     description: 'View the amount of users assigned to each role!',
 
-    execute: async function () {
-        let result = await this.message.channel.guild.fetchAllMembers(120000);
-        console.log(`Fetched ${JSON.stringify(result, null, 2)} members!`);
+    execute: async function (ctx) {
+        await ctx.guild.fetchAllMembers(120000);
         const roleMap = {};
 
-        for (const [id, { name, position }] of this.message.channel.guild.roles) {
+        for (const [id, { name, position }] of ctx.guild.roles) {
             roleMap[id] = { name, position, members: 0 };
         }
 
-        for (const [, { roles }] of this.message.channel.guild.members) {
+        for (const [, { roles }] of ctx.guild.members) {
             for (const id of roles) roleMap[id].members++;
         }
 
@@ -32,12 +31,12 @@ module.exports = new Command({
         let text = '';
         for (const roleText of roles) {
             if (text.length + roleText.length > MAX_SECTION_SIZE) {
-                await this.send('```\n' + text + '```');
+                await ctx.send('```\n' + text + '```');
                 text = roleText;
             } else {
                 text += roleText;
             }
         }
-        await this.send('```\n' + text + '```');
+        await ctx.send('```\n' + text + '```');
     },
 });
