@@ -13,5 +13,6 @@ module.exports = class Command {
         this.examples = args.examples;
         this.execute = args.execute;
         this.interactionHandler = args.interactionHandler;
+        this.componentOnly = args.componentOnly;
     }
 };

@@ -1,3 +1,4 @@
+const { ComponentInteraction } = require('eris');
 const requireDir = require('require-dir');
 const Command = require('../commands/Command');
 const { isStaff } = require('../utils/permissions');
@@ -48,6 +49,7 @@ module.exports = class CommandHandler extends require('./Module') {
             });
 
         this.addEvent('UserMessage', this.processMessage);
+        this.addEvent('interactionCreate', this.onInteraction);
     }
 
     async onceReady() {
@@ -71,6 +73,7 @@ module.exports = class CommandHandler extends require('./Module') {
         // Check if a command with that name/alias exists
         const command = this.commands[message.command];
         if (!command) return;
+        if (command.componentOnly) return;
 
         // Check if that command has been disabled in this channel
         const channel = await this.bot.snail_db.Channel.findById(message.channel.id);
@@ -142,5 +145,38 @@ module.exports = class CommandHandler extends require('./Module') {
         } else {
             await context.error('you do not have permission to use this command!');
         }
+    }
+
+    async onInteraction(interaction) {
+        if (!(interaction instanceof ComponentInteraction)) return;
+
+        // Parse command name/args
+        let args = interaction.data.custom_id.split(/ +/g);
+        interaction.command = args[0]?.toLowerCase();
+        interaction.args = args.splice(1);
+
+        // Check if a command with that name/alias exists
+        const command = this.commands[interaction.command];
+        if (!command) return;
+
+        const context = {
+            message: interaction,
+            command,
+            config: this.bot.config,
+            snail_db: this.bot.snail_db,
+            bot: this.bot,
+            commands: this.commands,
+            send: async (msg) => {
+                return interaction.createMessage(msg);
+            },
+            error: async (errorMessage) => {
+                return await ephemeralResponse(
+                    interaction,
+                    `🚫 **| ${getUniqueUsername(interaction.member)}**, ${errorMessage}`
+                );
+            },
+        };
+
+        if (command.auth(interaction.member)) await command.execute.bind(context)();
     }
 };
