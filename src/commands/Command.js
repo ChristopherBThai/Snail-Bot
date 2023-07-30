@@ -12,5 +12,6 @@ module.exports = class Command {
         this.description = args.description;
         this.examples = args.examples;
         this.execute = args.execute;
+        this.interactionHandler = args.interactionHandler;
     }
 };

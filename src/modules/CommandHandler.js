@@ -30,6 +30,7 @@ module.exports = class CommandHandler extends require('./Module') {
             .flat()
             .filter((command) => command instanceof Command)
             .forEach((command) => {
+                // register command aliases
                 command.alias.forEach((alias) => {
                     if (this.commands[alias]) {
                         const firstInstance = this.commands[alias].alias[0];
@@ -40,6 +41,10 @@ module.exports = class CommandHandler extends require('./Module') {
                     }
                     this.commands[alias] = command;
                 });
+                // register event handlers
+                if (command.interactionHandler) {
+                    bot.on('interactionCreate', command.interactionHandler);
+                }
             });
 
         this.addEvent('UserMessage', this.processMessage);
