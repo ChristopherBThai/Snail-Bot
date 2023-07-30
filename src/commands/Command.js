@@ -9,7 +9,7 @@ module.exports = class Command {
      * @param {String} args.usage
      * @param {String} args.description
      * @param {String[]} [args.examples]
-     * @param {(ctx: import("../modules/CommandHandler").Context) => Promise<void>} args.execute 
+     * @param {(ctx: import("../modules/CommandHandler").Context) => Promise<void>} args.execute
      * @param {boolean} [args.componentOnly]
      */
     constructor(args) {

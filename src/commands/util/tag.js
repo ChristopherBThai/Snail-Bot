@@ -66,7 +66,7 @@ module.exports = new Command({
                         return;
                     }
 
-                    // @ts-ignore Definitely exists since it is checked for a handful of lines above. 
+                    // @ts-ignore Definitely exists since it is checked for a handful of lines above.
                     if (!/^[a-z0-9]+$/.test(name)) {
                         await ctx.error(`tag names can only contain alphanumeric characters!`);
                         return;

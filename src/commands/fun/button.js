@@ -23,31 +23,31 @@ module.exports = new Command({
                             type: Constants.ComponentTypes.BUTTON,
                             style: 1,
                             label: 'Button Command',
-                            custom_id: 'button'
+                            custom_id: 'button',
                         },
                         {
                             type: Constants.ComponentTypes.BUTTON,
                             style: 1,
                             label: '🐌',
-                            custom_id: 'snail'
+                            custom_id: 'snail',
                         },
                         {
                             type: Constants.ComponentTypes.BUTTON,
                             style: 1,
                             label: 'Help Snail',
-                            custom_id: 'help snail'
+                            custom_id: 'help snail',
                         },
                         {
                             type: Constants.ComponentTypes.BUTTON,
                             style: 1,
                             label: 'Ping Command',
-                            custom_id: 'ping'
+                            custom_id: 'ping',
                         },
                         {
                             type: Constants.ComponentTypes.BUTTON,
                             style: 1,
                             label: 'Nick Command',
-                            custom_id: 'nick A very cool nick'
+                            custom_id: 'nick A very cool nick',
                         },
                     ],
                 },
@@ -58,17 +58,17 @@ module.exports = new Command({
                             type: Constants.ComponentTypes.BUTTON,
                             style: 1,
                             label: 'Tags command',
-                            custom_id: 'tags'
+                            custom_id: 'tags',
                         },
                         {
                             type: Constants.ComponentTypes.BUTTON,
                             style: 1,
                             label: 'Markdown Tag',
-                            custom_id: 'tag markdown'
-                        }
+                            custom_id: 'tag markdown',
+                        },
                     ],
                 },
             ],
         });
-    }
+    },
 });
