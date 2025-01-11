@@ -1,8 +1,10 @@
+const query = require('../databases/mysql/mysql.js');
 const CHANNEL_MENTION_REGEX = /^<#(?<id>\d{17,19})>$/;
 const USER_MENTION_REGEX = /^<@!?(?<id>\d{17,19})>$/;
 const SNOWFLAKE_REGEX = /^\d{17,19}$/;
 // prettier-ignore
 const MESSAGE_LINK_REGEX = /^https:\/\/discord\.com\/channels\/(?<guild>\d{17,19})\/(?<channel>\d{17,19})\/(?<message>\d{17,19})$/;
+const cachedUid = {};
 
 exports.parseChannelID = function (arg) {
     if (!arg) return;
@@ -50,3 +52,15 @@ exports.getUniqueUsername = function (user) {
         return `@${user.username}`;
     }
 };
+
+exports.getUid = async function (user) {
+	if (cachedUid[user.id]) {
+		return cachedUid[user.id];
+	}
+	const sql = `SELECT uid FROM user WHERE id = ${user.id};`;
+	const result = await query(sql);
+	if (result[0]) {
+		cachedUid[user.id] = result[0].uid;
+		return result[0].uid;
+	}
+}
