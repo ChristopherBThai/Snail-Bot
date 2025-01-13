@@ -40,7 +40,7 @@ const items = [
     },
 ];
 
-let previousValue = 1;
+let previousCount = 1;
 let previousSelection;
 
 module.exports = new UserInteraction({
@@ -49,7 +49,7 @@ module.exports = new UserInteraction({
     ownerOnly: true,
 
     execute: async function () {
-        let count = previousValue;
+        let count = previousCount;
         let user = this.target;
         const content = getContent(user, count);
 
@@ -73,7 +73,7 @@ module.exports = new UserInteraction({
                             ephemeralInteractionResponse('🚫 **|** Please select an item first!')
                         );
                     } else {
-                        await giveItem(interaction, user, item);
+                        await giveItem(interaction, user, item, count);
                     }
                     return;
                 case cancelId:
