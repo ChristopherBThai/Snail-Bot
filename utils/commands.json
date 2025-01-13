@@ -1,0 +1,9 @@
+[
+    {
+        "type": 2,
+        "name": "Give Item",
+        "dm_permission": true,
+        "integration_types": [0, 1],
+        "contexts": [0, 1, 2]
+    }
+]

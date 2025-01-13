@@ -3,13 +3,13 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-	"scripts": {
-		"lint": "npx eslint .",
-		"lint:fix": "npx eslint --fix",
-		"prettier": "npx prettier --check .",
-		"prettier:fix": "npx prettier --write .",
-		"format": "npm run lint:fix && npm run prettier:fix"
-	},
+  "scripts": {
+    "lint": "npx eslint .",
+    "lint:fix": "npx eslint --fix",
+    "prettier": "npx prettier --check .",
+    "prettier:fix": "npx prettier --write .",
+    "format": "npm run lint:fix && npm run prettier:fix"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ChristopherBThai/Snail-Bot.git"
@@ -21,9 +21,11 @@
   },
   "homepage": "https://github.com/ChristopherBThai/Snail-Bot#readme",
   "dependencies": {
+    "axios": "^1.7.9",
     "bad-words": "^3.0.3",
     "dotenv": "^8.2.0",
-    "eris": "^0.17.1",
+    "eris": "^0.18.0",
+    "eventemitter3": "^5.0.1",
     "got": "^11.8.0",
     "mongoose": "^5.9.24",
     "mysql": "^2.18.1",

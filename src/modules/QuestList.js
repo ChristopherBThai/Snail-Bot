@@ -278,7 +278,7 @@ module.exports = class QuestList extends require('./Module') {
         const {
             type,
             data: { custom_id },
-            member: { id: MEMBER_ID },
+            member: { id: MEMBER_ID } = {},
         } = interaction;
 
         // If not a component interaction, ignore

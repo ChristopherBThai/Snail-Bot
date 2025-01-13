@@ -11,29 +11,26 @@ module.exports = class Supporter extends require('./Module') {
         });
 
         // Defaults
-				this.cachedSupporters = {};
+        this.cachedSupporters = {};
 
         this.addEvent('OwOCommand', this.onOwOCommand);
         this.addEvent('guildMemberAdd', this.onJoin);
     }
 
     async onOwOCommand({ command, message }) {
-      if (!['patreon', 'donate', 'support', 'supporter'].includes(command)) return;
-			this.checkUser(message.author);
+        if (!['patreon', 'donate', 'support', 'supporter'].includes(command)) return;
+        this.checkUser(message.author);
     }
 
     async onJoin(guild, member) {
-			this.checkUser(member.user);
+        this.checkUser(member.user);
     }
 
-		async checkUser(user) {
-			const uid = await getUid(user);
-		}
+    async checkUser(user) {
+        const uid = await getUid(user);
+    }
 
     getConfigurationOverview() {
-        return (
-            `${super.getConfigurationOverview()}\n` +
-            `- Cached Users: ${Object.keys(this.cachedSupporters).length}`
-        );
+        return `${super.getConfigurationOverview()}\n` + `- Cached Users: ${Object.keys(this.cachedSupporters).length}`;
     }
 };

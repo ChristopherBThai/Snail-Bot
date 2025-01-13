@@ -49,6 +49,16 @@ class Client extends require('eris').Client {
             }
         });
 
+        // Custom Interaction
+        this.on('interactionCreate', (interaction) => {
+            interaction.user = interaction.user || interaction.member?.user;
+            switch (interaction?.data?.type) {
+                case 2:
+                    // User Interaction
+                    this.emit('UserInteraction', interaction);
+            }
+        });
+
         // Realtime OwO-Snail websocket
         this.socket = new (require('./src/socket'))(this);
 
