@@ -15,10 +15,17 @@ module.exports = class GivePerkRoles extends require('./Module') {
 
         this.addEvent('guildMemberUpdate', this.guildMemberUpdate);
         this.addEvent('guildMemberAdd', this.guildMemberUpdate);
+        this.addEvent('messageCreate', this.messageCreate);
     }
 
     guildMemberUpdate(guild, member) {
         this.checkPerkRoles(guild, member);
+    }
+
+    messageCreate({ author, channel, member }) {
+        if (author.bot) return; // Ignore if bot,
+
+        this.checkPerkRoles(channel.guild, member);
     }
 
     async checkPerkRoles(guild, member, force = false) {
@@ -38,13 +45,13 @@ module.exports = class GivePerkRoles extends require('./Module') {
                 break;
             case 1:
                 this.addRoleIfNotExist(member, this.bot.config.roles.supporters.base);
-                this.addRoleIfNotExist(member, this.bot.config.roles.supporters.commonSupporter);
-                this.removeRoleIfExist(member, this.bot.config.roles.supporters.uncommonSupporter);
+                this.addRoleIfNotExist(member, this.bot.config.roles.supporters.commonTicketSupporter);
+                this.removeRoleIfExist(member, this.bot.config.roles.supporters.uncommonTicketSupporter);
                 break;
             case 3:
                 this.addRoleIfNotExist(member, this.bot.config.roles.supporters.base);
-                this.removeRoleIfExist(member, this.bot.config.roles.supporters.commonSupporter);
-                this.addRoleIfNotExist(member, this.bot.config.roles.supporters.uncommonSupporter);
+                this.removeRoleIfExist(member, this.bot.config.roles.supporters.commonTicketSupporter);
+                this.addRoleIfNotExist(member, this.bot.config.roles.supporters.uncommonTicketSupporter);
                 break;
             default:
                 console.error(`Unknown benefit rank: ${perk}`);
@@ -64,8 +71,8 @@ module.exports = class GivePerkRoles extends require('./Module') {
         if (!hasRoles(member, higherTiers)) {
             this.removeRoleIfExist(member, this.bot.config.roles.supporters.base);
         }
-        this.removeRoleIfExist(member, this.bot.config.roles.supporters.commonSupporter);
-        this.removeRoleIfExist(member, this.bot.config.roles.supporters.uncommonSupporter);
+        this.removeRoleIfExist(member, this.bot.config.roles.supporters.commonTicketSupporter);
+        this.removeRoleIfExist(member, this.bot.config.roles.supporters.uncommonTicketSupporter);
     }
 
     removeRoleIfExist(member, roleId) {
