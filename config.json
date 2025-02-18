@@ -13,7 +13,18 @@
         "ownerhoist": "1126562739402313798",
         "adminhoist": "1126562522212880555",
         "managerhoist": "1126562353949978635",
-        "helperhoist": "1126562082763059390"
+        "helperhoist": "1126562082763059390",
+        "supporters": {
+            "base": "449430371570810881",
+            "commonSupporter": "463258003995492353",
+            "uncommonSupporter": "463257999184625664",
+            "rareSupporter": "463257996496207892",
+            "epicSupporter": "463257979106623508",
+            "mythicalSupporter": "463257988854185984",
+            "legendarySupporter": "451873626090766376",
+            "legendaryDonator": "614682728125956098",
+            "fabledDonator": "628780125777035297"
+        }
     },
     "users": {
         "owner": ["184587051943985152"]

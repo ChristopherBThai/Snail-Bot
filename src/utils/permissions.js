@@ -5,9 +5,10 @@ if (process.env.DEBUG) {
     configPath = '../../config.json';
 }
 
-const { roles, users } = require(configPath);
+const { roles, users, guild } = require(configPath);
 
 exports.hasRole = (member, role) => member?.roles.includes(role);
+exports.hasRoles = (member, roles) => roles.findIndex((role) => member?.roles.includes(role)) >= 0;
 exports.hasUser = (user, users) => users?.includes(user?.id);
 
 exports.isHelper = (member) => exports.hasRole(member, roles.helper);
@@ -22,3 +23,4 @@ exports.hasManagerPerms = (member) => exports.isManager(member) || exports.isAdm
 exports.hasAdminPerms = (member) => exports.isAdmin(member) || exports.isOwner(member);
 
 exports.isOwnerUser = (user) => exports.hasUser(user, users.owner);
+exports.isOwOGuild = (guildCheck) => guildCheck.id === guild;
