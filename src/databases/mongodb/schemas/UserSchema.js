@@ -8,6 +8,7 @@ const UserSchema = new mongoose.Schema({
         hunt: { enabled: Boolean, default: false },
         battle: { enabled: Boolean, default: false },
     },
+    snailRoles: { type: Boolean, default: false },
 });
 
 module.exports = { name: 'User', schema: UserSchema };

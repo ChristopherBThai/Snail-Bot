@@ -31,48 +31,85 @@ module.exports = class GivePerkRoles extends require('./Module') {
     async checkPerkRoles(guild, member, force = false) {
         if (!isOwOGuild(guild)) return; // Ignore if not OwO bot server
         if (!force && !this.shouldFetchPerk(member)) return;
+        this.cachedUserPerk[member.id] = new Date();
 
-        const perk = await this.fetchPerk(member);
-        this.cachedUserPerk[member.id] = perk;
+        const perks = await this.fetchPerk(member);
 
-        await this.updateRoles(member, perk);
+        const disabled = !!(await this.bot.snail_db.User.findById(member.id, 'snailRoles'))?.snailRoles;
+
+        await this.updateRoles(member, perks, disabled);
     }
 
-    updateRoles(member, perk) {
-        switch (perk.benefitRank) {
+    updateRoles(member, { ticket, discord, patreon }, disabled) {
+        console.log(
+            `${member.id} = ticket:${ticket.benefitRank}, discord:${discord.benefitRank}, patreon:${patreon.benefitRank}, disabled:${disabled}`
+        );
+        if (ticket.benefitRank + discord.benefitRank + patreon.benefitRank > 0) {
+            this.addRoleIfNotExist(member, this.bot.config.roles.supporters.base);
+        } else {
+            this.removeBaseRole(member);
+        }
+
+        // Remove ticket and discord roles (patreon roles are handled by patreon bot)
+        if (disabled) {
+            this.removeRoleIfExist(member, this.bot.config.roles.supporters.commonTicket);
+            this.removeRoleIfExist(member, this.bot.config.roles.supporters.uncommonDiscord);
+            return;
+        }
+
+        switch (ticket.benefitRank) {
             case 0:
-                this.removeRoles(member);
+                this.removeRoleIfExist(member, this.bot.config.roles.supporters.commonTicket);
                 break;
             case 1:
-                this.addRoleIfNotExist(member, this.bot.config.roles.supporters.base);
-                this.addRoleIfNotExist(member, this.bot.config.roles.supporters.commonTicketSupporter);
-                this.removeRoleIfExist(member, this.bot.config.roles.supporters.uncommonTicketSupporter);
+                this.addRoleIfNotExist(member, this.bot.config.roles.supporters.commonTicket);
                 break;
             case 3:
-                this.addRoleIfNotExist(member, this.bot.config.roles.supporters.base);
-                this.removeRoleIfExist(member, this.bot.config.roles.supporters.commonTicketSupporter);
-                this.addRoleIfNotExist(member, this.bot.config.roles.supporters.uncommonTicketSupporter);
+                // Temporary common role
+                this.addRoleIfNotExist(member, this.bot.config.roles.supporters.commonTicket);
                 break;
             default:
-                console.error(`Unknown benefit rank: ${perk}`);
+                console.error(`Unknown ticket rank: ${ticket.benefitRank}`);
+                return;
+        }
+
+        switch (discord.benefitRank) {
+            case 0:
+                this.removeRoleIfExist(member, this.bot.config.roles.supporters.uncommonDiscord);
+                break;
+            case 3:
+                this.addRoleIfNotExist(member, this.bot.config.roles.supporters.uncommonDiscord);
+                break;
+            default:
+                console.error(`Unknown discord rank: ${discord.benefitRank}`);
+                return;
+        }
+
+        switch (patreon.benefitRank) {
+            case 0:
+                this.removeRoleIfExist(member, this.bot.config.roles.supporters.commonPatreon);
+                this.removeRoleIfExist(member, this.bot.config.roles.supporters.uncommonPatreon);
+                break;
+            case 1:
+                /* no-op */
+                break;
+            case 3:
+                /* no-op */
+                break;
+            default:
+                console.error(`Unknown patreon rank: ${patreon.benefitRank}`);
                 return;
         }
     }
 
-    removeRoles(member) {
+    removeBaseRole(member) {
         const higherTiers = [
-            this.bot.config.roles.supporters.rareSupporter,
-            this.bot.config.roles.supporters.epicSupporter,
-            this.bot.config.roles.supporters.mythicalSupporter,
-            this.bot.config.roles.supporters.legendarySupporter,
             this.bot.config.roles.supporters.legendaryDonator,
             this.bot.config.roles.supporters.fabledDonator,
         ];
         if (!hasRoles(member, higherTiers)) {
             this.removeRoleIfExist(member, this.bot.config.roles.supporters.base);
         }
-        this.removeRoleIfExist(member, this.bot.config.roles.supporters.commonTicketSupporter);
-        this.removeRoleIfExist(member, this.bot.config.roles.supporters.uncommonTicketSupporter);
     }
 
     removeRoleIfExist(member, roleId) {
@@ -91,16 +128,11 @@ module.exports = class GivePerkRoles extends require('./Module') {
 
     shouldFetchPerk(member) {
         if (!this.cachedUserPerk[member.id]) return true;
-        const perk = this.cachedUserPerk[member.id];
 
-        const diff = new Date() - this.cachedUserPerk[member.id].updatedOn;
+        const diff = new Date() - this.cachedUserPerk[member.id];
         // Refresh if its past a day
         if (diff >= 1000 * 60 * 60 * 24) {
             delete this.cachedUserPerk[member.id];
-            return true;
-        }
-
-        if (perk.endTime && perk.endTime < new Date()) {
             return true;
         }
 
@@ -108,14 +140,25 @@ module.exports = class GivePerkRoles extends require('./Module') {
     }
 
     async fetchPerk(member) {
-        const perk = {
+        const ticket = {
             endTime: null,
             benefitRank: 0,
             updatedOn: new Date(),
         };
+        const discord = {
+            endTime: null,
+            benefitRank: 0,
+            updatedOn: new Date(),
+        };
+        const patreon = {
+            endTime: null,
+            benefitRank: 0,
+            updatedOn: new Date(),
+        };
+        const perks = { ticket, discord, patreon };
 
         const uid = await getUid(member);
-        if (!uid) return perk;
+        if (!uid) return perks;
 
         const sql = `
 				SELECT * FROM patreons WHERE uid = ${uid};
@@ -128,13 +171,13 @@ module.exports = class GivePerkRoles extends require('./Module') {
             const benefitRank = result[0][0].patreonType;
             const startTime = new Date(result[0][0].patreonTimer);
             const endTime = new Date(startTime.setMonth(startTime.getMonth() + result[0][0].patreonMonths));
-            this.getBetterPerk(perk, benefitRank, endTime);
+            this.getBetterPerk(ticket, benefitRank, endTime);
         }
         if (result[1].length) {
             result[1].forEach((row) => {
                 const benefitRank = row.patreonType;
                 const endTime = new Date(row.endDate);
-                this.getBetterPerk(perk, benefitRank, endTime);
+                this.getBetterPerk(patreon, benefitRank, endTime);
             });
         }
         if (result[2][0]) {
@@ -144,10 +187,10 @@ module.exports = class GivePerkRoles extends require('./Module') {
                 endTime = new Date();
                 endTime = new Date(endTime.setMonth(endTime.getMonth() + 1));
             }
-            this.getBetterPerk(perk, benefitRank, endTime);
+            this.getBetterPerk(discord, benefitRank, endTime);
         }
 
-        return perk;
+        return perks;
     }
 
     getBetterPerk(perk, benefitRank, endTime) {
