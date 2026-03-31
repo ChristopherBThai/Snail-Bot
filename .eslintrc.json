@@ -5,7 +5,16 @@
         "es2021": true
     },
     "extends": ["eslint:recommended", "prettier"],
-    "overrides": [],
+    "overrides": [
+        {
+            "files": ["**/*.spec.js"],
+            "globals": {
+                "describe": "readonly",
+                "test": "readonly",
+                "expect": "readonly"
+            }
+        }
+    ],
     "parserOptions": {
         "ecmaVersion": "latest"
     },
