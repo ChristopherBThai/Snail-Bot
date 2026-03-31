@@ -103,7 +103,7 @@ function parseMessageLink(string) {
 function parseQuoted(args, delimiter='"') {
     const FIRST = args[0];
 
-    if (!FIRST || !FIRST.startsWith(delimiter)) return [undefined, args];
+    if (!FIRST || !FIRST.startsWith(delimiter)) return [null, args];
 
     const LAST_INDEX = args.findIndex((arg, index) => {
         if (!arg.endsWith(delimiter)) return false;
@@ -111,7 +111,7 @@ function parseQuoted(args, delimiter='"') {
         return true;
     });
 
-    if (LAST_INDEX == -1) return [undefined, args];
+    if (LAST_INDEX == -1) return [null, args];
 
     return [args.slice(0, LAST_INDEX + 1).join(' ').slice(delimiter.length, -delimiter.length), args.slice(LAST_INDEX + 1)];
 }
