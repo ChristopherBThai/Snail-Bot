@@ -76,8 +76,7 @@ async function displayCommand(ctx) {
     if (command.examples?.length) {
         description += `### Example Usage\n`;
         for (const example of command.examples) {
-            // TODO: Change based on command handler prefix?
-            description += `- snail ${example}\n`;
+            description += `- ${ctx.bot.commandHandler.prefix} ${example}\n`;
         }
         description += '\n';
     }
