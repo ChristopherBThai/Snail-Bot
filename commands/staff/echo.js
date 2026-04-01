@@ -77,32 +77,40 @@ module.exports = new Command({
 
 // TODO: Confirmation message with buttons?
 async function echoMessage(ctx, target, { channelID, messageID }, threadName) {
-    const message = ctx.args.join(' ');
-    const attachments = await Promise.all(ctx.message.attachments.map(async a => { return { file: await downloadURL(a.url), name: a.filename }; }));
-    if (!message && !attachments.length) return ctx.error('please provide some content to echo!');
+    const CONTENT = ctx.args.join(' ');
+    const ATTACHMENTS = await Promise.all(ctx.message.attachments.map(async a => { return { file: await downloadURL(a.url), name: a.filename }; }));
+    if (!CONTENT && !ATTACHMENTS.length) return ctx.error('please provide some content to echo!');
 
-    // TODO: Parse json for embeds/components
+    let message = {};
+    try {
+        message = JSON.parse(CONTENT);
+    } catch {
+        message.content = CONTENT;
+    }
+
+    let echoTargetLink;
 
     switch (target) {
         case TARGETS.CHANNEL: {
-            await ctx.bot.createMessage(channelID, message, attachments);
+            const MESSAGE = await ctx.bot.createMessage(channelID, message, ATTACHMENTS);
+            echoTargetLink = MESSAGE.jumpLink;
             break;
         }
         case TARGETS.CHANNEL_THREAD: {
             const THREAD = await ctx.bot.createThread(channelID, {name: threadName});
-            await THREAD.createMessage(message, attachments);
-            channelID = THREAD.id;
+            const MESSAGE = await THREAD.createMessage(message, ATTACHMENTS);
+            echoTargetLink = MESSAGE.jumpLink;
             break;
         }
         case TARGETS.FORUM_THREAD: {
-            const THREAD = await ctx.bot.createThread(channelID, {name: threadName, message: {content: message}}, attachments);            
-            channelID = THREAD.id;
+            const THREAD = await ctx.bot.createThread(channelID, {name: threadName, message}, ATTACHMENTS);            
+            echoTargetLink = `<#${THREAD.id}>`;
             break;
         }
         case TARGETS.MESSAGE_THREAD: {
             const THREAD = await ctx.bot.createThreadWithMessage(channelID, messageID, {name: threadName});
-            await THREAD.createMessage(message, attachments);
-            channelID = THREAD.id;
+            await THREAD.createMessage(message, ATTACHMENTS);
+            echoTargetLink = `<#${THREAD.id}>`;
             break;
         }
         default: {
@@ -111,5 +119,5 @@ async function echoMessage(ctx, target, { channelID, messageID }, threadName) {
         }
     }
 
-    ctx.send(`I have echoed your message in <#${channelID}>!`);
+    ctx.send(`I have echoed your message in ${echoTargetLink}!`);
 }
