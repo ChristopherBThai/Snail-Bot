@@ -94,33 +94,38 @@ async function echoMessage(ctx, target, { channelID, messageID }, threadName) {
 
     let echoTargetLink;
 
-    switch (target) {
-        case TARGETS.CHANNEL: {
-            const MESSAGE = await ctx.bot.createMessage(channelID, message, ATTACHMENTS);
-            echoTargetLink = MESSAGE.jumpLink;
-            break;
+    try {
+        switch (target) {
+            case TARGETS.CHANNEL: {
+                const MESSAGE = await ctx.bot.createMessage(channelID, message, ATTACHMENTS);
+                echoTargetLink = MESSAGE.jumpLink;
+                break;
+            }
+            case TARGETS.CHANNEL_THREAD: {
+                const THREAD = await ctx.bot.createThread(channelID, {name: threadName});
+                const MESSAGE = await THREAD.createMessage(message, ATTACHMENTS);
+                echoTargetLink = MESSAGE.jumpLink;
+                break;
+            }
+            case TARGETS.FORUM_THREAD: {
+                const THREAD = await ctx.bot.createThread(channelID, {name: threadName, message}, ATTACHMENTS);            
+                echoTargetLink = `<#${THREAD.id}>`;
+                break;
+            }
+            case TARGETS.MESSAGE_THREAD: {
+                const THREAD = await ctx.bot.createThreadWithMessage(channelID, messageID, {name: threadName});
+                await THREAD.createMessage(message, ATTACHMENTS);
+                echoTargetLink = `<#${THREAD.id}>`;
+                break;
+            }
+            default: {
+                ctx.error(`this code should be unreachable. Echo target=${target} found.`);
+                return;
+            }
         }
-        case TARGETS.CHANNEL_THREAD: {
-            const THREAD = await ctx.bot.createThread(channelID, {name: threadName});
-            const MESSAGE = await THREAD.createMessage(message, ATTACHMENTS);
-            echoTargetLink = MESSAGE.jumpLink;
-            break;
-        }
-        case TARGETS.FORUM_THREAD: {
-            const THREAD = await ctx.bot.createThread(channelID, {name: threadName, message}, ATTACHMENTS);            
-            echoTargetLink = `<#${THREAD.id}>`;
-            break;
-        }
-        case TARGETS.MESSAGE_THREAD: {
-            const THREAD = await ctx.bot.createThreadWithMessage(channelID, messageID, {name: threadName});
-            await THREAD.createMessage(message, ATTACHMENTS);
-            echoTargetLink = `<#${THREAD.id}>`;
-            break;
-        }
-        default: {
-            ctx.error(`This code should be unreachable. Echo target=${target} found.`);
-            return;
-        }
+    } catch {
+        ctx.error('there was an error sending that message. Did you forget an embed field?');
+        return;
     }
 
     ctx.send(`I have echoed your message in ${echoTargetLink}!`);
