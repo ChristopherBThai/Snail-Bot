@@ -24,6 +24,11 @@
         "linebreak-style": ["error", "unix"],
         "quotes": ["error", "single", { "avoidEscape": true, "allowTemplateLiterals": true }],
         "semi": ["error", "always"],
-        "no-empty": ["error", { "allowEmptyCatch": true }]
+        "no-empty": ["error", { "allowEmptyCatch": true }],
+        "no-unused-vars": [
+            "error", {
+                "argsIgnorePattern": "^_"
+            }
+        ]
     }
 }
