@@ -123,8 +123,8 @@ async function echoMessage(ctx, target, { channelID, messageID }, threadName) {
                 return;
             }
         }
-    } catch {
-        ctx.error('there was an error sending that message. Did you forget an embed field?');
+    } catch (error) {
+        ctx.error(`there was an error sending that message. Did you forget an embed field? (${error})`);
         return;
     }
 
