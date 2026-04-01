@@ -13,6 +13,10 @@ module.exports = new Command({
     auth: hasManagerPerms,
     usage: 'snail echo {channel | message link} ["thread name"] {message | json}',
     description: 'Echo a message into a channel! You can even echo a message with an embed by copying the json data for a message from this [website](https://glitchii.github.io/embedbuilder/)',
+    examples: [
+        'echo <#420111691507040266> OwO is currently offline, thank you for your patience as we resolve the issue!',
+        'echo <#1275170010511179826> "Best suggestion ever!" Add gem dust 🥺🥺'
+    ],
     execute: async function (ctx) {
         const TARGET_RAW = ctx.args.shift();
         if (!TARGET_RAW) return ctx.error('please provide a target to echo to!');
