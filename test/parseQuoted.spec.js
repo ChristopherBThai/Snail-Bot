@@ -3,7 +3,7 @@ const { parseQuoted } = require('../util');
 // TODO Tests for other functions in util file
 // One file per function?
 
-describe('Parse Quoted', () => {
+describe('parseQuoted', () => {
 
     test('Empty args', () => {
         expect(parseQuoted([])).toEqual([undefined, []]);

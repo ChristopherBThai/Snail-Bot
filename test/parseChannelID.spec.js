@@ -3,7 +3,7 @@ const { parseChannelID } = require('../util');
 // TODO Tests for other functions in util file
 // One file per function?
 
-describe('Parse Channel ID', () => {
+describe('parseChannelID', () => {
 
     describe('Normal cases', () => {
         test.each([

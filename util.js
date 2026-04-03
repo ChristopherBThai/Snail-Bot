@@ -58,6 +58,8 @@ const CHANNEL_MENTION = /^<#(?<id>\d{17,19})>$/;
 const USER_MENTION = /^<@!?(?<id>\d{17,19})>$/;
 const MESSAGE_LINK = /^https:\/\/discord\.com\/channels\/(?<guildID>\d{17,19})\/(?<channelID>\d{17,19})\/(?<messageID>\d{17,19})$/;
 
+// TODO: For all of these I need to verify that the argument passed is exists/is not undefined (and is a string?)
+
 /**
  * @param {string} string 
  * @returns {string | undefined}
