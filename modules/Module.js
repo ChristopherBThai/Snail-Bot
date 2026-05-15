@@ -30,6 +30,7 @@ module.exports = class Module {
         this._logsIndex = 0;
         this._logsSize = 0;
 
+        this._bot.modules[this._id] = this;
         this._bot.once('ready', this._onceReady.bind(this));
     }
 
@@ -76,5 +77,33 @@ module.exports = class Module {
         if (!this._toggleable) return;
         await this._bot.setConfig(`${this._id}_enabled`, false);
         this._enabled = false;
+    }
+
+    get id() {
+        return this._id;
+    }
+
+    get name() {
+        return this._name;
+    }
+
+    get description() {
+        return this._description;
+    }
+
+    get enabled() {
+        return this._enabled;
+    }
+
+    get toggleable() {
+        return this._toggleable;
+    }
+
+    get logsSize() {
+        return this._logsSize;
+    }
+
+    get logsLimit() {
+        return this._logsLimit;
     }
 };

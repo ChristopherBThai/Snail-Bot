@@ -5,6 +5,8 @@ class Snail extends require('eris').Client {
     constructor(token, options) {
         super(token, options);
         this.config = CONFIG;
+        /** @type {Object<string, import('./modules/Module')>} */
+        this.modules = {};
 
         // Lifecycle events
         this.on('error', (err, id) => { console.error(`[${id}] ${err}`); });
@@ -48,6 +50,8 @@ class Snail extends require('eris').Client {
 
         // Modules
         this.commandHandler = new (require('./modules/CommandHandler'))(this);
+        this.logger = new (require('./modules/Logger'))(this);
+        this.banBotBannedUsers = new (require('./modules/BanBotBannedUsers'))(this);
     }
 
     async getConfig(_id) {
