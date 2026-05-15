@@ -2,15 +2,13 @@ const Command = require('../commands/Command');
 const { flattenRequireDir, getName, isStaff } = require('../util');
 const requireDir = require('require-dir');
 
-const DISABLED_WARNING_TIMEOUT = 30_000;
-
 module.exports = class CommandHandler extends require('./Module') {
     /** @type {Object<string, import('../commands/Command')>} */
     commands = {};
     /** @type {Object<string, [import('../commands/Command')]>} */
     commandGroups = {};
-    /** @type {Object<string, boolean>} */
-    _disabled = {};
+    /** @type {Object<string, Set<string>>} */
+    _disabledCommands = {};
     /** @type {Object<string, {lastUsed: number, warned: boolean}>} */
     _cooldown = {};
     /** @type {[string]} */
@@ -91,17 +89,8 @@ module.exports = class CommandHandler extends require('./Module') {
 
         // Check if the command is disabled in the current channel
         const key = `${message.author.id}_${commandName}`;
-        const disabledCommands = (await this._bot.mongo.Channel.findById(message.channel.id))?.disabledCommands; // TODO: Cache?
-        if (disabledCommands?.includes(commandName)) {
-            if (!this._disabled[key]) {
-                this._disabled[key] = true;
-                const ERROR_MESSAGE = await message.channel.createMessage(`🚫 **| ${getName(message.author)}**, that command has been disabled in this channel!`);
-                setTimeout(async () => { 
-                    await ERROR_MESSAGE.delete();
-                    delete this._disabled[key];
-                }, DISABLED_WARNING_TIMEOUT);
-            }
-            
+        const disabledCommands = await this.getDisabledCommands([message.channel.id]);
+        if (disabledCommands[message.channel.id].has(commandName)) {
             this.log(`Disabled | user=${message.author.id} channel=${message.channel.id} command=${commandName}`);
             return;
         }
@@ -172,6 +161,53 @@ module.exports = class CommandHandler extends require('./Module') {
     async applyAndSaveCustomPrefix(prefix) {
         this._applyCustomPrefix(prefix);
         await this._bot.setConfig(`${this._id}_prefix`, prefix);
+    }
+
+    async getDisabledCommands(channelIDs) {
+        const missingChannelIDs = channelIDs.filter(channelID => !this._disabledCommands[channelID]);
+
+        if (missingChannelIDs.length) {
+            const channels = await this._bot.mongo.Channel.find({ _id: { $in: missingChannelIDs } });
+            for (const channel of channels) {
+                this._disabledCommands[channel.id] = new Set(channel.disabledCommands ?? []);
+            }
+
+            for (const channelID of missingChannelIDs) {
+                if (!this._disabledCommands[channelID]) this._disabledCommands[channelID] = new Set();
+            }
+        }
+
+        return Object.fromEntries(channelIDs.map(channelID => [channelID, this._disabledCommands[channelID]]));
+    }
+
+    async enableCommands(channelIDs, commands) {
+        const disabledCommandsByChannel = await this.getDisabledCommands(channelIDs);
+
+        for (const channelID of channelIDs) {
+            const disabledCommands = disabledCommandsByChannel[channelID];
+            for (const command of commands) disabledCommands.delete(command);
+
+            await this._bot.mongo.Channel.updateOne(
+                { _id: channelID },
+                { $pull: { disabledCommands: { $in: commands } } },
+                { upsert: true }
+            );
+        }
+    }
+
+    async disableCommands(channelIDs, commands) {
+        const disabledCommandsByChannel = await this.getDisabledCommands(channelIDs);
+
+        for (const channelID of channelIDs) {
+            const disabledCommands = disabledCommandsByChannel[channelID];
+            for (const command of commands) disabledCommands.add(command);
+
+            await this._bot.mongo.Channel.updateOne(
+                { _id: channelID },
+                { $addToSet: { disabledCommands: { $each: commands } } },
+                { upsert: true }
+            );
+        }
     }
 
     get prefix() {
