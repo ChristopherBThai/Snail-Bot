@@ -15,6 +15,8 @@ module.exports = class CommandHandler extends require('./Module') {
     _cooldown = {};
     /** @type {[string]} */
     _prefixes = [];
+    /** @type {string | undefined} */
+    _customPrefix;
 
     constructor(bot) {
         super(bot, {
@@ -30,7 +32,7 @@ module.exports = class CommandHandler extends require('./Module') {
 
     async _onceReady() {
         await super._onceReady();
-        this.updatePrefix(await this._bot.getConfig(`${this._id}_prefix`));
+        this._applyCustomPrefix(await this._bot.getConfig(`${this._id}_prefix`));
     }
 
     _loadCommands() {
@@ -162,13 +164,17 @@ module.exports = class CommandHandler extends require('./Module') {
         await command.execute(ctx);
     }
 
-    async updatePrefix(prefix) {
-        await this._bot.setConfig(`${this._id}_prefix`, prefix);
+    _applyCustomPrefix(prefix) {
+        this._customPrefix = prefix;
         this._prefixes = [prefix, ...this._bot.config.prefixes].filter(Boolean);
     }
 
-    // TODO: I think this is wrong. Needs to return custom prefix
+    async applyAndSaveCustomPrefix(prefix) {
+        this._applyCustomPrefix(prefix);
+        await this._bot.setConfig(`${this._id}_prefix`, prefix);
+    }
+
     get prefix() {
-        return this._bot.config.prefixes[0];
+        return this._customPrefix;
     }
 };

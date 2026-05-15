@@ -76,14 +76,14 @@ async function displayCommand(ctx) {
     if (command.examples?.length) {
         description += `### Example Usage\n`;
         for (const example of command.examples) {
-            description += `- ${ctx.bot.commandHandler.prefix} ${example}\n`;
+            description += `- ${ctx.bot.config.prefixes[0]} ${example}\n`;
         }
         description += '\n';
     }
 
     const embed = {
         author: {
-            name: `${ctx.bot.commandHandler.prefix} ${command.usage ?? command.name}`,
+            name: `${ctx.bot.config.prefixes[0]} ${command.usage ?? command.name}`,
             icon_url: ctx.message.member.avatarURL
         },
         description,
