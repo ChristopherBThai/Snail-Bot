@@ -20,7 +20,7 @@ module.exports = new Command({
         }
 
         // Note: If a staff member is shown as online and is promoted, then
-        // snail afk won't work properly. I haven't recieved reports of this
+        // `snail afk` won't work properly. I haven't recieved reports of this
         // happening, but I could fix it by adding an event listner for role
         // changes to remove hoist roles if permission roles are ever removed. 
         if (MEMBER.roles.includes(role)) {

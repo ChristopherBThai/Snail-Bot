@@ -24,7 +24,7 @@ async function displayCommands(ctx) {
             name: 'Command List',
             icon_url: MEMBER.avatarURL
         },
-        description: `Here is the list of my commands!\nFor more info on a specific command, use \`snail help {command}\`!`,
+        description: `Here is the list of my commands!\nFor more info on a specific command, use \`${ctx.bot.config.prefixes[0]} help {command}\`!`,
         fields: [],
         timestamp: new Date(),
         color: ctx.bot.config.colors.embed

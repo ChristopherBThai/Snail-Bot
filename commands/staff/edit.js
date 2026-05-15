@@ -6,8 +6,8 @@ module.exports = new Command({
     group: 'Staff',
     auth: hasManagerPerms,
     usage: 'edit {message link} {message | json}',
-    description: 'Edit **any** message snail has sent! You can even edit a message to have an embed by copying the json data for a message from this [website](https://glitchii.github.io/embedbuilder/)',
-    examples: ['edit https://discord.com/channels/420104212895105044/542629170157715456/1131855197656854559 All hail our ruler lord snail!! 🐌'],
+    description: 'Edit **any** message Snail has sent! You can even edit a message to have an embed by copying the json data for a message from this [website](https://glitchii.github.io/embedbuilder/)',
+    examples: ['edit https://discord.com/channels/420104212895105044/542629170157715456/1131855197656854559 All hail our ruler lord Snail!! 🐌'],
     execute: async function (ctx) {
         const MESSAGE_LINK_RAW = ctx.args.shift();
         if (!MESSAGE_LINK_RAW) return ctx.error('please provide a message to edit!');
