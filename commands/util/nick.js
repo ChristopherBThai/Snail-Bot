@@ -5,7 +5,7 @@ module.exports = new Command({
     aliases: ['nick'],
     group: 'Util',
     auth: hasManagerPerms,
-    usage: 'nick {reset|nick}',
+    usage: 'nick {reset | nick}',
     description: 'Set my nickname!',
     execute: async function (ctx) {
         let nick = ctx.args.join(' ');
