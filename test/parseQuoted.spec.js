@@ -1,10 +1,6 @@
 const { parseQuoted } = require('../util');
 
-// TODO Tests for other functions in util file
-// One file per function?
-
 describe('parseQuoted', () => {
-
     test('Empty args', () => {
         expect(parseQuoted([])).toEqual([undefined, []]);
     });
@@ -17,13 +13,13 @@ describe('parseQuoted', () => {
             [
                 'Many words',
                 ['"Hello', 'world', 'but', 'longer', 'and', 'has', 'words', 'after"', 'after'],
-                ['Hello world but longer and has words after', ['after']]
+                ['Hello world but longer and has words after', ['after']],
             ],
             ['Consumes all args', ['"Hello', 'world!"'], ['Hello world!', []]],
             [
                 'Leaves multiple args',
                 ['"Hello,', 'world!"', 'after', 'next', 'last'],
-                ['Hello, world!', ['after', 'next', 'last']]
+                ['Hello, world!', ['after', 'next', 'last']],
             ],
         ])('%s', (_, input, expected) => {
             expect(parseQuoted(input)).toEqual(expected);
@@ -33,7 +29,7 @@ describe('parseQuoted', () => {
     describe('Custom delimiter', () => {
         test.each([
             ['Basic custom delimiter', ['#Hello', 'world!#', 'after'], ['Hello world!', ['after']], '#'],
-            ['Multicharacter custom delimiter', ['###Hello', 'world!###', 'after'], ['Hello world!', ['after']], '###']
+            ['Multicharacter custom delimiter', ['###Hello', 'world!###', 'after'], ['Hello world!', ['after']], '###'],
         ])('%s', (_, input, expected, delim) => {
             expect(parseQuoted(input, delim)).toEqual(expected);
         });
@@ -60,5 +56,4 @@ describe('parseQuoted', () => {
     });
 
     // TODO: Support escaped quotes
-
 });

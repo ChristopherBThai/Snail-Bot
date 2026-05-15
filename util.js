@@ -55,44 +55,46 @@ function getUniqueName(user) {
 /** Argument parsers */
 const SNOWFLAKE = /^\d{17,19}$/;
 const CHANNEL_MENTION = /^<#(?<id>\d{17,19})>$/;
+const CHANNEL_LINK = /^https:\/\/(?:ptb\.|canary\.)?discord\.com\/channels\/\d{17,19}\/(?<id>\d{17,19})$/;
 const USER_MENTION = /^<@!?(?<id>\d{17,19})>$/;
-const MESSAGE_LINK = /^https:\/\/discord\.com\/channels\/(?<guildID>\d{17,19})\/(?<channelID>\d{17,19})\/(?<messageID>\d{17,19})$/;
-
-// TODO: For all of these I need to verify that the argument passed is exists/is not undefined (and is a string?)
+const MESSAGE_LINK = /^https:\/\/(?:ptb\.|canary\.)?discord\.com\/channels\/(?<guildID>\d{17,19})\/(?<channelID>\d{17,19})\/(?<messageID>\d{17,19})$/;
 
 /**
- * @param {string} string 
+ * @param {unknown} string 
  * @returns {string | undefined}
  */
 function parseSnowflake(string) {
+    if (typeof string !== 'string') return undefined;
     return string.match(SNOWFLAKE)?.[0];
 }
 
 /**
- * @param {string} string 
+ * @param {unknown} string 
  * @returns {string | undefined}
  */
 function parseChannelID(string) {
-    const MENTION = string.match(CHANNEL_MENTION)?.groups?.id;
-    if (MENTION) return MENTION;
-    else return parseSnowflake(string);
+    if (typeof string !== 'string') return undefined;
+    return string.match(CHANNEL_MENTION)?.groups?.id
+        ?? string.match(CHANNEL_LINK)?.groups?.id
+        ?? parseSnowflake(string);
 }
 
 /**
- * @param {string} string 
+ * @param {unknown} string 
  * @returns {string | undefined}
  */
 function parseUserID(string) {
-    const MENTION = string.match(USER_MENTION)?.groups?.id;
-    if (MENTION) return MENTION;
-    else return parseSnowflake(string);
+    if (typeof string !== 'string') return undefined;
+    return string.match(USER_MENTION)?.groups?.id
+        ?? parseSnowflake(string);
 }
 
 /**
- * @param {string} string 
+ * @param {unknown} string 
  * @returns {{guildID: string, channelID: string, messageID: string} | undefined}
  */
 function parseMessageLink(string) {
+    if (typeof string !== 'string') return undefined;
     return string.match(MESSAGE_LINK)?.groups;
 }
 
@@ -105,7 +107,7 @@ function parseMessageLink(string) {
 function parseQuoted(args, delimiter='"') {
     const FIRST = args[0];
 
-    if (!FIRST || !FIRST.startsWith(delimiter)) return [null, args];
+    if (!FIRST || !FIRST.startsWith(delimiter)) return [undefined, args];
 
     const LAST_INDEX = args.findIndex((arg, index) => {
         if (!arg.endsWith(delimiter)) return false;
@@ -113,7 +115,7 @@ function parseQuoted(args, delimiter='"') {
         return true;
     });
 
-    if (LAST_INDEX == -1) return [null, args];
+    if (LAST_INDEX == -1) return [undefined, args];
 
     return [args.slice(0, LAST_INDEX + 1).join(' ').slice(delimiter.length, -delimiter.length), args.slice(LAST_INDEX + 1)];
 }
