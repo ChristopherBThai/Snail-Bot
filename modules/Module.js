@@ -1,6 +1,18 @@
 const DEFAULT_LOGS_LIMIT = 50_000;
 
 module.exports = class Module {
+    static LogLevels = Object.freeze({
+        TRACE: 'trace',
+        DEBUG: 'debug',
+        INFO: 'info',
+        WARN: 'warn',
+        ERROR: 'error'
+    });
+
+    static LogTypes = Object.freeze({
+        MESSAGE: 'module.message'
+    });
+
     /**
      * @param {import("../index")} bot
      * @param {object} args
@@ -49,20 +61,39 @@ module.exports = class Module {
         if (this._toggleable) this._enabled = (await this._bot.getConfig(`${this._id}_enabled`)) ?? false;
     }
 
-    /** Create a log under this module */
-    log(log) {
+    /** Create a structured log under this module */
+    log(entry) {
+        if (typeof entry == 'string') {
+            entry = {
+                type: 'module.message',
+                data: { message: entry }
+            };
+        }
+
+        const { level, type, data } = entry;
+        const log = {
+            time: new Date().toISOString(),
+            module: this._id,
+            level: level ?? this.LogLevels.INFO,
+            type: type ?? 'module.message',
+            data: data ?? {}
+        };
+
         this._logs[this._logsIndex] = log;
         this._logsIndex = (this._logsIndex + 1) % this._logsLimit;
         if (this._logsSize < this._logsLimit) this._logsSize++;
     }
 
-    /** Generator function for iterating over logs */
-    *logs() {
+    /** Get a snapshot of the current logs */
+    getLogs() {
         const start = this._logsSize == this._logsLimit ? this._logsIndex : 0;
+        const logs = [];
 
         for (let i = 0; i < this._logsSize; i++) {
-            yield this._logs[(start + i) % this._logsLimit];
+            logs.push(this._logs[(start + i) % this._logsLimit]);
         }
+
+        return logs;
     }
 
     /** Override if module needs to gracefully enable something */
@@ -105,5 +136,13 @@ module.exports = class Module {
 
     get logsLimit() {
         return this._logsLimit;
+    }
+
+    get LogLevels() {
+        return this.constructor.LogLevels;
+    }
+
+    get LogTypes() {
+        return this.constructor.LogTypes;
     }
 };
