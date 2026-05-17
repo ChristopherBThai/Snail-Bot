@@ -28,7 +28,7 @@ module.exports = new Command({
             return await displayEnabledCommands(ctx, channels);
         }
 
-        await toggleCommands(ctx, channels, commands);
+        await toggleCommands(ctx, channels, commands, this.aliases);
     },
 });
 
@@ -36,7 +36,7 @@ function getAllCommandNames(ctx) {
     return [...new Set(Object.values(ctx.bot.commandHandler.commands).map(command => command.name))];
 }
 
-async function toggleCommands(ctx, channels, commands) {
+async function toggleCommands(ctx, channels, commands, aliases) {
     // Remove non-command args and normalize casing
     commands = commands
         .map(command => command.toLowerCase())
@@ -48,7 +48,7 @@ async function toggleCommands(ctx, channels, commands) {
         : commands.map(command => ctx.bot.commandHandler.commands[command].name);
 
     // Remove duplicate commands and prevent disabling this command
-    commands = [...new Set(commands)].filter(command => !this.aliases.includes(command));
+    commands = [...new Set(commands)].filter(command => !aliases.includes(command));
 
     if (!commands.length) return await ctx.error('please list at least one valid command!');
 
