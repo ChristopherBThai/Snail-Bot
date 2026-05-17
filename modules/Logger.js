@@ -1,4 +1,6 @@
-module.exports = class Logger extends require('./Module') {
+const Module = require('./Module');
+
+module.exports = class Logger extends Module {
     constructor(bot) {
         super(bot, {
             id: 'logger',

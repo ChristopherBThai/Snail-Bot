@@ -1,7 +1,8 @@
 // const { getUniqueUsername } = require('../util');
-const PERMANENT_BAN_THRESHOLD = 99999;
+const Module = require('./Module');
+const PERMANENT_BAN_THRESHOLD = 99999; // TODO: Configurable
 
-module.exports = class BanBotBannedUsers extends require('./Module') {
+module.exports = class BanBotBannedUsers extends Module {
     constructor(bot) {
         super(bot, {
             id: 'bot_ban_firewall',
