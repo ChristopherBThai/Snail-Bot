@@ -161,6 +161,20 @@ module.exports = class Module {
         return logs;
     }
 
+    /** Get a JSON-serializable snapshot of the module's current state */
+    state() {
+        return {
+            id: this._id,
+            name: this._name,
+            description: this._description,
+            toggleable: this._toggleable,
+            enabled: this._enabled,
+            logLevel: this._logLevel,
+            logsLimit: this._logsLimit,
+            logsSize: this._logsSize
+        };
+    }
+
     /** Override if module needs to gracefully enable something */
     async enable() {
         if (!this._toggleable) return;

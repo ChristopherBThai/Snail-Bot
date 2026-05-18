@@ -5,12 +5,13 @@ module.exports = new Command({
     aliases: ['module', 'modules'],
     group: 'Staff',
     auth: hasManagerPerms,
-    usage: '[module|modules] {moduleID} [enable|disable|logs|loglevel] {level}',
+    usage: '[module|modules] {moduleID} [enable|disable|logs|state|loglevel] {level}',
     description: 'View and manage Snail\'s modules.',
     examples: [
         'modules',
         'module command_handler',
         'module command_handler logs',
+        'module command_handler state',
         'module command_handler loglevel debug',
         'module logger enable',
         'module logger disable',
@@ -35,6 +36,9 @@ module.exports = new Command({
             }
             case 'logs': {
                 return await exportLogs(ctx, module);
+            }
+            case 'state': {
+                return await exportState(ctx, module);
             }
             case 'loglevel': {
                 return await updateLogLevel(ctx, module, value);
@@ -146,6 +150,21 @@ async function exportLogs(ctx, module) {
     };
 
     await ctx.send(`Exported \`${module.id}\` logs (${logs.length.toLocaleString()}).`, file);
+}
+
+/**
+ * @param {import('../Command').Context} ctx
+ * @param {import('../../modules/Module')} module
+ */
+async function exportState(ctx, module) {
+    const exportedAt = new Date().toISOString();
+    const content = JSON.stringify(module.state(), null, 2);
+    const file = {
+        file: Buffer.from(content),
+        name: `${module.id}-state-${exportedAt.replace(/[:.]/g, '-')}.json`
+    };
+
+    await ctx.send(`Exported \`${module.id}\` state.`, file);
 }
 
 /**
