@@ -1,8 +1,21 @@
 const Command = require('../commands/Command');
+const Module = require('./Module');
 const { flattenRequireDir, getName, isStaff } = require('../util');
 const requireDir = require('require-dir');
 
-module.exports = class CommandHandler extends require('./Module') {
+module.exports = class CommandHandler extends Module {
+    static LogTypes = Object.freeze({
+        ...Module.LogTypes,
+        COMMAND_NO_PREFIX: 'command.no_prefix',
+        COMMAND_NO_COMMAND: 'command.no_command',
+        COMMAND_UNKNOWN: 'command.unknown',
+        COMMAND_UNAUTHORIZED: 'command.unauthorized',
+        COMMAND_DISABLED: 'command.disabled',
+        COMMAND_COOLDOWN: 'command.cooldown',
+        COMMAND_EXECUTE: 'command.execute',
+        COMMAND_ERROR: 'command.error'
+    });
+
     /** @type {Object<string, import('../commands/Command')>} */
     commands = {};
     /** @type {Object<string, [import('../commands/Command')]>} */
@@ -61,7 +74,11 @@ module.exports = class CommandHandler extends require('./Module') {
         // Check if message starts with one of the prefixes
         const prefix = this._prefixes.find(prefix => message.content.toLowerCase().trim().startsWith(prefix));
         if (!prefix) {
-            this.log(`No prefix | user=${message.author.id} channel=${message.channel.id}`);
+            this.log({
+                level: this.LogLevels.TRACE,
+                type: this.LogTypes.COMMAND_NO_PREFIX,
+                data: this._getMessageLogData(message)
+            });
             return;
         }
 
@@ -69,21 +86,45 @@ module.exports = class CommandHandler extends require('./Module') {
         const args = message.content.trim().slice(prefix.length).trim().split(/ +/g);
         const alias = args.shift()?.toLowerCase();
         if (!alias) {
-            this.log(`No command | user=${message.author.id} channel=${message.channel.id}`);
+            this.log({
+                level: this.LogLevels.TRACE,
+                type: this.LogTypes.COMMAND_NO_COMMAND,
+                data: {
+                    ...this._getMessageLogData(message),
+                    prefix
+                }
+            });
             return;
         }
 
         // Check if a command with such alias exists
         const command = this.commands[alias];
         if (!command) {
-            this.log(`Unknown command | user=${message.author.id} channel=${message.channel.id} command=${alias}`);
+            this.log({
+                level: this.LogLevels.TRACE,
+                type: this.LogTypes.COMMAND_UNKNOWN,
+                data: {
+                    ...this._getMessageLogData(message),
+                    prefix,
+                    alias
+                }
+            });
             return;
         }
         const commandName = command.name;
 
         // Check if the user is authorized to use the command
         if (!command.auth(message.member)) {
-            this.log(`Unauthorized | user=${message.author.id} channel=${message.channel.id} command=${commandName}`);
+            this.log({
+                level: this.LogLevels.DEBUG,
+                type: this.LogTypes.COMMAND_UNAUTHORIZED,
+                data: {
+                    ...this._getMessageLogData(message),
+                    prefix,
+                    alias,
+                    command: commandName
+                }
+            });
             return;
         }
 
@@ -91,7 +132,16 @@ module.exports = class CommandHandler extends require('./Module') {
         const key = `${message.author.id}_${commandName}`;
         const disabledCommands = await this.getDisabledCommands([message.channel.id]);
         if (disabledCommands[message.channel.id].has(commandName)) {
-            this.log(`Disabled | user=${message.author.id} channel=${message.channel.id} command=${commandName}`);
+            this.log({
+                level: this.LogLevels.DEBUG,
+                type: this.LogTypes.COMMAND_DISABLED,
+                data: {
+                    ...this._getMessageLogData(message),
+                    prefix,
+                    alias,
+                    command: commandName
+                }
+            });
             return;
         }
 
@@ -113,7 +163,17 @@ module.exports = class CommandHandler extends require('./Module') {
                     }, cooldownRemaining);
                 }
 
-                this.log(`Cooldown | user=${message.author.id} channel=${message.channel.id} command=${commandName} cooldown=${cooldownRemaining}`);
+                this.log({
+                    level: this.LogLevels.DEBUG,
+                    type: this.LogTypes.COMMAND_COOLDOWN,
+                    data: {
+                        ...this._getMessageLogData(message),
+                        prefix,
+                        alias,
+                        command: commandName,
+                        cooldownRemaining
+                    }
+                });
                 return;
             }
 
@@ -121,8 +181,27 @@ module.exports = class CommandHandler extends require('./Module') {
             setTimeout(() => { delete this._cooldown[key]; }, command.cooldown);
         }
 
-        this.log(`Execute | user=${message.author.id} channel=${message.channel.id} command=${commandName} args=[${args}]`);
+        this.log({
+            level: this.LogLevels.INFO,
+            type: this.LogTypes.COMMAND_EXECUTE,
+            data: {
+                ...this._getMessageLogData(message),
+                prefix,
+                alias,
+                command: commandName,
+                args: [...args]
+            }
+        });
         await this._executeCommand(message, command, alias, args);  
+    }
+
+    _getMessageLogData(message) {
+        return {
+            guildID: message.channel.guild?.id,
+            channelID: message.channel.id,
+            messageID: message.id,
+            userID: message.author.id
+        };
     }
 
     /**
@@ -141,7 +220,7 @@ module.exports = class CommandHandler extends require('./Module') {
             // TODO Config?
             mongo: this._bot.mongo,
             // TODO mysql?
-            send: async (msg) => { await message.channel.createMessage(msg); },
+            send: async (msg, file) => { await message.channel.createMessage(msg, file); },
             error: async (msg, timeout=5000) => {
                 const ERROR_MESSAGE = await message.channel.createMessage(`🚫 **| ${getName(message.author)}**, ${msg}`);
                 setTimeout(async () => { 
@@ -150,7 +229,22 @@ module.exports = class CommandHandler extends require('./Module') {
             }
         };
 
-        await command.execute(ctx);
+        try {
+            await command.execute(ctx);
+        } catch (error) {
+            this.log({
+                level: this.LogLevels.ERROR,
+                type: this.LogTypes.COMMAND_ERROR,
+                data: {
+                    ...this._getMessageLogData(message),
+                    alias,
+                    command: command.name,
+                    error: error.message,
+                    stack: error.stack
+                }
+            }, true);
+            await ctx.error('there was an unexpected error running that command!');
+        }
     }
 
     _setCustomPrefix(prefix) {
