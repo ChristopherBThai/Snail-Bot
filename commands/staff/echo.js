@@ -1,5 +1,9 @@
 const Command = require('../Command');
 const { hasManagerPerms, parseChannelID, parseMessageLink, parseQuoted, downloadURL } = require('../../util');
+/**
+ * @type {Readonly<{ CHANNEL: 'channel', CHANNEL_THREAD: 'channelThread', FORUM_THREAD: 'forumThread', MESSAGE_THREAD: 'messageThread' }>}
+ * @typedef {typeof TARGETS[keyof typeof TARGETS]} EchoTarget
+ */
 const TARGETS = Object.freeze({
     CHANNEL: 'channel',
     CHANNEL_THREAD: 'channelThread',
@@ -80,6 +84,12 @@ module.exports = new Command({
 });
 
 // TODO: Confirmation message with buttons?
+/**
+ * @param {import('../Command').Context} ctx
+ * @param {EchoTarget} target
+ * @param {{ channelID: string, messageID?: string }} ids
+ * @param {string | undefined} threadName
+ */
 async function echoMessage(ctx, target, { channelID, messageID }, threadName) {
     const CONTENT = ctx.args.join(' ');
     const ATTACHMENTS = await Promise.all(ctx.message.attachments.map(async a => { return { file: await downloadURL(a.url), name: a.filename }; }));

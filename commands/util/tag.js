@@ -1,6 +1,10 @@
 const Command = require('../Command');
 const { hasManagerPerms } = require('../../util');
 
+/**
+ * @type {readonly ['add', 'edit', 'delete']}
+ * @typedef {typeof UPDATE_SUBCOMMANDS[number]} UpdateSubcommand
+ */
 const UPDATE_SUBCOMMANDS = ['add', 'edit', 'delete'];
 
 module.exports = new Command({
@@ -29,6 +33,7 @@ module.exports = new Command({
     },
 });
 
+/** @param {import('../Command').Context} ctx */
 async function displayTags(ctx) {
     const tags = (await ctx.mongo.Tag.find({}, { _id: 1 }).sort({ _id: 1 }).lean()).map(tag => `\`${tag._id}\``);
 
@@ -44,6 +49,10 @@ async function displayTags(ctx) {
     });
 }
 
+/**
+ * @param {import('../Command').Context} ctx
+ * @param {string} name
+ */
 async function displayTag(ctx, name) {
     const tag = await ctx.mongo.Tag.findById(name);
     if (!tag) return await ctx.error('that tag does not exist!');
@@ -58,6 +67,10 @@ async function displayTag(ctx, name) {
     await ctx.send(message);
 }
 
+/**
+ * @param {import('../Command').Context} ctx
+ * @param {UpdateSubcommand} subcommand
+ */
 async function manageTag(ctx, subcommand) {
     // Only managers+ can update tags
     if (!hasManagerPerms(ctx.message.member)) return;

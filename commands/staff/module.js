@@ -50,6 +50,7 @@ module.exports = new Command({
     },
 });
 
+/** @param {import('../Command').Context} ctx */
 async function displayModules(ctx) {
     const modules = Object.values(ctx.bot.modules)
         .sort((a, b) => a.id.localeCompare(b.id));
@@ -92,6 +93,10 @@ async function displayModules(ctx) {
     });
 }
 
+/**
+ * @param {import('../Command').Context} ctx
+ * @param {import('../../modules/Module')} module
+ */
 async function displayModule(ctx, module) {
     await ctx.send({
         embeds: [{
@@ -127,6 +132,10 @@ async function displayModule(ctx, module) {
     });
 }
 
+/**
+ * @param {import('../Command').Context} ctx
+ * @param {import('../../modules/Module')} module
+ */
 async function exportLogs(ctx, module) {
     const logs = module.getLogs();
     const exportedAt = new Date().toISOString();
@@ -139,6 +148,11 @@ async function exportLogs(ctx, module) {
     await ctx.send(`Exported \`${module.id}\` logs (${logs.length.toLocaleString()}).`, file);
 }
 
+/**
+ * @param {import('../Command').Context} ctx
+ * @param {import('../../modules/Module')} module
+ * @param {'enable' | 'disable'} option
+ */
 async function toggleModule(ctx, module, option) {
     if (!module.toggleable) return await ctx.error('Nice try! You can\'t toggle that module ;)');
 
@@ -153,6 +167,11 @@ async function toggleModule(ctx, module, option) {
     await displayModule(ctx, module);
 }
 
+/**
+ * @param {import('../Command').Context} ctx
+ * @param {import('../../modules/Module')} module
+ * @param {string | undefined} level
+ */
 async function updateLogLevel(ctx, module, level) {
     if (!level) return await ctx.error('please provide a log level!');
     if (module.LogLevelWeights[level] === undefined) {

@@ -32,10 +32,20 @@ module.exports = new Command({
     },
 });
 
+/**
+ * @param {import('../Command').Context} ctx
+ * @returns {string[]}
+ */
 function getAllCommandNames(ctx) {
     return [...new Set(Object.values(ctx.bot.commandHandler.commands).map(command => command.name))];
 }
 
+/**
+ * @param {import('../Command').Context} ctx
+ * @param {string[]} channels
+ * @param {string[]} commands
+ * @param {string[]} aliases
+ */
 async function toggleCommands(ctx, channels, commands, aliases) {
     // Remove non-command args and normalize casing
     commands = commands
@@ -61,6 +71,10 @@ async function toggleCommands(ctx, channels, commands, aliases) {
     await ctx.send(`I ${ctx.name}d ${commands.map(command => `\`${command}\``).join(', ')} in ${channels.map(id => `<#${id}>`).join(', ')}!`);
 }
 
+/**
+ * @param {import('../Command').Context} ctx
+ * @param {string[]} channels
+ */
 async function displayEnabledCommands(ctx, channels) {
     const commands = getAllCommandNames(ctx).sort();
     const disabledCommandsByChannel = await ctx.bot.commandHandler.getDisabledCommands(channels);
