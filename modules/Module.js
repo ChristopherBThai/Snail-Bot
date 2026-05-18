@@ -1,6 +1,6 @@
-const DEFAULT_LOGS_LIMIT = 50_000;
-
 module.exports = class Module {
+    static DefaultLogsLimit = 50_000;
+
     static LogLevels = Object.freeze({
         TRACE: 'trace',
         DEBUG: 'debug',
@@ -9,8 +9,21 @@ module.exports = class Module {
         ERROR: 'error'
     });
 
+    static DefaultLogLevel = this.LogLevels.INFO;
+
+    static LogLevelWeights = Object.freeze({
+        [Module.LogLevels.TRACE]: 0,
+        [Module.LogLevels.DEBUG]: 1,
+        [Module.LogLevels.INFO]: 2,
+        [Module.LogLevels.WARN]: 3,
+        [Module.LogLevels.ERROR]: 4
+    });
+
     static LogTypes = Object.freeze({
-        MESSAGE: 'module.message'
+        MESSAGE: 'module.message',
+        INITIALIZED: 'module.initialized',
+        TOGGLED: 'module.toggled',
+        LOG_LEVEL_UPDATED: 'module.log_level_updated'
     });
 
     /**
@@ -34,10 +47,11 @@ module.exports = class Module {
         this._description = description;
         this._toggleable = toggleable;
         this._enabled = !this._toggleable;
+        this._logLevel = this.constructor.DefaultLogLevel;
         this._bot = bot;
         
         // Logs ring buffer
-        this._logsLimit = logsLimit ?? DEFAULT_LOGS_LIMIT;
+        this._logsLimit = logsLimit ?? this.constructor.DefaultLogsLimit;
         this._logs = new Array(this._logsLimit);
         this._logsIndex = 0;
         this._logsSize = 0;
@@ -58,30 +72,81 @@ module.exports = class Module {
 
     /** One time initialization when bot is ready */
     async _onceReady() {
-        if (this._toggleable) this._enabled = (await this._bot.getConfig(`${this._id}_enabled`)) ?? false;
+        const enabled = this._toggleable
+            ? (await this._bot.getConfig(`${this._id}_enabled`)) ?? false
+            : true;
+        const logLevel = (await this._bot.getConfig(`${this._id}_log_level`)) ?? this.constructor.DefaultLogLevel;
+
+        this._enabled = enabled;
+        this._setLogLevel(logLevel);
+
+        this.log({
+            level: this.LogLevels.INFO,
+            type: this.LogTypes.INITIALIZED,
+            data: {
+                enabled: this._enabled,
+                logLevel: this._logLevel
+            }
+        }, true);
     }
 
     /** Create a structured log under this module */
-    log(entry) {
+    log(entry, force = false) {
         if (typeof entry == 'string') {
             entry = {
-                type: 'module.message',
+                type: this.LogTypes.MESSAGE,
                 data: { message: entry }
             };
         }
 
-        const { level, type, data } = entry;
+        const { type, data } = entry;
+        const level = entry.level ?? this.LogLevels.INFO;
+
+        if (!type) {
+            throw new Error(`${this._name} Module tried to log without a type.`);
+        }
+
+        if (this.LogLevelWeights[level] === undefined) {
+            throw new Error(`${this._name} Module tried to log with invalid level "${level}".`);
+        }
+
+        if (!force && this.LogLevelWeights[level] < this.LogLevelWeights[this._logLevel]) return;
+
         const log = {
             time: new Date().toISOString(),
             module: this._id,
-            level: level ?? this.LogLevels.INFO,
-            type: type ?? 'module.message',
+            level,
+            type,
             data: data ?? {}
         };
 
         this._logs[this._logsIndex] = log;
         this._logsIndex = (this._logsIndex + 1) % this._logsLimit;
         if (this._logsSize < this._logsLimit) this._logsSize++;
+    }
+
+    _setLogLevel(level) {
+        if (this.LogLevelWeights[level] === undefined) {
+            throw new Error(`${this._name} Module tried to set invalid log level "${level}".`);
+        }
+
+        this._logLevel = level;
+    }
+
+    async setAndSaveLogLevel(level) {
+        const previousLogLevel = this._logLevel;
+        this._setLogLevel(level);
+
+        this.log({
+            level: this.LogLevels.INFO,
+            type: this.LogTypes.LOG_LEVEL_UPDATED,
+            data: {
+                previousLogLevel,
+                logLevel: this._logLevel
+            }
+        }, true);
+
+        await this._bot.setConfig(`${this._id}_log_level`, this._logLevel);
     }
 
     /** Get a snapshot of the current logs */
@@ -101,6 +166,11 @@ module.exports = class Module {
         if (!this._toggleable) return;
         await this._bot.setConfig(`${this._id}_enabled`, true);
         this._enabled = true;
+        this.log({
+            level: this.LogLevels.INFO,
+            type: this.LogTypes.TOGGLED,
+            data: { enabled: this._enabled }
+        }, true);
     }
 
     /** Override if module needs to gracefully disable something */
@@ -108,6 +178,11 @@ module.exports = class Module {
         if (!this._toggleable) return;
         await this._bot.setConfig(`${this._id}_enabled`, false);
         this._enabled = false;
+        this.log({
+            level: this.LogLevels.INFO,
+            type: this.LogTypes.TOGGLED,
+            data: { enabled: this._enabled }
+        }, true);
     }
 
     get id() {
@@ -138,8 +213,16 @@ module.exports = class Module {
         return this._logsLimit;
     }
 
+    get logLevel() {
+        return this._logLevel;
+    }
+
     get LogLevels() {
         return this.constructor.LogLevels;
+    }
+
+    get LogLevelWeights() {
+        return this.constructor.LogLevelWeights;
     }
 
     get LogTypes() {
