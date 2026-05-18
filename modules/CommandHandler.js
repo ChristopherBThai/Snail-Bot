@@ -30,7 +30,7 @@ module.exports = class CommandHandler extends require('./Module') {
 
     async _onceReady() {
         await super._onceReady();
-        this._applyCustomPrefix(await this._bot.getConfig(`${this._id}_prefix`));
+        this._setCustomPrefix(await this._bot.getConfig(`${this._id}_prefix`));
     }
 
     _loadCommands() {
@@ -153,13 +153,13 @@ module.exports = class CommandHandler extends require('./Module') {
         await command.execute(ctx);
     }
 
-    _applyCustomPrefix(prefix) {
+    _setCustomPrefix(prefix) {
         this._customPrefix = prefix;
         this._prefixes = [prefix, ...this._bot.config.prefixes].filter(Boolean);
     }
 
-    async applyAndSaveCustomPrefix(prefix) {
-        this._applyCustomPrefix(prefix);
+    async setAndSaveCustomPrefix(prefix) {
+        this._setCustomPrefix(prefix);
         await this._bot.setConfig(`${this._id}_prefix`, prefix);
     }
 

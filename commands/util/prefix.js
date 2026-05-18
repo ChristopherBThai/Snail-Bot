@@ -16,7 +16,7 @@ module.exports = new Command({
             return await ctx.send('I don\'t have a prefix set!');
         }
 
-        await ctx.bot.commandHandler.applyAndSaveCustomPrefix(prefix);
+        await ctx.bot.commandHandler.setAndSaveCustomPrefix(prefix);
         await ctx.send(`I have set the prefix to \`${prefix}\`!`);
     },
 });
