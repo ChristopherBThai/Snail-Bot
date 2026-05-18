@@ -257,6 +257,30 @@ module.exports = class CommandHandler extends Module {
         await this._bot.setConfig(`${this._id}_prefix`, prefix);
     }
 
+    state() {
+        return {
+            ...super.state(),
+            commands: Object.fromEntries(
+                Object.entries(this.commands).map(([alias, command]) => [alias, command.name])
+            ),
+            commandGroups: Object.fromEntries(
+                Object.entries(this.commandGroups).map(([group, commands]) => [
+                    group,
+                    commands.map(command => command.name)
+                ])
+            ),
+            disabledCommands: Object.fromEntries(
+                Object.entries(this._disabledCommands).map(([channelID, commands]) => [
+                    channelID,
+                    [...commands].sort()
+                ])
+            ),
+            cooldown: this._cooldown,
+            prefixes: this._prefixes,
+            customPrefix: this._customPrefix
+        };
+    }
+
     async getDisabledCommands(channelIDs) {
         const missingChannelIDs = channelIDs.filter(channelID => !this._disabledCommands[channelID]);
 
