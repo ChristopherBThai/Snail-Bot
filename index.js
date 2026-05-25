@@ -3,7 +3,13 @@ const CONFIG = require(process.env.DEBUG ? './config.debug.json' : './config.jso
 
 class Snail extends require('eris').Client {
     constructor(token, options) {
+        if (!token) throw new Error('BOT_TOKEN is not set.');
+        token = token.startsWith('Bot ') ? token.slice(4).trim() : token;
+        if (!token) throw new Error('BOT_TOKEN is not set.');
+
+        process.env.BOT_TOKEN = token;
         super(token, options);
+
         this.config = CONFIG;
         /** @type {Object<string, import('./modules/Module')>} */
         this.modules = {};
@@ -50,6 +56,7 @@ class Snail extends require('eris').Client {
 
         // Modules
         this.commandHandler = new (require('./modules/CommandHandler'))(this);
+        this.interactionHandler = new (require('./modules/InteractionHandler'))(this);
         this.logger = new (require('./modules/Logger'))(this);
         this.banBotBannedUsers = new (require('./modules/BanBotBannedUsers'))(this);
     }

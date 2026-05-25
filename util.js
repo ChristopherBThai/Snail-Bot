@@ -121,6 +121,11 @@ function parseQuoted(args, delimiter='"') {
 }
 
 /** Misc */
+function toEphemeral(message) {
+    if (typeof message == 'string') return { content: message, flags: 64 };
+    return { ...message, flags: 64 };
+}
+
 async function downloadURL(url) {
     return new Promise((resolve, reject) => {
         https.get(url, (response) => {
@@ -162,5 +167,6 @@ module.exports = {
     parseUserID,
     parseMessageLink,
     parseQuoted,
+    toEphemeral,
     downloadURL
 };
