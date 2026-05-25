@@ -119,7 +119,7 @@ module.exports = class InteractionHandler extends Module {
                     createCollector: (source, options) => this.createCollector(source, options)
                 };
 
-                if (!handler.auth(ctx)) return await ctx.acknowledge(64);
+                if (!handler.auth(ctx)) return await ctx.error('you don\'t have permission to use that interaction!');
 
                 this.log({
                     level: this.LogLevels.INFO,
