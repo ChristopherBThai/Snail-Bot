@@ -217,18 +217,10 @@ module.exports = class InteractionHandler extends Module {
         if (!applicationID) throw new Error('Cannot sync interaction commands without an application ID or bot user ID.');
         const commands = Object.values(this.commandDefinitions);
 
-        const result = {
-            commands: [],
-            guildsCleared: []
-        };
-
         const syncedCommands = await discordRequest('PUT', `/api/v10/applications/${applicationID}/commands`, commands);
-        result.commands = syncedCommands.map(command => this._getCommandKey(command.type, command.name));
-
-        for (const guild of this._bot.guilds.values()) {
-            await discordRequest('PUT', `/api/v10/applications/${applicationID}/guilds/${guild.id}/commands`, []);
-            result.guildsCleared.push(guild.id);
-        }
+        const result = {
+            commands: syncedCommands.map(command => this._getCommandKey(command.type, command.name))
+        };
 
         this.log({
             level: this.LogLevels.INFO,
