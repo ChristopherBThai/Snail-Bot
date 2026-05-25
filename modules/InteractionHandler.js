@@ -66,8 +66,6 @@ module.exports = class InteractionHandler extends Module {
             this.registerCommand(command);
         }
 
-        require('../interactions/examples')(this);
-
         this.log({
             level: this.LogLevels.INFO,
             type: this.LogTypes.COMMANDS_LOADED,
