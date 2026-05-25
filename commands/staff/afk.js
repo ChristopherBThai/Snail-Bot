@@ -1,5 +1,5 @@
 const Command = require('../Command');
-const { isStaff, isHelper, isManager, isAdmin, isOwner } = require('../../util');
+const { isStaff, isHelper, isManager, isAdmin } = require('../../util');
 
 module.exports = new Command({
     aliases: ['afk'],
@@ -10,8 +10,7 @@ module.exports = new Command({
         const MEMBER = ctx.message.member;
         let role;
 
-        if (isOwner(MEMBER)) role = ctx.bot.config.roles.owner.hoist;
-        else if (isAdmin(MEMBER)) role = ctx.bot.config.roles.admin.hoist;
+        if (isAdmin(MEMBER)) role = ctx.bot.config.roles.admin.hoist;
         else if (isManager(MEMBER)) role = ctx.bot.config.roles.manager.hoist;
         else if (isHelper(MEMBER)) role = ctx.bot.config.roles.helper.hoist;
         else {

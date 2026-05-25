@@ -1,5 +1,5 @@
 const https = require('node:https');
-const { roles: ROLES } = require(process.env.DEBUG ? './config.debug.json' : './config.json');
+const { roles: ROLES, users: USERS } = require(process.env.DEBUG ? './config.debug.json' : './config.json');
 
 /** Used for flattening require-dir trees */
 function* flattenRequireDir(object, targetClass) {
@@ -23,7 +23,7 @@ function hasRole(member, role) {
 function isHelper(member) { return hasRole(member, ROLES.helper.perms); }
 function isManager(member) { return hasRole(member, ROLES.manager.perms); }
 function isAdmin(member) { return hasRole(member, ROLES.admin.perms); }
-function isOwner(member) { return hasRole(member, ROLES.owner.perms); }
+function isOwner(member) { return member?.id == USERS.owner; }
 function isStaff(member) { return isHelper(member) || isManager(member) || isAdmin(member) || isOwner(member); }
 function hasHelperPerms(member) { return isHelper(member) || isManager(member) || isAdmin(member) || isOwner(member); }
 function hasManagerPerms(member) { return isManager(member) || isAdmin(member) || isOwner(member); }
