@@ -48,11 +48,16 @@ class Snail extends require('eris').Client {
 
     // For any properties whose construction depeneds on awaiting the databases
     async init() {
-        // Snail's database
-        this.mongo = await require('./database/mongo/mongo').init();
+        // Databases
+        this.database = await require('./database').init();
+        this.snailMongo = this.database.snailMongo;
+        this.owoMysql = this.database.owoMysql;
+        this.owoMongo = this.database.owoMongo;
+        this.owoRedis = this.database.owoRedis;
 
-        // OwO's database
-        this.mysql = require('./database/mysql/mysql');
+        // Compatibility aliases
+        this.mongo = this.snailMongo;
+        this.mysql = this.owoMysql;
 
         // Modules
         this.commandHandler = new (require('./modules/CommandHandler'))(this);

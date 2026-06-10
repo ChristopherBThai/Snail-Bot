@@ -6,14 +6,15 @@ let models = null;
 async function init() {
     if (models) return models;
 
-    const connection = (await mongoose.connect(process.env.MONGO_URI)).connection;
-    console.log(`MongoDB connected to ${connection.host}!`);
+    const connection = await mongoose.createConnection(process.env.SNAIL_MONGO_URI).asPromise();
+    console.log(`Snail MongoDB connected to ${connection.host}!`);
 
     connection.on('error', console.error);
 
     models = {
         Channel: connection.model('Channel', require('./schemas/Channel')),
         Config: connection.model('Config', require('./schemas/Config')),
+        Quest: connection.model('Quest', require('./schemas/Quest')),
         Tag: connection.model('Tag', require('./schemas/Tag'))
     };
 
