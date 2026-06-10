@@ -218,8 +218,7 @@ module.exports = class CommandHandler extends Module {
             args,
             bot: this._bot,
             // TODO Config?
-            mongo: this._bot.mongo,
-            // TODO mysql?
+            snailMongo: this._bot.snailMongo,
             send: async (msg, file) => { await message.channel.createMessage(msg, file); },
             error: async (msg, timeout=5000) => {
                 const ERROR_MESSAGE = await message.channel.createMessage(`🚫 **| ${getName(message.author)}**, ${msg}`);
@@ -285,7 +284,7 @@ module.exports = class CommandHandler extends Module {
         const missingChannelIDs = channelIDs.filter(channelID => !this._disabledCommands[channelID]);
 
         if (missingChannelIDs.length) {
-            const channels = await this._bot.mongo.Channel.find({ _id: { $in: missingChannelIDs } });
+            const channels = await this._bot.snailMongo.Channel.find({ _id: { $in: missingChannelIDs } });
             for (const channel of channels) {
                 this._disabledCommands[channel.id] = new Set(channel.disabledCommands ?? []);
             }
@@ -305,7 +304,7 @@ module.exports = class CommandHandler extends Module {
             const disabledCommands = disabledCommandsByChannel[channelID];
             for (const command of commands) disabledCommands.delete(command);
 
-            await this._bot.mongo.Channel.updateOne(
+            await this._bot.snailMongo.Channel.updateOne(
                 { _id: channelID },
                 { $pull: { disabledCommands: { $in: commands } } },
                 { upsert: true }
@@ -320,7 +319,7 @@ module.exports = class CommandHandler extends Module {
             const disabledCommands = disabledCommandsByChannel[channelID];
             for (const command of commands) disabledCommands.add(command);
 
-            await this._bot.mongo.Channel.updateOne(
+            await this._bot.snailMongo.Channel.updateOne(
                 { _id: channelID },
                 { $addToSet: { disabledCommands: { $each: commands } } },
                 { upsert: true }

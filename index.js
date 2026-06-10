@@ -55,10 +55,6 @@ class Snail extends require('eris').Client {
         this.owoMongo = this.database.owoMongo;
         this.owoRedis = this.database.owoRedis;
 
-        // Compatibility aliases
-        this.mongo = this.snailMongo;
-        this.mysql = this.owoMysql;
-
         // Modules
         this.commandHandler = new (require('./modules/CommandHandler'))(this);
         this.interactionHandler = new (require('./modules/InteractionHandler'))(this);
@@ -67,11 +63,11 @@ class Snail extends require('eris').Client {
     }
 
     async getConfig(_id) {
-        return (await this.mongo.Config.findOne({ _id }))?.value;
+        return (await this.snailMongo.Config.findOne({ _id }))?.value;
     }
 
     async setConfig(_id, value) {
-        return await this.mongo.Config.updateOne({ _id }, { value }, { upsert: true });
+        return await this.snailMongo.Config.updateOne({ _id }, { value }, { upsert: true });
     }
 }
 

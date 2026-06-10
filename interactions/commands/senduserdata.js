@@ -16,7 +16,7 @@ module.exports = new Command({
 
         await ctx.acknowledge(64);
 
-        const tables = await getMySQLTables(ctx.bot.mysql);
+        const tables = await getMySQLTables(ctx.bot.owoMysql);
         const data = await tables.user.getData('id', [user.id]);
         const file = {
             name: `user-data-${user.id}.txt`,

@@ -4,7 +4,7 @@
  * @prop {string} name
  * @prop {[string]} args
  * @prop {import('../index')} bot
- * @prop {Object<string, import('mongoose').Model>} mongo
+ * @prop {Object<string, import('mongoose').Model>} snailMongo
  * @prop {(msg: import('eris').MessageContent, file?: import('eris').FileContent | import('eris').FileContent[]) => Promise<void>} send
  * @prop {(msg: import('eris').MessageContent, timeout?: number) => Promise<void>} error
  */

@@ -35,7 +35,7 @@ module.exports = new Command({
 
 /** @param {import('../Command').Context} ctx */
 async function displayTags(ctx) {
-    const tags = (await ctx.mongo.Tag.find({}, { _id: 1 }).sort({ _id: 1 }).lean()).map(tag => `\`${tag._id}\``);
+    const tags = (await ctx.snailMongo.Tag.find({}, { _id: 1 }).sort({ _id: 1 }).lean()).map(tag => `\`${tag._id}\``);
 
     if (!tags.length) return await ctx.error('Oh no! I don\'t have any tags :(');
 
@@ -54,7 +54,7 @@ async function displayTags(ctx) {
  * @param {string} name
  */
 async function displayTag(ctx, name) {
-    const tag = await ctx.mongo.Tag.findById(name);
+    const tag = await ctx.snailMongo.Tag.findById(name);
     if (!tag) return await ctx.error('that tag does not exist!');
 
     let message;
@@ -89,28 +89,28 @@ async function manageTag(ctx, subcommand) {
         case 'add': {
             if (!data) return await ctx.error('please provide some data for the tag!');
 
-            const tag = await ctx.mongo.Tag.findById(name);
+            const tag = await ctx.snailMongo.Tag.findById(name);
             if (tag) return await ctx.error('that tag already exists!');
 
-            await ctx.mongo.Tag.create({ _id: name, data });
+            await ctx.snailMongo.Tag.create({ _id: name, data });
             await ctx.send(`I created the tag \`${name}\`!`);
             break;
         }
         case 'edit': {
             if (!data) return await ctx.error('please provide some data for the tag!');
 
-            const tag = await ctx.mongo.Tag.findById(name);
+            const tag = await ctx.snailMongo.Tag.findById(name);
             if (!tag) return await ctx.error('that tag does not exist!');
 
-            await ctx.mongo.Tag.updateOne({ _id: name }, { data });
+            await ctx.snailMongo.Tag.updateOne({ _id: name }, { data });
             await ctx.send(`I updated the tag \`${name}\`!`);
             break;
         }
         case 'delete': {
-            const tag = await ctx.mongo.Tag.findById(name);
+            const tag = await ctx.snailMongo.Tag.findById(name);
             if (!tag) return await ctx.error('that tag does not exist!');
 
-            await ctx.mongo.Tag.deleteOne({ _id: name });
+            await ctx.snailMongo.Tag.deleteOne({ _id: name });
             await ctx.send(`I deleted the tag \`${name}\`!`);
             break;
         }
