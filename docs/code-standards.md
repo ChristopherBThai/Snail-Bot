@@ -36,15 +36,11 @@ Reject these during implementation and review:
 - New abstractions introduced before Snail has enough real usage to justify them.
 - Debug-only shortcuts that can leak into production.
 
-## Review Language
+## Review Standards
 
-Use:
+Reviews should prioritize correctness, safety, ownership boundaries, missing verification, and documentation accuracy before style preferences.
 
-- `Must`: blocking issue; correctness, startup, data integrity, auth, production safety, or serious maintainability risk.
-- `Should`: important issue that should be fixed before merge unless the maintainer accepts the tradeoff.
-- `Consider`: optional improvement, cleanup, naming, clarity, or future follow-up.
-
-Review findings should lead with actionable issues, explain the risk, and include file and line references when possible. Style feedback should not fight formatter output.
+Review findings should explain concrete risk and include file and line references when possible. Style feedback should not fight formatter output.
 
 ## Tests and Type Checks
 

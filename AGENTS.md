@@ -71,42 +71,20 @@ Pending project-map decisions are tracked in the relevant docs until they become
 
 Use nested `AGENTS.md` files only when a subsystem needs stricter local operating rules than a README can comfortably explain.
 
-## Writer Agent Guidelines
-
-A writer agent implements changes.
+## Agent Expectations
 
 - Read this file and the closest relevant docs before editing.
 - Check the current worktree state.
-- Identify the owning module, system, or database boundary.
-- For substantial new modules or command packages, write or update the local README spec before the work is complete; prefer doing it before implementation.
+- Identify the owning module, command package, system, or database boundary.
 - Keep changes scoped and preserve unrelated user work.
+- For substantial new modules or command packages, write or update the local README spec before the work is complete.
 - Update docs alongside behavior, setup, architecture, or operational changes.
 - Do not disable auth, skip validation, or bypass persistence boundaries as a shortcut.
 - Run the narrowest meaningful verification and state what was or was not verified.
 
-Use this handoff format for reviewer-oriented work:
+## Review Expectations
 
-```md
-## Handoff
-
-Changed:
-- ...
-
-Verified:
-- ...
-
-Not verified:
-- ...
-
-Risks / follow-ups:
-- ...
-```
-
-## Reviewer Agent Guidelines
-
-A reviewer agent reviews specs and code. Reviewers prioritize correctness and risk over rewriting style.
-
-Review in this order:
+Reviews should prioritize correctness and risk over rewriting style. Review in this order:
 
 1. Startup, runtime correctness, and user-visible behavior
 2. Auth, permissions, secrets, production safety, and data integrity
@@ -116,13 +94,7 @@ Review in this order:
 6. Documentation updates
 7. Maintainability, naming, and style
 
-Use this review language:
-
-- `Must`: blocking issue; correctness, startup, data integrity, auth, production safety, or serious maintainability risk
-- `Should`: important issue that should be fixed before merge unless the maintainer accepts the tradeoff
-- `Consider`: optional improvement, cleanup, naming, clarity, or future follow-up
-
-Reviewer findings should explain concrete risk, include file and line references when possible, and avoid broad rewrites unless the current approach is unsafe or likely to harden into the wrong architecture.
+Review findings should explain concrete risk, include file and line references when possible, and avoid broad rewrites unless the current approach is unsafe or likely to harden into the wrong architecture.
 
 ## Verification
 
