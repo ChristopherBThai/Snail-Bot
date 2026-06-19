@@ -37,7 +37,4 @@ State the chosen approach directly.
 
 ## Links
 
-- Related docs:
-- Related local READMEs:
-- Supersedes:
-- Superseded by:
+- Related docs: [Example](../example.md)

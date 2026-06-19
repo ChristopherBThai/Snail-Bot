@@ -42,6 +42,10 @@ Prefix commands and new message-content-dependent features are not part of the d
 
 Command sync happens on production startup. Treat command definition changes as production-visible behavior.
 
+Guild command sync is authoritative: Snail should sync the guild command list that the current code defines. Syncing an empty guild command list is valid and intentionally removes registered guild commands for the configured guild. Global command exceptions should be handled explicitly by the code that owns them, not through a generic command scope setting.
+
+Interaction create events do not require gateway intents. Do not add gateway intents for interaction routing unless another current gateway event requires them.
+
 ## Discordeno and Adapter Layer
 
 Snail uses Discordeno standalone packages with a local adapter layer.

@@ -1,0 +1,28 @@
+{
+    "name": "snail-bot",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "description": "Interaction-first Discord utility bot for the OwO Bot Support server.",
+    "scripts": {
+        "start": "node src/index.js",
+        "check": "biome check .",
+        "check:fix": "biome check --write .",
+        "format": "biome format .",
+        "format:fix": "biome format --write .",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@discordeno/gateway": "^21.0.0",
+        "@discordeno/rest": "^21.0.0",
+        "discord-api-types": "^0.38.49",
+        "dotenv": "^17.4.2"
+    },
+    "devDependencies": {
+        "@biomejs/biome": "^2.5.0",
+        "vitest": "^4.1.9"
+    },
+    "engines": {
+        "node": ">=22"
+    }
+}

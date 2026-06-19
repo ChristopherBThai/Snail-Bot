@@ -16,6 +16,8 @@ Create an ADR when a decision:
 
 Do not create ADRs for routine feature work, small refactors, obvious bug fixes, or local implementation details already explained by nearby code and docs.
 
+In `Alternatives Considered`, list rejected alternatives only. The chosen approach belongs in `Decision`, with its benefits and costs covered by `Pros`, `Cons`, and `Consequences`.
+
 ## Naming
 
 Use zero-padded numeric names:
@@ -26,3 +28,9 @@ Use zero-padded numeric names:
 ```
 
 Keep accepted ADRs immutable except for small clarifications. If a decision changes, create a new ADR that supersedes the old one.
+
+## Links
+
+Use live Markdown links for repo files. Prefer relative links from the ADR file, such as `[Architecture](../architecture.md)`.
+
+Omit empty link categories. Do not leave blank placeholders such as `Related local READMEs`, `Supersedes`, or `Superseded by` when there is nothing to link.

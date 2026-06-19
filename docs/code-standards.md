@@ -6,9 +6,12 @@ This document captures repo-wide code quality rules and review standards.
 
 - Use modern ESM JavaScript.
 - Use project import aliases for stable shared boundaries.
-- Use the configured formatter/checker when one exists. Biome is the expected default unless an ADR chooses different tooling. TODO: link the tooling ADR once it exists.
+- Use the configured formatter/checker when one exists. Biome is the expected default; see [ADR 7](adr/0007-biome-formatting-and-checking.md).
 - Keep files focused on one clear responsibility.
 - Prefer explicit names over clever abbreviations.
+- Implement the shape that exists now. Do not add fields, branches, spreads, adapters, or extension points only for possible future config or feature needs.
+- Treat runtime entry points as direct execution files unless the current code imports them. Do not add import-safe guards only for hypothetical reuse.
+- Do not over-normalize data the codebase owns. Normalize external text input, env values, Discord payloads, and database records at their boundaries; do not add defensive cleanup around trusted internal config or objects without a current reason.
 - Add comments only for non-obvious decisions, invariants, or operational risks.
 - Avoid unrelated formatting churn.
 
@@ -34,6 +37,7 @@ Reject these during implementation and review:
 - Thin wrappers that only rename or proxy one existing call.
 - Static facades that construct an object only to call one method.
 - New abstractions introduced before Snail has enough real usage to justify them.
+- Defensive normalization against data shapes the current code cannot produce.
 - Debug-only shortcuts that can leak into production.
 
 ## Review Standards
@@ -46,6 +50,13 @@ Review findings should explain concrete risk and include file and line reference
 
 Use `npm test` as the standard way to run tests. If a component does not have tests yet, add focused tests when behavior risk justifies them.
 
-If linting, formatting, or type checking is configured, expose it through named npm scripts. Prefer clear names such as `npm run format`, `npm run lint`, `npm run check`, or `npm run typecheck` based on what the tool actually does.
+Test Snail behavior, not external libraries. Do not add tests that only prove a dependency constructor, parser, or API works as documented. Tests around wrappers or adapters should verify Snail's validation, normalization, routing, error handling, or boundary contract.
 
-TODO: replace the script examples with the actual `package.json` scripts once they are created.
+Avoid tests that only mirror a one-line guard or pass-through wrapper. Add focused tests when the wrapper owns meaningful validation, transformation, routing, error handling, or production-risk behavior.
+
+Use the package scripts for verification and formatting:
+
+- `npm run check`: run Biome checks.
+- `npm run check:fix`: run Biome checks and safe writes.
+- `npm run format`: run Biome formatting checks.
+- `npm run format:fix`: run Biome formatting writes.
