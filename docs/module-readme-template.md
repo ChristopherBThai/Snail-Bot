@@ -47,6 +47,8 @@ List slash commands, context commands, components, selects, and modals.
 
 Long-running commands must `defer()` and finish with `editReply()`.
 
+Document module-owned command metadata such as `staff: true` for staff-only Discord visibility, runtime `auth`, and `cooldown` when the command is throttled per user.
+
 ## State and Persistence
 
 Describe Snail state, OwO reads, external services, cache behavior, and write boundaries.
@@ -68,7 +70,7 @@ Describe who can use each action and why.
 
 ## Admin Panel
 
-Describe `state()`, `panelText()`, `panelComponents()`, structured logs, exports, and module-specific admin actions.
+Describe `state()`, `panelComponents()`, structured logs, exports, and module-specific admin actions.
 
 ## Failure Modes
 

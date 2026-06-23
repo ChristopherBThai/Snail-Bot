@@ -16,9 +16,9 @@ Snail will prefer `discord-api-types` for Discord API shapes, constants, and pay
 
 Interaction create events do not require privileged intents or gateway intents, so Snail does not request gateway intents for interaction routing.
 
-Create Discord system boundaries when there is meaningful Snail-owned Discord behavior to place there, such as adapter normalization, command sync ownership, reusable interaction routing, or shared REST helpers.
+Create Discord system boundaries when there is meaningful Snail-owned Discord behavior to place there, such as REST payload normalization, command sync ownership, reusable interaction routing, or shared REST helpers.
 
-The Discord adapter owns REST manager construction. Other code should ask the adapter for Discord behavior instead of accessing the REST manager directly.
+The Discord REST wrapper owns REST manager construction. Other code should ask the wrapper for Discord REST behavior instead of accessing the REST manager directly.
 
 ## Alternatives Considered
 
@@ -38,7 +38,7 @@ The Discord adapter owns REST manager construction. Other code should ask the ad
 ## Cons
 
 - Adds runtime dependencies before the final routing boundary exists.
-- The adapter and router are intentionally narrow and will need to grow with command behavior.
+- The REST wrapper and router are intentionally narrow and will need to grow with command behavior.
 
 ## Consequences
 
@@ -46,7 +46,7 @@ The Discord adapter owns REST manager construction. Other code should ask the ad
 - Command sync and gateway startup now run during `src/index.js`.
 - Interaction routing currently lives in `src/systems/discord/router.js`.
 - `src/systems/discord/` owns reusable Discord behavior once it exists.
-- Add new Discord API behavior to the adapter before exposing raw REST access elsewhere.
+- Add new Discord REST behavior to the wrapper before exposing raw REST manager access elsewhere.
 
 ## Links
 

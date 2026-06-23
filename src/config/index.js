@@ -23,10 +23,19 @@ export async function loadConfig() {
 
     return {
         debug,
+        database: {
+            snailMongoUri: process.env.SNAIL_MONGO_URI,
+            owoMongoUri: process.env.OWO_MONGO_URI,
+            owoRedisUrl: process.env.OWO_REDIS_URL
+        },
         discord: {
             applicationId: config.discord.applicationId,
             guildId: config.discord.guildId,
             token: normalizeToken(process.env.BOT_TOKEN)
-        }
+        },
+        modules: config.modules,
+        roles: config.roles,
+        colors: config.colors,
+        users: config.users
     };
 }

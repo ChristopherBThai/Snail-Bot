@@ -16,7 +16,9 @@
         "@discordeno/gateway": "^21.0.0",
         "@discordeno/rest": "^21.0.0",
         "discord-api-types": "^0.38.49",
-        "dotenv": "^17.4.2"
+        "dotenv": "^17.4.2",
+        "mongoose": "^9.7.1",
+        "redis": "^6.0.0"
     },
     "devDependencies": {
         "@biomejs/biome": "^2.5.0",

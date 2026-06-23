@@ -1,7 +1,10 @@
-import { createGatewayManager } from '@discordeno/gateway';
 import commands from './commands/index.js';
 import { loadConfig } from './config/index.js';
-import { createDiscordAdapter } from './systems/discord/adapter.js';
+import { createDatabases } from './database/index.js';
+import { ModuleRegistry } from './modules/index.js';
+import { QuestListModule } from './modules/quest-list/index.js';
+import { createDiscordGateway } from './systems/discord/gateway.js';
+import { createDiscordRest } from './systems/discord/rest.js';
 import { createInteractionRouter } from './systems/discord/router.js';
 
 async function main() {
@@ -19,27 +22,19 @@ async function main() {
         throw new Error('discord.guildId is required to sync guild commands.');
     }
 
-    const discord = createDiscordAdapter(config.discord.token);
-    const router = createInteractionRouter({ commands, discord });
+    const databases = await createDatabases(config);
+    const modules = new ModuleRegistry([new QuestListModule({ config, databases })]);
+    await modules.init();
 
-    await discord.syncGuildCommands(
-        config.discord.applicationId,
-        config.discord.guildId,
-        commands.map((command) => command.definition)
-    );
+    const rest = createDiscordRest(config.discord.token);
+    const registeredCommands = [...commands, ...modules.commands];
+    const router = createInteractionRouter({ commands: registeredCommands, config, modules, rest });
 
-    const gateway = createGatewayManager({
-        token: config.discord.token,
-        resharding: { enabled: false },
-        preferSnakeCase: true,
-        events: {
-            async message(_shard, payload) {
-                await router.route(payload);
-            }
-        }
-    });
+    await rest.syncGuildCommands(config.discord.applicationId, config.discord.guildId, registeredCommands);
+    console.info(`Synced ${registeredCommands.length.toLocaleString()} guild command(s).`);
 
-    await gateway.spawnShards();
+    const gateway = createDiscordGateway({ router, token: config.discord.token });
+    await gateway.start();
 }
 
 main().catch((error) => {

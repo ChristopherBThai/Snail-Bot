@@ -110,4 +110,5 @@ dist
 *.swp
 
 # Temp
-reference
+reference live
+reference static

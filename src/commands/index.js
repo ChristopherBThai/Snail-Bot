@@ -1,3 +1,4 @@
+import module from './module.js';
 import snail from './snail.js';
 
-export default [snail];
+export default [snail, module];

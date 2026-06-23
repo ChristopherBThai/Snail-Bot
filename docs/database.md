@@ -10,11 +10,26 @@ OwO data is external integration data. Snail may read OwO data through explicit 
 
 ## Boundaries
 
-`src/database/` owns connections, schemas, repositories, and persistence-specific helpers.
+`src/database/` owns connections, schemas/models, raw database clients, and persistence-specific helpers.
 
-Modules and command packages should not casually reach through multiple persistence layers. If a feature needs data from Snail and OwO sources, add a focused database or service boundary that names the integration and documents any write behavior.
+The top-level `src/database/index.js` composes raw database groups only. Individual database folders own their connection setup and schema/model registration. Database constructors throw when required connection config is missing or the connection fails; returned handles are assumed connected.
 
-Database code should handle persistence mechanics: connecting, modeling, loading, saving, querying, transactions, indexes, and persistence-specific translation. Feature rules belong in the owning module, command package, or local service unless the rule is truly about persistence.
+- `src/database/snail/`: Snail Mongo connection, Snail-owned models, and shared Snail config helpers.
+- `src/database/owo/`: OwO Mongo model registration and OwO Redis client setup.
+
+The runtime database object is grouped by data owner first, then store type:
+
+- `database.snail.mongo`
+- `database.owo.mongo`
+- `database.owo.redis`
+
+Modules and command packages should not casually reach through multiple persistence layers. If a feature needs data from Snail and OwO sources, create a focused module-local data boundary that names the integration and documents any write behavior.
+
+Module-local data boundaries are optional, not automatic. Use them when they make feature logic easier to understand, test, or maintain, especially for multi-query, multi-database, or feature-vocabulary access. Avoid creating stores or repositories for every collection by default.
+
+Commands, interactions, and event handlers should not directly query databases. They should parse input, authorize, call the owning module or system method, and return output.
+
+Database code should handle persistence mechanics: connecting, modeling, clients, indexes, and persistence-specific translation. Feature rules and feature-shaped data access belong in the owning module, command package, or local service unless the rule is truly about persistence.
 
 Feature-specific data requirements belong in the owning module or command package README. This document defines cross-cutting persistence boundaries, not every feature's schema.
 
@@ -22,9 +37,17 @@ Feature-specific data requirements belong in the owning module or command packag
 
 A reference for the databases Snail connects to, why each connection exists, whether Snail reads or writes it, and which modules or command packages use it.
 
+| Connection | Read/Write | Used By | Purpose |
+| --- | --- | --- | --- |
+| Snail Mongo | read/write | Global runtime, Quest List | Required startup dependency. Exposes Snail-owned `Config` and `Quest` models. Shared config helpers read/write `Config`; module infrastructure adapts those helpers for module enablement persistence; Quest List owns module-local data access for queued quests. |
+| OwO Mongo | read-only | Quest List | Exposes the OwO `UserQuest` model. Quest List owns the module-local data access that queries active V2 quest documents. |
+| OwO Redis | read-only | Quest List | Exposes the OwO Redis client. Quest List owns the module-local data access that reads `user_stats:{userId}` hashes. |
+
 ## Cross-Database Safety
 
 Cross-database flows need explicit failure handling. Do not hide partial commits, optimistic fire-and-forget writes, or best-effort repair behavior in unrelated command or renderer code.
+
+When an installed runtime module cannot safely operate without a database dependency, database startup should fail instead of registering a partially working module. Disabled modules do not run event handlers or normal work, but their routes remain registered so stale Discord components can return a clear disabled message.
 
 When a feature crosses Snail and OwO boundaries, document:
 

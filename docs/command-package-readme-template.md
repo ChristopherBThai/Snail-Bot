@@ -47,6 +47,8 @@ List slash commands, context commands, components, selects, and modals.
 
 Long-running commands must `defer()` and finish with `editReply()`.
 
+Document command metadata such as `staff: true` for staff-only Discord visibility, runtime `auth`, and `cooldown` when the command is throttled per user.
+
 ## State and Persistence
 
 Describe Snail state, OwO reads, external services, cache behavior, and write boundaries.

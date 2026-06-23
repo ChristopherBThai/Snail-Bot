@@ -50,7 +50,7 @@ Pending project-map decisions are tracked in the relevant docs until they become
 - Snail must not change OwO data except through named services that exist specifically for that integration.
 - New features must not depend on privileged message content unless the maintainer explicitly approves the tradeoff.
 - Bot-authored Discord messages should use Components V2 by default unless a documented Discord limitation or compatibility exception applies.
-- Discord API calls should go through the adapter or interaction context where possible.
+- Discord API calls should go through the Discord REST wrapper or interaction context where possible.
 - The configuration catalog must stay complete and safe.
 - Do not commit secrets, real tokens, database credentials, socket tokens, or production-only private config.
 - Command sync happens in production on startup, so command definition changes are production-visible.
