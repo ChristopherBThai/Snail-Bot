@@ -255,6 +255,44 @@ test('message builder orders add actions for root and containers', async () => {
     ).toEqual(['Add text', 'Add separator', 'Add image gallery', 'Add section', 'Add link row']);
 });
 
+test('message builder persists container spoiler edits', async () => {
+    const databases = createDatabases();
+    const routes = createRoutes({ databases });
+    const context = createContext({ userID: 'builder-user-container-spoiler' });
+    await routes.start(context, {
+        blocks: [{ kind: BlockKinds.Container, children: [{ kind: BlockKinds.Text, content: 'inside' }] }],
+        mode: OpenModes.ReplaceFromBlocks,
+        selectedBlockPath: [0],
+        target: { type: 'tag_create', name: 'container' }
+    });
+
+    const openModalContext = createContext({
+        customID: actionSelect(context.response).custom_id,
+        data: { values: [BuilderActions.EditBlock] },
+        userID: 'builder-user-container-spoiler'
+    });
+    await actionRoute(routes).handle(openModalContext);
+
+    const editContext = createContext({
+        customID: openModalContext.openedModal.custom_id,
+        modalValues: {
+            [BuilderIDs.ContainerColorInput]: '#5865f2',
+            [BuilderIDs.ContainerSpoilerInput]: true
+        },
+        userID: 'builder-user-container-spoiler'
+    });
+    await modalRoute(routes, BuilderIDs.EditContainerModal).handle(editContext);
+
+    expect(databases.builderDrafts.get('builder-user-container-spoiler').blocks[0]).toMatchObject({
+        accentColor: 0x5865f2,
+        spoiler: true
+    });
+    expect(editContext.editMessage.components.find((component) => component.type === 17)).toMatchObject({
+        accent_color: 0x5865f2,
+        spoiler: true
+    });
+});
+
 test('message builder appends and removes links from selected link rows', async () => {
     const databases = createDatabases();
     const routes = createRoutes({ databases });

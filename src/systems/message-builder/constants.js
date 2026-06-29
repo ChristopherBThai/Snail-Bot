@@ -15,7 +15,8 @@ export const BuilderIDs = Object.freeze({
     SectionTextInput: 'message_builder:section_text',
     SectionThumbnailInput: 'message_builder:section_thumbnail',
     MediaURLInput: 'message_builder:media_url',
-    ContainerColorInput: 'message_builder:container_color'
+    ContainerColorInput: 'message_builder:container_color',
+    ContainerSpoilerInput: 'message_builder:container_spoiler'
 });
 
 export const BuilderActions = Object.freeze({

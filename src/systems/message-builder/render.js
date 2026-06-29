@@ -128,7 +128,7 @@ export function buildContainerModal({ block, sessionID } = {}) {
                     value: block?.accentColor ? `#${block.accentColor.toString(16).padStart(6, '0')}` : ''
                 })
             ),
-            label('Spoiler', checkbox('message_builder:container_spoiler', { default: Boolean(block?.spoiler) }))
+            label('Spoiler', checkbox(BuilderIDs.ContainerSpoilerInput, { default: Boolean(block?.spoiler) }))
         ]
     };
 }

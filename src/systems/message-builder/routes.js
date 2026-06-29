@@ -396,6 +396,7 @@ async function editContainerBlock(context, databases, logger) {
     }
 
     block.accentColor = color;
+    block.spoiler = context.modalValues[BuilderIDs.ContainerSpoilerInput] === true;
     await saveAndEdit(context, databases, logger, draft, { source: 'edit_container_modal' });
 }
 
