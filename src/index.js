@@ -1,14 +1,25 @@
-import commands from './commands/index.js';
+import { createCommands } from './commands/index.js';
 import { loadConfig } from './config/index.js';
 import { createDatabases } from './database/index.js';
 import { ModuleRegistry } from './modules/index.js';
 import { QuestListModule } from './modules/quest-list/index.js';
+import { createDiscordEventRouter } from './systems/discord/event-router.js';
 import { createDiscordGateway } from './systems/discord/gateway.js';
 import { createDiscordRest } from './systems/discord/rest.js';
-import { createInteractionRouter } from './systems/discord/router.js';
+import { loadLogLevels } from './systems/logger/data.js';
+import { createLogging } from './systems/logger/index.js';
 
 async function main() {
     const config = await loadConfig();
+    const logging = createLogging({ limit: config.modules.defaultLogsLimit });
+    const logger = logging.createLogger({
+        console: true,
+        sourceID: 'runtime'
+    });
+
+    const startupTimer = logger.time('startup.completed');
+    logger.info('startup.begin');
+    logger.debug('startup.config_loaded');
 
     if (!config.discord.token) {
         throw new Error('BOT_TOKEN is required to initialize Discord REST and gateway.');
@@ -22,19 +33,48 @@ async function main() {
         throw new Error('discord.guildId is required to sync guild commands.');
     }
 
+    const databasesTimer = logger.time('startup.databases_connected');
     const databases = await createDatabases(config);
-    const modules = new ModuleRegistry([new QuestListModule({ config, databases })]);
+    databasesTimer.end({}, { level: 'info' });
+    logging.setLevels(await loadLogLevels(databases));
+
+    const modulesTimer = logger.time('startup.modules_initialized');
+    const commands = createCommands({ config, databases, logger, logging });
+    const modules = new ModuleRegistry([new QuestListModule({ config, databases, logging })]);
     await modules.init();
+    modulesTimer.end(
+        {
+            moduleCount: modules.sorted.length
+        },
+        { level: 'info' }
+    );
 
-    const rest = createDiscordRest(config.discord.token);
+    const discordLogger = logging.createLogger({ sourceID: 'discord' });
+    const rest = createDiscordRest(config.discord.token, {
+        applicationId: config.discord.applicationId,
+        logger: discordLogger
+    });
     const registeredCommands = [...commands, ...modules.commands];
-    const router = createInteractionRouter({ commands: registeredCommands, config, modules, rest });
+    const router = createDiscordEventRouter({
+        commands: registeredCommands,
+        config,
+        logger: discordLogger,
+        modules,
+        rest
+    });
 
+    const commandSyncTimer = logger.time('discord.command_sync.completed', {
+        commandCount: registeredCommands.length
+    });
+    logger.info('discord.command_sync.started', { commandCount: registeredCommands.length });
     await rest.syncGuildCommands(config.discord.applicationId, config.discord.guildId, registeredCommands);
-    console.info(`Synced ${registeredCommands.length.toLocaleString()} guild command(s).`);
+    commandSyncTimer.end({}, { level: 'info' });
 
+    const gatewayTimer = logger.time('startup.gateway_started');
     const gateway = createDiscordGateway({ router, token: config.discord.token });
     await gateway.start();
+    gatewayTimer.end({}, { level: 'info' });
+    startupTimer.end({}, { level: 'info' });
 }
 
 main().catch((error) => {

@@ -1,24 +1,10 @@
+import { LogLevels, LogLevelWeights } from '../systems/logger/index.js';
+
 const ModuleIDPattern = /^[a-z_]+$/;
 
-export const LogLevels = Object.freeze({
-    Trace: 'trace',
-    Debug: 'debug',
-    Info: 'info',
-    Warn: 'warn',
-    Error: 'error'
-});
-
-export const LogLevelWeights = Object.freeze({
-    [LogLevels.Trace]: 0,
-    [LogLevels.Debug]: 1,
-    [LogLevels.Info]: 2,
-    [LogLevels.Warn]: 3,
-    [LogLevels.Error]: 4
-});
+export { LogLevels, LogLevelWeights };
 
 export class Module {
-    static LogLevels = LogLevels;
-    static LogLevelWeights = LogLevelWeights;
     static DefaultLogLevel = LogLevels.Info;
 
     #commands;
@@ -28,14 +14,15 @@ export class Module {
     #events;
     #id;
     #logLevel;
-    #logs;
     #logsLimit;
+    #logger;
     #modals;
     #name;
+    #sequenceNumber;
     #databases;
     #toggleable;
 
-    constructor({ databases, id, name, description = '', enabled = true, logsLimit, toggleable = true }) {
+    constructor({ databases, id, name, description = '', enabled = true, logsLimit, logging, toggleable = true }) {
         if (!ModuleIDPattern.test(id)) {
             throw new Error(`Invalid module id: ${id}`);
         }
@@ -50,9 +37,13 @@ export class Module {
         this.#description = description;
         this.#enabled = enabled;
         this.#toggleable = toggleable;
+        this.#sequenceNumber = 0;
         this.#logLevel = this.constructor.DefaultLogLevel;
         this.#logsLimit = logsLimit;
-        this.#logs = [];
+        this.#logger = logging.createLogger({
+            level: this.#logLevel,
+            sourceID: id
+        });
         this.#commands = [];
         this.#components = new Map();
         this.#events = new Map();
@@ -69,14 +60,6 @@ export class Module {
 
     get description() {
         return this.#description;
-    }
-
-    get LogLevels() {
-        return this.constructor.LogLevels;
-    }
-
-    get LogLevelWeights() {
-        return this.constructor.LogLevelWeights;
     }
 
     get enabled() {
@@ -96,7 +79,11 @@ export class Module {
     }
 
     get logsSize() {
-        return this.#logs.length;
+        return this.getLogs().length;
+    }
+
+    get logger() {
+        return this.#logger;
     }
 
     get active() {
@@ -123,13 +110,26 @@ export class Module {
 
     async setConfig(key, value) {
         const configKey = `${this.#id}_${key}`;
+        const deleting = value === null || value === undefined;
+        const timer = this.#logger.time(deleting ? 'module.config.deleted' : 'module.config.updated', { key });
 
-        if (value === null || value === undefined) {
-            await this.#databases.snail.mongo.Config.deleteOne({ _id: configKey });
-            return;
+        try {
+            if (deleting) {
+                await this.#databases.snail.mongo.Config.deleteOne({ _id: configKey });
+                timer.end();
+                return;
+            }
+
+            await this.#databases.snail.mongo.Config.updateOne(
+                { _id: configKey },
+                { $set: { value } },
+                { upsert: true }
+            );
+            timer.end();
+        } catch (error) {
+            timer.fail(error);
+            throw error;
         }
-
-        await this.#databases.snail.mongo.Config.updateOne({ _id: configKey }, { $set: { value } }, { upsert: true });
     }
 
     async init(context) {
@@ -149,13 +149,9 @@ export class Module {
             await this.onEnable(context);
         }
 
-        this.log({
-            level: this.LogLevels.Info,
-            type: 'module.initialized',
-            data: {
-                enabled: this.#enabled,
-                logLevel: this.#logLevel
-            }
+        this.#logger.info('module.initialized', {
+            enabled: this.#enabled,
+            logLevel: this.#logLevel
         });
     }
 
@@ -171,11 +167,7 @@ export class Module {
         this.#enabled = true;
         await this.setConfig('enabled', true);
         await this.onEnable(context);
-        this.log({
-            level: this.LogLevels.Info,
-            type: 'module.enabled',
-            data: {}
-        });
+        this.#logger.info('module.enabled');
     }
 
     async disable() {
@@ -186,11 +178,7 @@ export class Module {
         this.#enabled = false;
         await this.setConfig('enabled', false);
         await this.onDisable();
-        this.log({
-            level: this.LogLevels.Info,
-            type: 'module.disabled',
-            data: {}
-        });
+        this.#logger.info('module.disabled');
     }
 
     async setLogLevel(level) {
@@ -198,13 +186,9 @@ export class Module {
 
         this.#setLogLevel(level);
         await this.setConfig('log_level', this.#logLevel);
-        this.log({
-            level: this.LogLevels.Info,
-            type: 'module.log_level_updated',
-            data: {
-                previousLogLevel,
-                logLevel: this.#logLevel
-            }
+        this.#logger.info('module.log_level_updated', {
+            previousLogLevel,
+            logLevel: this.#logLevel
         });
     }
 
@@ -249,30 +233,13 @@ export class Module {
         this.#events.set(event, handlers);
     }
 
-    log(entry) {
-        const normalized = typeof entry === 'string' ? { type: 'module.message', data: { message: entry } } : entry;
-        const level = normalized.level ?? LogLevels.Info;
-        this.#validateLogLevel(level);
-
-        const logEntry = {
-            time: new Date().toISOString(),
-            module: this.#id,
-            level,
-            type: normalized.type ?? 'module.message',
-            data: normalized.data ?? {}
-        };
-
-        if (this.LogLevelWeights[logEntry.level] >= this.LogLevelWeights[this.#logLevel]) {
-            if (this.#logs.length >= this.#logsLimit) {
-                this.#logs.shift();
-            }
-
-            this.#logs.push(logEntry);
-        }
+    getLogs() {
+        return this.#logger.getEntries();
     }
 
-    getLogs() {
-        return [...this.#logs];
+    createLogID(action) {
+        this.#sequenceNumber++;
+        return `${this.#id}.${action}.${this.#sequenceNumber}`;
     }
 
     state() {
@@ -284,7 +251,7 @@ export class Module {
             enabled: this.#enabled,
             logLevel: this.#logLevel,
             logsLimit: this.#logsLimit,
-            logsSize: this.#logs.length
+            logsSize: this.logsSize
         };
     }
 
@@ -295,10 +262,11 @@ export class Module {
     #setLogLevel(level) {
         this.#validateLogLevel(level);
         this.#logLevel = level;
+        this.#logger.setLevel(level);
     }
 
     #validateLogLevel(level) {
-        if (this.LogLevelWeights[level] === undefined) {
+        if (LogLevelWeights[level] === undefined) {
             throw new Error(`${this.#name} module tried to use invalid log level "${level}".`);
         }
     }

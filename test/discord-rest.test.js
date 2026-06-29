@@ -60,6 +60,25 @@ test('file components include upload attachment metadata', () => {
     ]);
 });
 
+test('file normalization preserves explicit attachment lists', () => {
+    const file = {
+        name: 'new.png',
+        blob: new Blob(['new'], { type: 'image/png' })
+    };
+    const attachments = [
+        { id: 'existing-attachment', filename: 'old.png' },
+        { id: '0', filename: 'new.png' }
+    ];
+    const message = normalizeMessage({
+        ...componentsMessage(fileDisplay(file.name)),
+        attachments,
+        files: [file]
+    });
+
+    expect(message.attachments).toBe(attachments);
+    expect(message.files).toEqual([file]);
+});
+
 test('respond sends interaction callback with normalized string message', async () => {
     const rest = createDiscordRest('token');
 
@@ -175,6 +194,28 @@ test('guild command sync applies staff visibility permissions', async () => {
                 description: 'snail'
             }
         ]
+    });
+});
+
+test('rest failures log original error objects with discord metadata', async () => {
+    const error = new Error('Failed to send request to discord.');
+    const logger = {
+        error: vi.fn()
+    };
+
+    error.cause = {
+        status: 404,
+        body: '{"message":"Unknown interaction"}'
+    };
+    restMock.post.mockRejectedValueOnce(error);
+
+    const rest = createDiscordRest('token', { logger });
+
+    await expect(rest.respond(interaction(), 'hello')).rejects.toBe(error);
+    expect(logger.error).toHaveBeenCalledWith('discord.interaction.respond_failed', {
+        error,
+        status: 404,
+        body: '{"message":"Unknown interaction"}'
     });
 });
 

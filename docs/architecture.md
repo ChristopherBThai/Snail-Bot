@@ -7,12 +7,12 @@ This document describes the runtime shape for Snail.
 `src/index.js` should compose the runtime in a predictable order:
 
 1. Load configuration.
-2. Connect required databases and external services.
-3. Create the module registry.
-4. Initialize modules.
-5. Create Discord REST/gateway infrastructure.
-6. Create the Discord REST wrapper and interaction router.
-7. Start optional systems such as the socket bridge.
+2. Create runtime logging.
+3. Connect required databases and external services.
+4. Load persisted non-module logger levels.
+5. Create command packages and the module registry.
+6. Initialize modules.
+7. Create Discord REST/gateway infrastructure.
 8. Sync application commands.
 9. Spawn gateway shards.
 
@@ -33,7 +33,7 @@ Module construction should register commands, components, modals, and event hand
 
 Commands, components, modals, socket handlers, and gateway event handlers should route to the owning module, command package, or system. Thin Discord handlers should not become the place where feature rules live long term.
 
-Discord gateway setup lives in `systems/discord/gateway.js`. It owns Discordeno gateway manager creation, gateway intents, ready logging, and forwarding raw gateway payloads to the interaction/event router. `src/index.js` remains the runtime composition root. Add stores, repositories, factories, or adapters only when they remove meaningful complexity, protect ownership boundaries, or isolate an unstable integration.
+Discord gateway setup lives in `systems/discord/gateway.js`. It owns Discordeno gateway manager creation, gateway intents, ready logging, and forwarding raw gateway payloads to the Discord event router. `src/index.js` remains the runtime composition root. Add stores, repositories, factories, or adapters only when they remove meaningful complexity, protect ownership boundaries, or isolate an unstable integration.
 
 ## Feature Specs
 

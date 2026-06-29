@@ -1,20 +1,21 @@
 import { GatewayDispatchEvents, InteractionType } from 'discord-api-types/v10';
+import { LogLevels } from '../logger/index.js';
 import { getCommandKey } from './commands.js';
 import { ephemeralText } from './components.js';
 
-export function createInteractionRouter({ commands, config, modules, rest }) {
+export function createDiscordEventRouter({ commands, config, logger, modules, rest }) {
     const commandMap = collectCommandRoutes(commands);
     const cooldowns = new Map();
     let botUserID;
     const componentRoutes = collectCustomIDRoutes({
         commands,
-        moduleRoutes: modules?.components,
+        moduleRoutes: modules.components,
         routeType: 'components',
         surface: 'component'
     });
     const modalRoutes = collectCustomIDRoutes({
         commands,
-        moduleRoutes: modules?.modals,
+        moduleRoutes: modules.modals,
         routeType: 'modals',
         surface: 'modal'
     });
@@ -23,60 +24,90 @@ export function createInteractionRouter({ commands, config, modules, rest }) {
         async route(payload) {
             if (payload.t === GatewayDispatchEvents.Ready) {
                 botUserID = payload.d.user.id;
-                await modules?.dispatch('ready', { ...rest, botUserID });
+                const timer = logger.time('discord.ready.dispatched', { botUserID });
+
+                await modules.dispatch('ready', { ...rest, botUserID });
+                timer.end({ moduleCount: modules.sorted.length }, { level: LogLevels.Info });
                 return;
             }
 
             if (payload.t === GatewayDispatchEvents.MessageCreate) {
-                await modules?.dispatch('message', payload.d, { ...rest, botUserID });
+                const timer = logger.time('discord.message_create.dispatched', getMessageLogData(payload.d));
+
+                await modules.dispatch('message', payload.d, { ...rest, botUserID });
+                timer.end({}, { level: LogLevels.Trace });
                 return;
             }
 
             if (payload.t !== GatewayDispatchEvents.InteractionCreate) {
+                logger.trace('discord.gateway_event.ignored', { eventType: payload.t });
                 return;
             }
 
             const interaction = payload.d;
             const route = getRoute({ commandMap, componentRoutes, interaction, modalRoutes });
+            const log = logger.child(getInteractionLogData(interaction));
+
             if (!route) {
+                log.trace('discord.interaction.unrouted', { interactionType: interaction.type });
                 return;
             }
 
-            const context = createInteractionContext({ config, interaction, modules, rest, route });
+            const routeData = getRouteLogData(route, interaction);
+            const timer = log.time('discord.interaction.handled', routeData);
+            const context = createInteractionContext({ config, interaction, logger, modules, rest, route });
 
             try {
                 if (route.auth && !(await route.auth(context))) {
+                    log.warn('discord.interaction.rejected', { ...routeData, reason: 'auth_failed' });
                     if (route.autocomplete) {
                         await context.autocomplete([]);
+                        timer.end({ rejected: true }, { level: LogLevels.Debug });
                         return;
                     }
 
                     await context.respond(ephemeralText('You cannot use that interaction.'));
+                    timer.end({ rejected: true }, { level: LogLevels.Debug });
                     return;
                 }
 
                 if (route.module && !route.module.active && !route.allowDisabled) {
+                    log.warn('discord.interaction.rejected', {
+                        ...routeData,
+                        moduleID: route.module.id,
+                        reason: 'module_disabled'
+                    });
                     await context.respond(ephemeralText(route.module.inactiveMessage()));
+                    timer.end({ rejected: true }, { level: LogLevels.Debug });
                     return;
                 }
 
                 const cooldown = getActiveCooldown(route, context, cooldowns);
                 if (cooldown) {
+                    log.debug('discord.interaction.rejected', {
+                        ...routeData,
+                        availableAt: cooldown.availableAt,
+                        reason: 'cooldown'
+                    });
                     await context.respond(ephemeralText(`Try that again ${formatCooldown(cooldown.availableAt)}.`));
+                    timer.end({ rejected: true }, { level: LogLevels.Debug });
                     return;
                 }
 
                 await route.handle(context, route);
+                timer.end({ deferred: context.deferred }, { level: LogLevels.Debug });
             } catch (error) {
                 console.error(error);
-                route.module?.log({
-                    level: route.module.LogLevels.Error,
-                    type: 'interaction.error',
-                    data: {
-                        commandName: context.commandName,
-                        customID: context.customID,
-                        error: error instanceof Error ? error.message : String(error)
-                    }
+                timer.fail(error, routeData);
+                logger.error('discord.interaction.handler_error', {
+                    commandName: context.commandName,
+                    customID: context.customID,
+                    error
+                });
+                route.module?.logger.error('interaction.error', {
+                    commandName: context.commandName,
+                    customID: context.customID,
+                    error
                 });
                 const sendError = context.deferred ? context.editReply : context.respond;
                 await Promise.resolve(
@@ -85,6 +116,51 @@ export function createInteractionRouter({ commands, config, modules, rest }) {
             }
         }
     };
+}
+
+function getMessageLogData(message) {
+    return {
+        authorID: message.author?.id,
+        bot: message.author?.bot,
+        channelID: message.channel_id ?? message.channelId,
+        messageID: message.id
+    };
+}
+
+function getInteractionLogData(interaction) {
+    return {
+        channelID: interaction.channel_id,
+        guildID: interaction.guild_id,
+        interactionID: interaction.id,
+        userID: interaction.member?.user?.id ?? interaction.user?.id
+    };
+}
+
+function getRouteLogData(route, interaction) {
+    return {
+        commandName: interaction.data?.name,
+        customID: interaction.data?.custom_id ?? interaction.data?.customId,
+        interactionType: interaction.type,
+        moduleID: route.module?.id,
+        routeType: getInteractionRouteType(route, interaction)
+    };
+}
+
+function getInteractionRouteType(route, interaction) {
+    if (route.autocomplete) {
+        return 'autocomplete';
+    }
+
+    switch (interaction.type) {
+        case InteractionType.ApplicationCommand:
+            return 'command';
+        case InteractionType.MessageComponent:
+            return 'component';
+        case InteractionType.ModalSubmit:
+            return 'modal';
+        default:
+            return 'unknown';
+    }
 }
 
 function getActiveCooldown(route, context, cooldowns) {
@@ -112,7 +188,7 @@ function formatCooldown(availableAt) {
     return `<t:${Math.ceil(availableAt / 1000)}:R>`;
 }
 
-function createInteractionContext({ config, interaction, modules, rest, route }) {
+function createInteractionContext({ config, interaction, logger, modules, rest, route }) {
     const data = interaction.data ?? {};
     const customID = data.custom_id ?? data.customId;
     let deferred = false;
@@ -121,6 +197,7 @@ function createInteractionContext({ config, interaction, modules, rest, route })
         config,
         data,
         interaction,
+        logger,
         modules,
         module: route.module,
         commandName: data.name,
@@ -129,12 +206,17 @@ function createInteractionContext({ config, interaction, modules, rest, route })
         guildID: interaction.guild_id,
         memberRoles: interaction.member?.roles ?? [],
         modalValues: extractModalValues(data.components ?? []),
+        resolvedAttachments: normalizeResolvedCollection(data.resolved?.attachments),
         userID: interaction.member?.user?.id ?? interaction.user?.id,
         get deferred() {
             return deferred;
         },
         async defer(options) {
             await rest.defer(interaction, options);
+            deferred = true;
+        },
+        async deferUpdate() {
+            await rest.deferUpdate(interaction);
             deferred = true;
         },
         edit(message) {
@@ -145,6 +227,9 @@ function createInteractionContext({ config, interaction, modules, rest, route })
         },
         editReply(message) {
             return rest.editReply(interaction, message);
+        },
+        followUp(message) {
+            return rest.followUp(interaction, message);
         },
         openModal(modal) {
             return rest.openModal(interaction, modal);
@@ -159,6 +244,18 @@ function createInteractionContext({ config, interaction, modules, rest, route })
             return rest.editMessage(channelID, messageID, message);
         }
     };
+}
+
+function normalizeResolvedCollection(collection) {
+    if (!collection) {
+        return {};
+    }
+
+    if (Array.isArray(collection)) {
+        return Object.fromEntries(collection.map((item) => [item.id, item]));
+    }
+
+    return collection;
 }
 
 function getRoute({ commandMap, componentRoutes, interaction, modalRoutes }) {
@@ -179,7 +276,7 @@ function getRoute({ commandMap, componentRoutes, interaction, modalRoutes }) {
             autocomplete: true,
             module: command.module,
             handle: async (context) => {
-                await context.autocomplete(command.autocomplete(context));
+                await context.autocomplete(await command.autocomplete(context));
             }
         };
     }

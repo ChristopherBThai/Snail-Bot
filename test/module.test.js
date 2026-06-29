@@ -1,7 +1,8 @@
 import { expect, test, vi } from 'vitest';
 import moduleCommand, { buildModuleOverview, buildModulePanel, ModulePanelIDs } from '../src/commands/module.js';
-import { Module, ModuleRegistry } from '../src/modules/index.js';
-import { createInteractionRouter } from '../src/systems/discord/router.js';
+import { LogLevels, Module, ModuleRegistry } from '../src/modules/index.js';
+import { createDiscordEventRouter } from '../src/systems/discord/event-router.js';
+import { createLogging } from '../src/systems/logger/index.js';
 
 test('persisted disabled modules skip startup activation and activate when enabled', async () => {
     const databases = createDatabases({ test_module_enabled: false });
@@ -50,8 +51,8 @@ test('module panel shows log usage as size over limit', async () => {
     const module = new TestModule({ logsLimit: 3 });
     const modules = new ModuleRegistry([module]);
 
-    module.log('first');
-    module.log('second');
+    module.logger.info('first');
+    module.logger.info('second');
 
     const panel = buildModulePanel(createContext({ modules }), module);
     const logsSection = findSectionByContent(panel, '**Logs**');
@@ -65,29 +66,113 @@ test('module log level filters retained logs and persists updates', async () => 
     const modules = new ModuleRegistry([module]);
 
     await modules.init();
-    module.log({ level: module.LogLevels.Info, type: 'test.info' });
-    module.log({ level: module.LogLevels.Warn, type: 'test.warn' });
+    module.logger.info('test.info');
+    module.logger.warn('test.warn');
 
     expect(module.logLevel).toBe('warn');
     expect(module.getLogs().map((entry) => entry.type)).toEqual(['test.warn']);
 
-    await module.setLogLevel(module.LogLevels.Debug);
+    await module.setLogLevel(LogLevels.Debug);
 
     expect(databases.snail.mongo.values.get('test_module_log_level')).toBe('debug');
     expect(module.logLevel).toBe('debug');
+});
+
+test('module config persistence logs storage operations without values', async () => {
+    const module = new TestModule();
+
+    module.logger.setLevel(LogLevels.Debug);
+    await module.setConfig('sample_key', 'stored value');
+    await module.setConfig('sample_key', null);
+
+    expect(module.getLogs()).toEqual(
+        expect.arrayContaining([
+            expect.objectContaining({
+                level: LogLevels.Debug,
+                type: 'module.config.updated',
+                data: {
+                    key: 'sample_key',
+                    duration: expect.any(Number)
+                }
+            }),
+            expect.objectContaining({
+                level: LogLevels.Debug,
+                type: 'module.config.deleted',
+                data: {
+                    key: 'sample_key',
+                    duration: expect.any(Number)
+                }
+            })
+        ])
+    );
+    expect(JSON.stringify(module.getLogs())).not.toContain('stored value');
+});
+
+test('module creates per-module log IDs', () => {
+    const module = new TestModule({ id: 'log_test' });
+
+    expect(module.createLogID('action')).toBe('log_test.action.1');
+    expect(module.createLogID('action')).toBe('log_test.action.2');
+});
+
+test('module getLogs returns only that module from shared logging', () => {
+    const logging = createLogging({ limit: 10 });
+    const left = new TestModule({ id: 'left_module', logging });
+    const right = new TestModule({ id: 'right_module', logging });
+
+    left.logger.info('left.event');
+    right.logger.info('right.event');
+
+    expect(left.getLogs().map((entry) => entry.type)).toEqual(['left.event']);
+    expect(right.getLogs().map((entry) => entry.type)).toEqual(['right.event']);
 });
 
 test('module overview shows module sections with open buttons', () => {
     const module = new TestModule({ description: 'Useful test module.' });
     const modules = new ModuleRegistry([module]);
     const overview = buildModuleOverview(createContext({ modules }));
-    const moduleSection = overview.components[0].components[2];
+    const moduleSection = findSectionByContent(overview, 'Useful test module.');
 
     expect(moduleSection.components[0].content).toContain('Useful test module.');
     expect(moduleSection.accessory).toMatchObject({
         custom_id: `${ModulePanelIDs.OpenPrefix}${module.id}`,
         label: 'Open'
     });
+});
+
+test('module overview does not include all logs export', () => {
+    const modules = new ModuleRegistry([]);
+    const overview = buildModuleOverview(createContext({ modules }));
+    const content = JSON.stringify(overview);
+
+    expect(content).not.toContain('Export All Logs');
+    expect(moduleCommand.components.some((component) => component.customID === 'module_panel:all_logs')).toBe(false);
+});
+
+test('module panel exports module logs', async () => {
+    const module = new TestModule();
+    const modules = new ModuleRegistry([module]);
+    const rest = createRestMock();
+
+    module.logger.error('module.failed');
+
+    const router = createTestRouter({
+        commands: [moduleCommand],
+        config: testConfig(),
+        modules,
+        rest
+    });
+
+    await router.route(componentInteraction(`${ModulePanelIDs.LogsPrefix}${module.id}`));
+
+    expect(rest.responses[0].message.files[0]).toMatchObject({
+        name: expect.stringMatching(/^test_module-logs-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.json$/),
+        blob: expect.any(Blob)
+    });
+    await expect(readJsonFile(rest.responses[0].message.files[0])).resolves.toMatchObject([
+        { sourceID: 'test_module', type: 'module.failed' }
+    ]);
+    expect(rest.edits).toHaveLength(0);
 });
 
 test('module panel uses configured UI colors', () => {
@@ -117,7 +202,8 @@ test('module panel exposes state export and log level controls', () => {
 
     expect(content).toContain(`${ModulePanelIDs.StatePrefix}${module.id}`);
     expect(content).toContain(`${ModulePanelIDs.LogLevelPrefix}${module.id}`);
-    for (const level of Object.values(module.LogLevels)) {
+    expect(content).toContain('Export Logs');
+    for (const level of Object.values(LogLevels)) {
         expect(content).toContain(level);
     }
 });
@@ -170,7 +256,7 @@ test('router supports command-owned modal prefix routes', async () => {
             }
         ]
     };
-    const router = createInteractionRouter({
+    const router = createTestRouter({
         commands: [command],
         config: testConfig(),
         modules: new ModuleRegistry([]),
@@ -197,7 +283,7 @@ test('router applies command cooldowns per user', async () => {
         },
         handle
     };
-    const router = createInteractionRouter({
+    const router = createTestRouter({
         commands: [command],
         config: testConfig(),
         modules: new ModuleRegistry([]),
@@ -217,6 +303,8 @@ test('router edits deferred replies when handlers throw after defer', async () =
     const defer = vi.fn();
     const editReply = vi.fn();
     const respond = vi.fn();
+    const logging = createLogging({ limit: 100 });
+    const logger = logging.createLogger({ sourceID: 'runtime' });
     const command = {
         definition: {
             name: 'deferred_error_test',
@@ -227,9 +315,11 @@ test('router edits deferred replies when handlers throw after defer', async () =
             throw new Error('after defer');
         }
     };
-    const router = createInteractionRouter({
+    const router = createTestRouter({
         commands: [command],
         config: testConfig(),
+        logger,
+        logging,
         modules: new ModuleRegistry([]),
         rest: { defer, editReply, respond }
     });
@@ -241,6 +331,15 @@ test('router edits deferred replies when handlers throw after defer', async () =
     expect(respond).not.toHaveBeenCalled();
     expect(JSON.stringify(editReply.mock.calls[0][1])).toContain(
         'Something went wrong while handling that interaction.'
+    );
+    expect(logger.getEntries()).toContainEqual(
+        expect.objectContaining({
+            level: LogLevels.Error,
+            type: 'discord.interaction.handler_error',
+            data: expect.objectContaining({
+                error: expect.objectContaining({ message: 'after defer' })
+            })
+        })
     );
 });
 
@@ -270,6 +369,7 @@ class TestModule extends Module {
         super({
             id: 'test_module',
             databases: createDatabases(),
+            logging: createLogging({ limit: options.logsLimit ?? 50_000 }),
             name: 'Test Module',
             logsLimit: 50_000,
             ...options
@@ -312,6 +412,38 @@ function createDatabases(values = {}) {
     };
 }
 
+function createRestMock() {
+    return {
+        edits: [],
+        responses: [],
+        async edit(interaction, message) {
+            this.edits.push({ interaction, message });
+        },
+        async respond(interaction, message) {
+            this.responses.push({ interaction, message });
+        }
+    };
+}
+
+function createTestRouter({
+    commands,
+    config = testConfig(),
+    logger,
+    logging,
+    modules = new ModuleRegistry([]),
+    rest
+}) {
+    const routerLogging = logging ?? createLogging({ limit: 100 });
+
+    return createDiscordEventRouter({
+        commands,
+        config,
+        logger: logger ?? routerLogging.createLogger({ sourceID: 'runtime' }),
+        modules,
+        rest
+    });
+}
+
 function createContext({ config = testConfig(), data = {}, modules = new ModuleRegistry([]) } = {}) {
     return { config, data, modules };
 }
@@ -324,6 +456,14 @@ function testConfig() {
             warning: 0xf1c40f,
             danger: 0xe74c3c,
             neutral: 0x95a5a6
+        },
+        roles: {
+            admin: [],
+            helper: [],
+            manager: []
+        },
+        users: {
+            owner: 'manager-1'
         }
     };
 }
@@ -342,6 +482,19 @@ function modalInteraction(customID, component) {
             token: 'token',
             type: 5,
             data: { custom_id: customID, components: [component] },
+            member: { user: { id: 'manager-1' }, roles: [] }
+        }
+    };
+}
+
+function componentInteraction(customID, data = {}) {
+    return {
+        t: 'INTERACTION_CREATE',
+        d: {
+            id: `interaction-${customID}`,
+            token: 'token',
+            type: 3,
+            data: { custom_id: customID, ...data },
             member: { user: { id: 'manager-1' }, roles: [] }
         }
     };
@@ -369,4 +522,8 @@ function textInputComponent(customID, value) {
             }
         ]
     };
+}
+
+async function readJsonFile(file) {
+    return JSON.parse(await file.blob.text());
 }

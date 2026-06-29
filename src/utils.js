@@ -10,6 +10,17 @@ export function lines(...values) {
     return values.join('\n');
 }
 
+export function jsonFile(filename, data) {
+    return {
+        name: filename,
+        blob: new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    };
+}
+
+export function getTimestampForFilename() {
+    return new Date().toISOString().replaceAll(':', '-').replaceAll('.', '-');
+}
+
 export function getColor(context, key) {
     return context.config.colors[key];
 }

@@ -6,4 +6,4 @@ The current REST wrapper syncs guild commands and sends interaction responses. I
 
 Add Discord REST behavior to this wrapper before exposing raw REST manager access elsewhere.
 
-The current interaction router handles raw gateway payload routing for application commands. It builds a command lookup once and passes handlers an interaction context with `interaction` and `respond`. Keep it small until there is enough command behavior to justify command packages.
+The Discord event router handles raw gateway payload routing for ready events, message create events, and interactions. It builds command and component lookups once and passes handlers a context with Discord REST helpers. Keep it small and route feature behavior to the owning command package, module, or system.

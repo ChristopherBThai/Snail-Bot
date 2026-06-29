@@ -14,9 +14,9 @@ Snail will use `@discordeno/rest` for the REST client and `@discordeno/gateway` 
 
 Snail will prefer `discord-api-types` for Discord API shapes, constants, and payload references when the code needs them. Do not add `@discordeno/types` by default.
 
-Interaction create events do not require privileged intents or gateway intents, so Snail does not request gateway intents for interaction routing.
+Interaction create events do not require privileged intents or gateway intents, so Snail does not request gateway intents for interaction handling.
 
-Create Discord system boundaries when there is meaningful Snail-owned Discord behavior to place there, such as REST payload normalization, command sync ownership, reusable interaction routing, or shared REST helpers.
+Create Discord system boundaries when there is meaningful Snail-owned Discord behavior to place there, such as REST payload normalization, command sync ownership, reusable event routing, or shared REST helpers.
 
 The Discord REST wrapper owns REST manager construction. Other code should ask the wrapper for Discord REST behavior instead of accessing the REST manager directly.
 
@@ -38,13 +38,13 @@ The Discord REST wrapper owns REST manager construction. Other code should ask t
 ## Cons
 
 - Adds runtime dependencies before the final routing boundary exists.
-- The REST wrapper and router are intentionally narrow and will need to grow with command behavior.
+- The REST wrapper and event router are intentionally narrow and will need to grow with command behavior.
 
 ## Consequences
 
 - Startup may fail clearly when Discord REST or gateway setup is missing required config.
 - Command sync and gateway startup now run during `src/index.js`.
-- Interaction routing currently lives in `src/systems/discord/router.js`.
+- Discord event routing currently lives in `src/systems/discord/event-router.js`.
 - `src/systems/discord/` owns reusable Discord behavior once it exists.
 - Add new Discord REST behavior to the wrapper before exposing raw REST manager access elsewhere.
 

@@ -1,10 +1,11 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import moduleCommand, { buildModulePanel, getModuleActionID, ModulePanelIDs } from '../src/commands/module.js';
-import { ModuleRegistry } from '../src/modules/index.js';
+import { LogLevels, ModuleRegistry } from '../src/modules/index.js';
 import { QuestListIDs } from '../src/modules/quest-list/constants.js';
 import { buildQuestListMessage, buildVisibleMentionsResponse } from '../src/modules/quest-list/display.js';
 import { QuestListModule } from '../src/modules/quest-list/index.js';
-import { createInteractionRouter } from '../src/systems/discord/router.js';
+import { createDiscordEventRouter } from '../src/systems/discord/event-router.js';
+import { createLogging } from '../src/systems/logger/index.js';
 
 test('does nothing beyond module logs when no quest list channel is configured', async () => {
     const databases = createDatabases();
@@ -53,6 +54,7 @@ test('Add My Quests saves and publishes when new eligible quests are added', asy
     });
 
     await module.onEnable();
+    await module.setLogLevel(LogLevels.Trace);
     await module.interactionRoutes.components.get(QuestListIDs.AddQuests).handle(context);
 
     expect(databases.queuedRows).toEqual([
@@ -70,6 +72,16 @@ test('Add My Quests saves and publishes when new eligible quests are added', asy
         userID: 'user-1',
         addedCount: 1,
         quests: [expect.objectContaining({ questID: 'quest-2', questType: 'cookieBy' })]
+    });
+    expect(
+        module
+            .getLogs()
+            .find(
+                (entry) => entry.level === LogLevels.Trace && entry.type === 'quest_list.add_quests.candidates_loaded'
+            ).data
+    ).toMatchObject({
+        activeQuests: [expect.objectContaining({ count: 4, questID: 'quest-2', questType: 'cookieBy', total: 10 })],
+        newQuests: [expect.objectContaining({ count: 4, questID: 'quest-2', questType: 'cookieBy', total: 10 })]
     });
     expect(context.sentMessages).toHaveLength(1);
     expect(context.sentMessages[0].channelID).toBe('123456789012345678');
@@ -259,6 +271,28 @@ test('messages in the quest list channel update displayed progress', async () =>
     expect(rendered).toContain('04/10');
 });
 
+test('trace logging records ignored message decisions', async () => {
+    const context = createContext({ userID: 'user-1' });
+    const databases = createDatabases({
+        config: { quest_list_channel: '123456789012345678' }
+    });
+    const module = createModule({ databases });
+
+    await module.onEnable();
+    await module.setLogLevel(LogLevels.Trace);
+    await module.events.get('message')[0]({ channel_id: '999999999999999999', author: { bot: false } }, context);
+
+    expect(module.getLogs()).toContainEqual(
+        expect.objectContaining({
+            level: 'trace',
+            type: 'quest_list.message_ignored',
+            data: expect.objectContaining({
+                reason: 'different_channel'
+            })
+        })
+    );
+});
+
 test('startup posts a fresh quest list instead of loading a persisted message id', async () => {
     const context = createContext({ userID: 'user-1' });
     const databases = createDatabases({
@@ -307,6 +341,7 @@ test('refresh deletes removed quests incrementally and logs removal reasons', as
     });
     const module = createModule({ databases });
 
+    await module.setLogLevel(LogLevels.Trace);
     await module.onEnable();
     await module.events.get('ready')[0](context);
 
@@ -325,6 +360,25 @@ test('refresh deletes removed quests incrementally and logs removal reasons', as
         ['completed-quest', 'completed'],
         ['unsupported-quest', 'unsupported_type']
     ]);
+    expect(module.getLogs()).toContainEqual(
+        expect.objectContaining({
+            level: LogLevels.Trace,
+            type: 'quest_list.quests_hydrated',
+            data: expect.objectContaining({
+                quest: expect.objectContaining({ questID: 'completed-quest', questType: 'cookieBy' }),
+                removalReason: 'completed'
+            })
+        })
+    );
+    expect(module.getLogs()).toContainEqual(
+        expect.objectContaining({
+            level: LogLevels.Trace,
+            type: 'quest_list.quests_hydrated',
+            data: expect.objectContaining({
+                updated: [expect.objectContaining({ questID: 'kept-quest', questType: 'cookieBy' })]
+            })
+        })
+    );
 });
 
 test('messages in the quest list channel repost when the repost interval is reached', async () => {
@@ -494,7 +548,7 @@ test('module panel can disable a module and stale components report disabled sta
     });
     const modules = new ModuleRegistry([module]);
     const rest = createRestMock();
-    const router = createInteractionRouter({ commands: [moduleCommand], config: testConfig(), modules, rest });
+    const router = createTestRouter({ commands: [moduleCommand], modules, rest });
 
     await modules.init();
     await router.route(componentInteraction(getModuleActionID(ModulePanelIDs.TogglePrefix, module.id)));
@@ -512,7 +566,7 @@ test('module settings can be changed while the module is disabled', async () => 
     });
     const modules = new ModuleRegistry([module]);
     const rest = createRestMock();
-    const router = createInteractionRouter({ commands: [moduleCommand], config: testConfig(), modules, rest });
+    const router = createTestRouter({ commands: [moduleCommand], modules, rest });
 
     await modules.init();
     await router.route(componentInteraction(getModuleActionID(ModulePanelIDs.TogglePrefix, module.id)));
@@ -532,7 +586,7 @@ test('module panel can show module logs', async () => {
     const module = createModule({ databases: createDatabases() });
     const modules = new ModuleRegistry([module]);
     const rest = createRestMock();
-    const router = createInteractionRouter({ commands: [moduleCommand], config: testConfig(), modules, rest });
+    const router = createTestRouter({ commands: [moduleCommand], modules, rest });
 
     await modules.init();
     await router.route(componentInteraction(getModuleActionID(ModulePanelIDs.LogsPrefix, module.id)));
@@ -549,7 +603,7 @@ test('module panel can export module state', async () => {
     const module = createModule({ databases: createDatabases() });
     const modules = new ModuleRegistry([module]);
     const rest = createRestMock();
-    const router = createInteractionRouter({ commands: [moduleCommand], config: testConfig(), modules, rest });
+    const router = createTestRouter({ commands: [moduleCommand], modules, rest });
 
     await modules.init();
     await router.route(componentInteraction(getModuleActionID(ModulePanelIDs.StatePrefix, module.id)));
@@ -565,18 +619,42 @@ test('module panel can update log level', async () => {
     const module = createModule({ databases: createDatabases() });
     const modules = new ModuleRegistry([module]);
     const rest = createRestMock();
-    const router = createInteractionRouter({ commands: [moduleCommand], config: testConfig(), modules, rest });
+    const router = createTestRouter({ commands: [moduleCommand], modules, rest });
 
     await modules.init();
     await router.route(
         componentInteraction(getModuleActionID(ModulePanelIDs.LogLevelPrefix, module.id), {
-            values: [module.LogLevels.Debug]
+            values: [LogLevels.Debug]
         })
     );
 
     expect(rest.responses).toHaveLength(0);
-    expect(module.logLevel).toBe(module.LogLevels.Debug);
+    expect(module.logLevel).toBe(LogLevels.Debug);
     expect(rest.edits).toHaveLength(1);
+});
+
+test('quest list logs semantic config updates without raw empty message content', async () => {
+    const module = createModule();
+    const emptyMessage = 'Secret manager-only empty message text';
+    const context = createContext({
+        modalValues: {
+            [QuestListIDs.EmptyMessageInput]: emptyMessage
+        }
+    });
+
+    await module.interactionRoutes.modals.get(QuestListIDs.EmptyMessageModal).handle(context);
+
+    expect(module.getLogs()).toContainEqual(
+        expect.objectContaining({
+            level: LogLevels.Info,
+            type: 'quest_list.config_updated',
+            data: {
+                setting: 'empty_message',
+                contentLength: emptyMessage.length
+            }
+        })
+    );
+    expect(JSON.stringify(module.getLogs())).not.toContain(emptyMessage);
 });
 
 test('full flow adds a user quest, refreshes it away when completed, and reposts at the interval', async () => {
@@ -746,7 +824,8 @@ afterEach(() => {
 function createModule({ databases = createDatabases() } = {}) {
     return new QuestListModule({
         config: testConfig(),
-        databases
+        databases,
+        logging: createLogging({ limit: 50_000 })
     });
 }
 
@@ -955,6 +1034,18 @@ function createRestMock() {
             this.responses.push({ interaction, message });
         }
     };
+}
+
+function createTestRouter({ commands, config = testConfig(), modules, rest }) {
+    const logging = createLogging({ limit: 100 });
+
+    return createDiscordEventRouter({
+        commands,
+        config,
+        logger: logging.createLogger({ sourceID: 'runtime' }),
+        modules,
+        rest
+    });
 }
 
 function componentInteraction(customID, data = {}) {

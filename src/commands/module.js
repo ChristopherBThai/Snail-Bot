@@ -1,4 +1,4 @@
-import { LogLevels } from '../modules/index.js';
+import { LogLevels, LogLevelWeights } from '../modules/index.js';
 import {
     accentContainer,
     actionButton,
@@ -12,7 +12,7 @@ import {
     stringSelect,
     textDisplay
 } from '../systems/discord/components.js';
-import { auth, getColor, getOptionValue, lines } from '../utils.js';
+import { auth, getColor, getOptionValue, getTimestampForFilename, jsonFile, lines } from '../utils.js';
 
 export const ModulePanelIDs = Object.freeze({
     LogLevelPrefix: 'module_panel:log_level:',
@@ -138,21 +138,10 @@ export function buildModulePanel(context, module) {
     );
 }
 
-export function buildModuleLogsFileMessage(module) {
-    const filename = `${module.id}-logs-${getTimestampForFilename()}.json`;
-
+function buildJsonFileMessage(prefix, data) {
     return {
         flags: MessageFlags.Ephemeral,
-        files: [jsonFile(filename, module.getLogs())]
-    };
-}
-
-export function buildModuleStateFileMessage(module) {
-    const filename = `${module.id}-state-${getTimestampForFilename()}.json`;
-
-    return {
-        flags: MessageFlags.Ephemeral,
-        files: [jsonFile(filename, module.state())]
+        files: [jsonFile(`${prefix}-${getTimestampForFilename()}.json`, data)]
     };
 }
 
@@ -192,7 +181,7 @@ function buildModuleRuntimeSections(module, status) {
                     )
                 )
             ],
-            actionButton('View Logs', getModuleActionID(ModulePanelIDs.LogsPrefix, module.id))
+            actionButton('Export Logs', getModuleActionID(ModulePanelIDs.LogsPrefix, module.id))
         ),
         actionRow(actionButton('Export State', getModuleActionID(ModulePanelIDs.StatePrefix, module.id))),
         actionRow(
@@ -276,7 +265,7 @@ async function sendModuleLogs(context, route) {
         return;
     }
 
-    await context.respond(buildModuleLogsFileMessage(module));
+    await context.respond(buildJsonFileMessage(`${module.id}-logs`, module.getLogs()));
 }
 
 async function sendModuleState(context, route) {
@@ -285,7 +274,7 @@ async function sendModuleState(context, route) {
         return;
     }
 
-    await context.respond(buildModuleStateFileMessage(module));
+    await context.respond(buildJsonFileMessage(`${module.id}-state`, module.state()));
 }
 
 async function setModuleLogLevel(context, route) {
@@ -296,7 +285,7 @@ async function setModuleLogLevel(context, route) {
         return;
     }
 
-    if (!level || module.LogLevelWeights[level] === undefined) {
+    if (!level || LogLevelWeights[level] === undefined) {
         await context.respond(ephemeralText('Choose a valid log level.'));
         return;
     }
@@ -313,17 +302,6 @@ async function getActionModule(context, route) {
     }
 
     return module;
-}
-
-function jsonFile(filename, data) {
-    return {
-        name: filename,
-        blob: new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    };
-}
-
-function getTimestampForFilename() {
-    return new Date().toISOString().replaceAll(':', '-').replaceAll('.', '-');
 }
 
 function getFocusedOptionValue(data) {

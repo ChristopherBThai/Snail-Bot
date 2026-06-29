@@ -17,7 +17,7 @@ import {
     userSelect
 } from '../../systems/discord/components.js';
 import { auth, lines } from '../../utils.js';
-import { Module } from '../index.js';
+import { LogLevels, Module } from '../index.js';
 import { DefaultCapacity, DefaultEmptyMessage, QuestListIDs, QuestListSettings, QuestTypes } from './constants.js';
 import { createQuestListData } from './data.js';
 import {
@@ -42,13 +42,36 @@ const ConfigKeys = Object.freeze({
 
 export class QuestListModule extends Module {
     static LogTypes = Object.freeze({
+        ActiveQuestsLoaded: 'quest_list.active_quests_loaded',
+        AddQuestsCandidatesLoaded: 'quest_list.add_quests.candidates_loaded',
+        AddQuestsCompleted: 'quest_list.add_quests.completed',
+        AddQuestsSkipped: 'quest_list.add_quests.skipped',
+        AddQuestsStarted: 'quest_list.add_quests.started',
+        ConfigLoaded: 'quest_list.config_loaded',
         ConfigUpdated: 'quest_list.config_updated',
+        DisplayQuestsBuilt: 'quest_list.display_quests_built',
+        InteractionValidationFailed: 'quest_list.interaction_validation_failed',
         ListPublished: 'quest_list.list_published',
+        ListPublishAction: 'quest_list.list_publish_action',
+        ListPublishFallback: 'quest_list.list_publish_fallback',
+        ListPublishSkipped: 'quest_list.list_publish_skipped',
+        ManageQueueCompleted: 'quest_list.manage_queue.completed',
+        ManageQueueStarted: 'quest_list.manage_queue.started',
+        MessageHandled: 'quest_list.message_handled',
+        MessageIgnored: 'quest_list.message_ignored',
+        RefreshCooldownQueued: 'quest_list.refresh_cooldown_queued',
+        RefreshPublishCompleted: 'quest_list.refresh_publish.completed',
+        RefreshPublishStarted: 'quest_list.refresh_publish.started',
+        SettingsModalOpened: 'quest_list.settings_modal_opened',
         NoChannelConfigured: 'quest_list.no_channel_configured',
         QuestsAdded: 'quest_list.quests_added',
+        QuestsHydrated: 'quest_list.quests_hydrated',
         QuestsLoaded: 'quest_list.quests_loaded',
         QuestsRemoved: 'quest_list.quests_removed',
-        QuestsRefreshed: 'quest_list.quests_refreshed'
+        QuestsRefreshed: 'quest_list.quests_refreshed',
+        QueueIndexed: 'quest_list.queue_indexed',
+        UserPositionShown: 'quest_list.user_position_shown',
+        VisibleMentionsShown: 'quest_list.visible_mentions_shown'
     });
 
     #capacity;
@@ -68,13 +91,14 @@ export class QuestListModule extends Module {
     #refreshTimer;
     #repostInterval;
 
-    constructor({ config, databases }) {
+    constructor({ config, databases, logging }) {
         super({
             databases,
             id: 'quest_list',
             name: 'Quest List',
             description: 'Maintains the shared OwO social quest queue.',
-            logsLimit: config.modules.defaultLogsLimit
+            logsLimit: config.modules.defaultLogsLimit,
+            logging
         });
 
         this.#capacity = { ...DefaultCapacity };
@@ -145,14 +169,15 @@ export class QuestListModule extends Module {
     }
 
     async onEnable(context) {
+        const timer = this.logger.time('quest_list.enable');
+
         await this.#loadConfig();
 
         if (!this.#channelID) {
-            this.log({
-                level: this.LogLevels.Info,
-                type: this.constructor.LogTypes.NoChannelConfigured,
-                data: { message: 'Quest List channel is not configured.' }
+            this.logger.info(this.constructor.LogTypes.NoChannelConfigured, {
+                message: 'Quest List channel is not configured.'
             });
+            timer.end({ configured: false });
             return;
         }
 
@@ -161,6 +186,12 @@ export class QuestListModule extends Module {
             await this.#refreshQuests('module_enabled');
             await this.#publishList(context, { repost: true });
         }
+
+        timer.end({
+            channelID: this.#channelID,
+            configured: true,
+            questCount: this.#quests.length
+        });
     }
 
     state() {
@@ -184,6 +215,7 @@ export class QuestListModule extends Module {
         clearTimeout(this.#refreshTimer);
         this.#refreshQueued = false;
         this.#refreshTimer = undefined;
+        this.logger.debug('quest_list.disabled_runtime_cleared');
     }
 
     panelComponents() {
@@ -241,6 +273,8 @@ export class QuestListModule extends Module {
     }
 
     async #loadConfig() {
+        const timer = this.logger.time(this.constructor.LogTypes.ConfigLoaded);
+
         this.#channelID = (await this.getConfig(ConfigKeys.Channel)) ?? this.#channelID;
         this.#emptyMessage = (await this.getConfig(ConfigKeys.EmptyMessage)) ?? this.#emptyMessage;
         this.#repostInterval = (await this.getConfig(ConfigKeys.RepostInterval)) ?? this.#repostInterval;
@@ -248,33 +282,50 @@ export class QuestListModule extends Module {
         for (const [type, key] of Object.entries(ConfigKeys.Capacity)) {
             this.#capacity[type] = (await this.getConfig(key)) ?? this.#capacity[type];
         }
-    }
 
-    async #loadQuests() {
-        const quests = await this.#data.loadQueuedQuests();
-        this.#setQuests(quests.map(normalizeStoredQuest));
-        this.log({
-            level: this.LogLevels.Info,
-            type: this.constructor.LogTypes.QuestsLoaded,
-            data: {
-                quests: this.#quests.length,
-                users: Object.keys(this.#questsByUser).length
-            }
+        timer.end({
+            channelID: this.#channelID,
+            capacity: this.#capacity,
+            hasCustomEmptyMessage: this.#emptyMessage !== DefaultEmptyMessage,
+            repostInterval: this.#repostInterval
         });
     }
 
+    async #loadQuests() {
+        const timer = this.logger.time(this.constructor.LogTypes.QuestsLoaded);
+        const quests = await this.#data.loadQueuedQuests();
+
+        this.#setQuests(quests.map(normalizeStoredQuest));
+        timer.end(
+            {
+                quests: this.#quests.length,
+                users: Object.keys(this.#questsByUser).length
+            },
+            { level: LogLevels.Info }
+        );
+    }
+
     async #onReady(discord) {
+        const log = this.logger.child({ logID: this.createLogID('ready') });
+
         if (!this.#channelID) {
-            this.log({
-                level: this.LogLevels.Info,
-                type: this.constructor.LogTypes.NoChannelConfigured,
-                data: { message: 'Quest List channel is not configured.' }
+            log.info(this.constructor.LogTypes.NoChannelConfigured, {
+                message: 'Quest List channel is not configured.'
             });
             return;
         }
 
+        log.debug(this.constructor.LogTypes.RefreshPublishStarted, {
+            reason: 'ready',
+            repost: false
+        });
         await this.#refreshQuests('ready');
         await this.#publishList(discord);
+        log.debug(this.constructor.LogTypes.RefreshPublishCompleted, {
+            reason: 'ready',
+            repost: false,
+            questCount: this.#quests.length
+        });
     }
 
     async #onMessage(message, discord) {
@@ -282,21 +333,54 @@ export class QuestListModule extends Module {
     }
 
     async #handleMessage(message, discord) {
-        if (!this.#channelID || getMessageChannelID(message) !== this.#channelID) {
+        const channelID = getMessageChannelID(message);
+        const messageID = getMessageID(message);
+        const log = this.logger.child({ logID: this.createLogID('message'), channelID, messageID });
+
+        if (!this.#channelID) {
+            log.trace(this.constructor.LogTypes.MessageIgnored, { reason: 'no_channel_configured' });
             return;
         }
 
-        if (getMessageID(message) === this.#messageID || isOwnBotMessage(message, discord)) {
+        if (channelID !== this.#channelID) {
+            log.trace(this.constructor.LogTypes.MessageIgnored, {
+                reason: 'different_channel',
+                questListChannelID: this.#channelID
+            });
             return;
         }
 
+        if (messageID === this.#messageID) {
+            log.trace(this.constructor.LogTypes.MessageIgnored, { reason: 'current_list_message' });
+            return;
+        }
+
+        if (isOwnBotMessage(message, discord)) {
+            log.trace(this.constructor.LogTypes.MessageIgnored, { reason: 'snail_authored' });
+            return;
+        }
+
+        log.debug(this.constructor.LogTypes.MessageHandled, {
+            messagesSinceRepost: this.#messagesSinceRepost,
+            repostInterval: this.#repostInterval
+        });
         await this.#refreshAfterMessage(discord);
 
         this.#messagesSinceRepost++;
         if (this.#messagesSinceRepost < this.#repostInterval) {
+            log.trace(this.constructor.LogTypes.MessageHandled, {
+                action: 'counted',
+                messagesSinceRepost: this.#messagesSinceRepost,
+                repostInterval: this.#repostInterval
+            });
             return;
         }
 
+        log.info(this.constructor.LogTypes.MessageHandled, {
+            action: 'repost_interval_reached',
+            messagesSinceRepost: this.#messagesSinceRepost,
+            repostInterval: this.#repostInterval
+        });
         clearTimeout(this.#refreshTimer);
         this.#refreshQueued = false;
         this.#refreshTimer = undefined;
@@ -304,6 +388,7 @@ export class QuestListModule extends Module {
     }
 
     #enqueueMessageEvent(work) {
+        this.logger.trace('quest_list.message_event_queued');
         const next = this.#messageEventQueue.catch(() => {}).then(work);
 
         this.#messageEventQueue = next.catch((error) => this.#logRefreshError('message_event_queue', error));
@@ -312,13 +397,28 @@ export class QuestListModule extends Module {
     }
 
     async #addUserQuests(context) {
+        const log = this.logger.child({
+            logID: this.createLogID('add_quests'),
+            userID: context.userID
+        });
+        const timer = log.time(this.constructor.LogTypes.AddQuestsCompleted);
+
+        log.debug(this.constructor.LogTypes.AddQuestsStarted, {
+            channelID: this.#channelID,
+            questCount: this.#quests.length
+        });
+
         if (!this.#channelID) {
+            log.warn(this.constructor.LogTypes.InteractionValidationFailed, { reason: 'no_channel_configured' });
             await context.respond(ephemeralText('The Quest List channel has not been set yet.'));
+            timer.end({ skipped: true });
             return;
         }
 
         if (!context.userID) {
+            log.warn(this.constructor.LogTypes.InteractionValidationFailed, { reason: 'missing_user_id' });
             await context.respond(ephemeralText('I could not identify your user.'));
+            timer.end({ skipped: true });
             return;
         }
 
@@ -326,7 +426,22 @@ export class QuestListModule extends Module {
         const activeQuests = await this.#getActiveUserQuests(context.userID, Date.now());
         const newQuests = activeQuests.filter((quest) => !this.#questIDs.has(quest.questID));
 
+        log.debug(this.constructor.LogTypes.AddQuestsCandidatesLoaded, {
+            activeCount: activeQuests.length,
+            newCount: newQuests.length,
+            queuedCount: this.#questsByUser[context.userID]?.length ?? 0
+        });
+        log.trace(this.constructor.LogTypes.AddQuestsCandidatesLoaded, {
+            activeQuests: activeQuests.map(getQuestLogData),
+            newQuests: newQuests.map(getQuestLogData),
+            queuedQuests: (this.#questsByUser[context.userID] ?? []).map(getQuestLogData)
+        });
+
         if (!newQuests.length) {
+            log.debug(this.constructor.LogTypes.AddQuestsSkipped, {
+                reason: 'no_new_quests',
+                activeCount: activeQuests.length
+            });
             await context.editReply(
                 buildAddQuestsResponse({
                     capacity: this.#capacity,
@@ -336,11 +451,16 @@ export class QuestListModule extends Module {
                     userID: context.userID
                 })
             );
+            timer.end({ addedCount: 0, skipped: true });
             return;
         }
 
         const addedQuests = await this.#addQueuedQuests(newQuests, { reason: 'user_add', userID: context.userID });
         if (!addedQuests.length) {
+            log.warn(this.constructor.LogTypes.AddQuestsSkipped, {
+                reason: 'inserted_no_quests',
+                newCount: newQuests.length
+            });
             await this.#loadQuests();
             await context.editReply(
                 buildAddQuestsResponse({
@@ -351,6 +471,7 @@ export class QuestListModule extends Module {
                     userID: context.userID
                 })
             );
+            timer.end({ addedCount: 0, newCount: newQuests.length, skipped: true });
             return;
         }
 
@@ -365,20 +486,33 @@ export class QuestListModule extends Module {
         );
         await this.#refreshQuests('after_add');
         await this.#publishList(context);
+        timer.end({
+            addedCount: addedQuests.length,
+            newCount: newQuests.length,
+            questCount: this.#quests.length
+        });
     }
 
     async #showUserPosition(context) {
+        const log = this.logger.child({
+            logID: this.createLogID('user_position'),
+            userID: context.userID
+        });
+
         if (!context.userID) {
+            log.warn(this.constructor.LogTypes.InteractionValidationFailed, { reason: 'missing_user_id' });
             await context.respond(ephemeralText('I could not identify your user.'));
             return;
         }
 
         const userQuests = this.#questsByUser[context.userID] ?? [];
         if (!userQuests.length) {
+            log.debug(this.constructor.LogTypes.UserPositionShown, { questCount: 0 });
             await context.respond(ephemeralText('You do not have any quests on the Quest List.'));
             return;
         }
 
+        log.debug(this.constructor.LogTypes.UserPositionShown, { questCount: userQuests.length });
         await context.respond(
             buildUserPositionResponse({
                 capacity: this.#capacity,
@@ -390,6 +524,9 @@ export class QuestListModule extends Module {
     }
 
     async #showVisibleMentions(context) {
+        this.logger.debug(this.constructor.LogTypes.VisibleMentionsShown, {
+            visibleUsers: getVisibleUserCount(this.#questsByType, this.#capacity)
+        });
         await context.respond(
             buildVisibleMentionsResponse({
                 capacity: this.#capacity,
@@ -399,10 +536,16 @@ export class QuestListModule extends Module {
     }
 
     async #toggleReminders(context) {
+        this.logger.debug('quest_list.reminders_requested', { userID: context.userID });
         await context.respond(ephemeralText('Quest List reminders are a work in progress and coming soon.'));
     }
 
     async #openSettingsModal(context, setting) {
+        this.logger.trace(this.constructor.LogTypes.SettingsModalOpened, {
+            setting,
+            userID: context.userID
+        });
+
         switch (setting) {
             case QuestListSettings.Capacity:
                 await context.openModal({
@@ -456,11 +599,20 @@ export class QuestListModule extends Module {
                 });
                 return;
             default:
+                this.logger.warn(this.constructor.LogTypes.InteractionValidationFailed, {
+                    reason: 'invalid_setting',
+                    setting,
+                    userID: context.userID
+                });
                 await context.respond(ephemeralText('Choose a valid Quest List setting.'));
         }
     }
 
     async #openManageQueueModal(context) {
+        this.logger.trace(this.constructor.LogTypes.SettingsModalOpened, {
+            setting: 'manage_queue',
+            userID: context.userID
+        });
         await context.openModal({
             title: 'Manage Quest Queue',
             custom_id: QuestListIDs.ManageQueueModal,
@@ -497,6 +649,10 @@ export class QuestListModule extends Module {
     async #setChannelFromSelect(context) {
         const channelID = context.data.values?.[0];
         if (!channelID) {
+            this.logger.warn(this.constructor.LogTypes.InteractionValidationFailed, {
+                reason: 'invalid_channel',
+                userID: context.userID
+            });
             await context.respond(ephemeralText('Choose a valid channel.'));
             return;
         }
@@ -511,7 +667,7 @@ export class QuestListModule extends Module {
             await this.#publishList(context, { repost: true });
         }
         await this.#updateModulePanel(context, `Set the Quest List channel to <#${channelID}>.`);
-        this.#logConfigUpdated('channelID', channelID);
+        this.#logConfigUpdated('channel', { channelID });
     }
 
     async #setCapacityFromModal(context) {
@@ -523,6 +679,11 @@ export class QuestListModule extends Module {
         };
 
         if (Object.values(capacity).some((value) => !value)) {
+            this.logger.warn(this.constructor.LogTypes.InteractionValidationFailed, {
+                capacity,
+                reason: 'invalid_capacity',
+                userID: context.userID
+            });
             await context.respond(ephemeralText('All visible limits must be numbers greater than 0.'));
             return;
         }
@@ -537,12 +698,16 @@ export class QuestListModule extends Module {
         }
 
         await this.#updateModulePanel(context, 'Updated the Quest List visible limits.');
-        this.#logConfigUpdated('capacity', capacity);
+        this.#logConfigUpdated('capacity', { capacity });
     }
 
     async #setRepostIntervalFromModal(context) {
         const repostInterval = getModalPositiveInteger(context, QuestListIDs.RepostIntervalInput);
         if (!repostInterval) {
+            this.logger.warn(this.constructor.LogTypes.InteractionValidationFailed, {
+                reason: 'invalid_repost_interval',
+                userID: context.userID
+            });
             await context.respond(ephemeralText('Choose a number greater than 0.'));
             return;
         }
@@ -554,12 +719,16 @@ export class QuestListModule extends Module {
             context,
             `Set the Quest List repost interval to ${repostInterval.toLocaleString()} messages.`
         );
-        this.#logConfigUpdated('repostInterval', repostInterval);
+        this.#logConfigUpdated('repost_interval', { repostInterval });
     }
 
     async #setEmptyMessageFromModal(context) {
         const emptyMessage = getModalString(context, QuestListIDs.EmptyMessageInput)?.trim();
         if (!emptyMessage) {
+            this.logger.warn(this.constructor.LogTypes.InteractionValidationFailed, {
+                reason: 'invalid_empty_message',
+                userID: context.userID
+            });
             await context.respond(ephemeralText('Provide an empty message.'));
             return;
         }
@@ -572,7 +741,7 @@ export class QuestListModule extends Module {
         }
 
         await this.#updateModulePanel(context, 'Updated the Quest List empty message.');
-        this.#logConfigUpdated('emptyMessage', emptyMessage);
+        this.#logConfigUpdated('empty_message', { contentLength: emptyMessage.length });
     }
 
     async #manageQueue(context) {
@@ -580,14 +749,30 @@ export class QuestListModule extends Module {
         const notify = context.modalValues[QuestListIDs.QueueNotifyInput] === true;
         const userIDs = getUniqueModalSelectValues(context, QuestListIDs.QueueUsersInput);
         const clearing = !userIDs.length;
+        const log = this.logger.child({
+            logID: this.createLogID('manage_queue'),
+            userID: context.userID
+        });
+        const timer = log.time(this.constructor.LogTypes.ManageQueueCompleted);
+
+        log.debug(this.constructor.LogTypes.ManageQueueStarted, {
+            action: clearing ? 'clear' : 'remove',
+            notify,
+            type,
+            userCount: userIDs.length
+        });
 
         if (type !== 'all' && !QuestTypes[type]) {
+            log.warn(this.constructor.LogTypes.InteractionValidationFailed, { reason: 'invalid_queue_type', type });
             await context.respond(ephemeralText('Choose a valid quest type.'));
+            timer.end({ skipped: true });
             return;
         }
 
         if (notify && !this.#channelID) {
+            log.warn(this.constructor.LogTypes.InteractionValidationFailed, { reason: 'notify_without_channel', type });
             await context.respond(ephemeralText('Set a Quest List channel before notifying removed users.'));
+            timer.end({ skipped: true });
             return;
         }
 
@@ -611,10 +796,20 @@ export class QuestListModule extends Module {
             context,
             `${clearing ? 'Cleared' : 'Removed'} ${removed.length.toLocaleString()} queued quest${removed.length === 1 ? '' : 's'}.`
         );
+        timer.end({
+            action: clearing ? 'clear' : 'remove',
+            notify,
+            removedCount: removed.length,
+            type
+        });
     }
 
     async #forceRepost(context) {
         if (!this.#channelID) {
+            this.logger.warn(this.constructor.LogTypes.InteractionValidationFailed, {
+                reason: 'force_repost_without_channel',
+                userID: context.userID
+            });
             await context.respond(ephemeralText('Set a Quest List channel before reposting.'));
             return;
         }
@@ -625,6 +820,7 @@ export class QuestListModule extends Module {
     }
 
     async #getActiveUserQuests(userID, addedAt) {
+        const timer = this.logger.time(this.constructor.LogTypes.ActiveQuestsLoaded, { userID });
         const docs = await this.#data.getActiveUserQuests(userID, Object.keys(QuestTypes));
         const savedQuestByID = Object.fromEntries(
             docs.map((doc) => [
@@ -640,12 +836,22 @@ export class QuestListModule extends Module {
             ])
         );
 
-        return await this.#buildDisplayQuests(docs, savedQuestByID);
+        const quests = await this.#buildDisplayQuests(docs, savedQuestByID);
+
+        timer.end({
+            activeDocs: docs.length,
+            displayQuests: quests.length
+        });
+
+        return quests;
     }
 
     async #hydrateQueuedQuests(quests) {
+        const timer = this.logger.time(this.constructor.LogTypes.QuestsHydrated, { queuedCount: quests.length });
         const savedQuests = quests.map(normalizeStoredQuest);
         if (!savedQuests.length) {
+            this.logger.trace(this.constructor.LogTypes.QuestsHydrated, { queuedCount: 0 });
+            timer.end({ hydratedCount: 0, removedCount: 0, updatedCount: 0 });
             return { hydrated: [], removed: [], updated: [] };
         }
 
@@ -661,6 +867,10 @@ export class QuestListModule extends Module {
 
             if (removal) {
                 removed.push(removal);
+                this.logger.trace(this.constructor.LogTypes.QuestsHydrated, {
+                    quest: getQuestLogData(savedQuest),
+                    removalReason: removal.removalReason
+                });
             } else {
                 buildableDocs.push(doc);
             }
@@ -681,6 +891,15 @@ export class QuestListModule extends Module {
                         statKey: doc.statKey,
                         targetValue: Number(doc.targetValue)
                     }
+                });
+                this.logger.trace(this.constructor.LogTypes.QuestsHydrated, {
+                    details: {
+                        currentValue,
+                        statKey: doc.statKey,
+                        targetValue: Number(doc.targetValue)
+                    },
+                    quest: getQuestLogData(savedQuest),
+                    removalReason: 'completed'
                 });
                 continue;
             }
@@ -703,11 +922,26 @@ export class QuestListModule extends Module {
             (left, right) => queueIndexByQuestID[left.quest.questID] - queueIndexByQuestID[right.quest.questID]
         );
 
-        return {
+        const result = {
             hydrated,
             removed,
             updated: getUpdatedQuests(savedQuests, hydrated)
         };
+
+        if (result.updated.length) {
+            this.logger.trace(this.constructor.LogTypes.QuestsHydrated, {
+                updated: result.updated
+            });
+        }
+
+        timer.end({
+            buildableDocs: buildableDocs.length,
+            hydratedCount: result.hydrated.length,
+            removedCount: result.removed.length,
+            updatedCount: result.updated.length
+        });
+
+        return result;
     }
 
     async #addQueuedQuests(quests, data) {
@@ -715,15 +949,11 @@ export class QuestListModule extends Module {
         const addedQuestIDs = new Set(addedQuests.map((quest) => quest.questID));
         const displayQuests = quests.filter((quest) => addedQuestIDs.has(quest.questID));
         this.#setQuests([...this.#quests, ...displayQuests]);
-        this.log({
-            level: this.LogLevels.Info,
-            type: this.constructor.LogTypes.QuestsAdded,
-            data: {
-                ...data,
-                addedCount: displayQuests.length,
-                questCount: this.#quests.length,
-                quests: displayQuests.map(getQuestLogData)
-            }
+        this.logger.info(this.constructor.LogTypes.QuestsAdded, {
+            ...data,
+            addedCount: displayQuests.length,
+            questCount: this.#quests.length,
+            quests: displayQuests.map(getQuestLogData)
         });
 
         return displayQuests;
@@ -731,48 +961,49 @@ export class QuestListModule extends Module {
 
     async #deleteQueuedQuests(quests, data) {
         if (!quests.length) {
+            this.logger.trace(this.constructor.LogTypes.QuestsRemoved, {
+                ...data,
+                removedCount: 0
+            });
             return;
         }
 
         await this.#data.deleteQueuedQuestsByIDs(quests.map((quest) => quest.questID));
         const removedQuestIDs = new Set(quests.map((quest) => quest.questID));
         this.#setQuests(this.#quests.filter((quest) => !removedQuestIDs.has(quest.questID)));
-        this.log({
-            level: this.LogLevels.Info,
-            type: this.constructor.LogTypes.QuestsRemoved,
-            data: {
-                ...data,
-                removedCount: quests.length,
-                questCount: this.#quests.length,
-                removed: quests.map(getQuestLogData)
-            }
+        this.logger.info(this.constructor.LogTypes.QuestsRemoved, {
+            ...data,
+            removedCount: quests.length,
+            questCount: this.#quests.length,
+            removed: quests.map(getQuestLogData)
         });
     }
 
     async #deleteRemovedQuestChanges(removed, data) {
         if (!removed.length) {
+            this.logger.trace(this.constructor.LogTypes.QuestsRemoved, {
+                ...data,
+                removedCount: 0
+            });
             return;
         }
 
         const quests = removed.map((entry) => entry.quest);
         await this.#data.deleteQueuedQuestsByIDs(quests.map((quest) => quest.questID));
-        this.log({
-            level: this.LogLevels.Info,
-            type: this.constructor.LogTypes.QuestsRemoved,
-            data: {
-                ...data,
-                removedCount: removed.length,
-                questCount: this.#quests.length,
-                removed: removed.map((entry) => ({
-                    ...getQuestLogData(entry.quest),
-                    removalReason: entry.removalReason,
-                    details: entry.details
-                }))
-            }
+        this.logger.info(this.constructor.LogTypes.QuestsRemoved, {
+            ...data,
+            removedCount: removed.length,
+            questCount: this.#quests.length,
+            removed: removed.map((entry) => ({
+                ...getQuestLogData(entry.quest),
+                removalReason: entry.removalReason,
+                details: entry.details
+            }))
         });
     }
 
     async #buildDisplayQuests(docs, savedQuestByID) {
+        const timer = this.logger.time(this.constructor.LogTypes.DisplayQuestsBuilt, { docCount: docs.length });
         const supportedDocs = docs.filter(
             (doc) => QuestTypes[doc.questType] && Number(doc.locked) !== 1 && doc.locked !== true
         );
@@ -782,6 +1013,10 @@ export class QuestListModule extends Module {
         for (const doc of supportedDocs) {
             const savedQuest = savedQuestByID[String(doc._id)];
             if (!savedQuest) {
+                this.logger.trace(this.constructor.LogTypes.DisplayQuestsBuilt, {
+                    questID: String(doc._id),
+                    reason: 'not_saved'
+                });
                 continue;
             }
 
@@ -789,6 +1024,12 @@ export class QuestListModule extends Module {
             const total = Number(doc.targetCount);
             const count = getQuestProgress(doc, currentValue);
             if (currentValue >= Number(doc.targetValue)) {
+                this.logger.trace(this.constructor.LogTypes.DisplayQuestsBuilt, {
+                    questID: String(doc._id),
+                    reason: 'completed',
+                    currentValue,
+                    targetValue: Number(doc.targetValue)
+                });
                 continue;
             }
 
@@ -803,6 +1044,11 @@ export class QuestListModule extends Module {
                 total
             });
         }
+
+        timer.end({
+            displayCount: quests.length,
+            supportedCount: supportedDocs.length
+        });
 
         return quests;
     }
@@ -819,34 +1065,47 @@ export class QuestListModule extends Module {
             this.#questsByUser[quest.userID].push(quest);
             this.#questsByType[quest.questType].push(quest);
         }
+
+        this.logger.trace(this.constructor.LogTypes.QueueIndexed, {
+            questCount: this.#quests.length,
+            typeCounts: Object.fromEntries(
+                Object.entries(this.#questsByType).map(([type, typeQuests]) => [type, typeQuests.length])
+            ),
+            userCount: Object.keys(this.#questsByUser).length
+        });
     }
 
     async #refreshQuests(reason) {
+        const timer = this.logger.time(this.constructor.LogTypes.QuestsRefreshed, { reason });
         const { hydrated, removed, updated } = await this.#hydrateQueuedQuests(this.#quests);
         const changed = Boolean(removed.length || updated.length);
 
         this.#setQuests(hydrated);
         await this.#deleteRemovedQuestChanges(removed, { reason });
 
-        this.log({
-            level: this.LogLevels.Info,
-            type: this.constructor.LogTypes.QuestsRefreshed,
-            data: {
-                reason,
+        timer.end(
+            {
+                changed,
                 questCount: this.#quests.length,
                 removedCount: removed.length,
                 updatedCount: updated.length
-            }
-        });
+            },
+            { level: LogLevels.Info }
+        );
 
         return { changed };
     }
 
     async #publishList(context, { repost = false } = {}) {
         if (!this.#channelID) {
+            this.logger.warn(this.constructor.LogTypes.ListPublishSkipped, { reason: 'no_channel_configured' });
             return;
         }
 
+        const timer = this.logger.time(this.constructor.LogTypes.ListPublished, {
+            channelID: this.#channelID,
+            repost
+        });
         const message = buildQuestListMessage({
             accentColor: this.#config.colors.yellow,
             quests: this.#quests,
@@ -859,33 +1118,54 @@ export class QuestListModule extends Module {
             const sent = await context.sendMessage(this.#channelID, message);
             this.#messageID = String(sent.id);
             this.#messagesSinceRepost = 0;
+            this.logger.debug(this.constructor.LogTypes.ListPublishAction, {
+                action: 'send',
+                channelID: this.#channelID,
+                messageID: this.#messageID,
+                repost
+            });
         } else {
             try {
                 await context.editMessage(this.#channelID, this.#messageID, message);
-            } catch {
+                this.logger.debug(this.constructor.LogTypes.ListPublishAction, {
+                    action: 'edit',
+                    channelID: this.#channelID,
+                    messageID: this.#messageID
+                });
+            } catch (error) {
+                this.logger.warn(this.constructor.LogTypes.ListPublishFallback, {
+                    channelID: this.#channelID,
+                    error,
+                    messageID: this.#messageID,
+                    reason: 'edit_failed'
+                });
                 const sent = await context.sendMessage(this.#channelID, message);
                 this.#messageID = String(sent.id);
                 this.#messagesSinceRepost = 0;
             }
         }
 
-        this.log({
-            level: this.LogLevels.Info,
-            type: this.constructor.LogTypes.ListPublished,
-            data: {
-                channelID: this.#channelID,
+        timer.end(
+            {
                 messageID: this.#messageID,
                 quests: this.#quests.length
-            }
-        });
+            },
+            { level: LogLevels.Info }
+        );
     }
 
     async #refreshAfterMessage(discord) {
         if (this.#refreshTimer) {
             this.#refreshQueued = true;
+            this.logger.debug(this.constructor.LogTypes.RefreshCooldownQueued, {
+                reason: 'cooldown_active'
+            });
             return;
         }
 
+        this.logger.trace(this.constructor.LogTypes.RefreshCooldownQueued, {
+            action: 'start_cooldown'
+        });
         this.#refreshTimer = setTimeout(() => {
             void this.#enqueueMessageEvent(() => this.#runQueuedRefreshAfterCooldown(discord));
         }, 500);
@@ -897,10 +1177,16 @@ export class QuestListModule extends Module {
         this.#refreshTimer = undefined;
 
         if (!this.#refreshQueued) {
+            this.logger.trace(this.constructor.LogTypes.RefreshCooldownQueued, {
+                action: 'cooldown_finished_without_queue'
+            });
             return;
         }
 
         this.#refreshQueued = false;
+        this.logger.debug(this.constructor.LogTypes.RefreshCooldownQueued, {
+            action: 'run_queued_refresh'
+        });
         this.#refreshTimer = setTimeout(() => {
             void this.#enqueueMessageEvent(() => this.#runQueuedRefreshAfterCooldown(discord));
         }, 500);
@@ -909,23 +1195,27 @@ export class QuestListModule extends Module {
     }
 
     async #refreshAndPublish(reason, discord, { repost = false } = {}) {
+        const log = this.logger.child({ logID: this.createLogID('refresh_publish') });
+        const timer = log.time(this.constructor.LogTypes.RefreshPublishCompleted, { reason, repost });
+
         try {
+            log.debug(this.constructor.LogTypes.RefreshPublishStarted, { reason, repost });
             await this.#refreshQuests(reason);
             await this.#publishList(discord, { repost });
+            timer.end({
+                messageID: this.#messageID,
+                questCount: this.#quests.length
+            });
         } catch (error) {
+            timer.fail(error, { reason, repost });
             this.#logRefreshError(reason, error);
         }
     }
 
     #logRefreshError(reason, error) {
-        this.log({
-            level: this.LogLevels.Error,
-            type: this.constructor.LogTypes.QuestsRefreshed,
-            data: {
-                reason,
-                error: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : undefined
-            }
+        this.logger.error(this.constructor.LogTypes.QuestsRefreshed, {
+            reason,
+            error
         });
     }
 
@@ -983,12 +1273,8 @@ export class QuestListModule extends Module {
         }
     }
 
-    #logConfigUpdated(key, value) {
-        this.log({
-            level: this.LogLevels.Info,
-            type: this.constructor.LogTypes.ConfigUpdated,
-            data: { key, value }
-        });
+    #logConfigUpdated(setting, data = {}) {
+        this.logger.info(this.constructor.LogTypes.ConfigUpdated, { setting, ...data });
     }
 
     #messageLink() {
@@ -1146,6 +1432,18 @@ function getUpdatedQuests(previousQuests, nextQuests) {
         .filter(Boolean);
 }
 
+function getVisibleUserCount(questsByType, capacity) {
+    const userIDs = new Set();
+
+    for (const [type, quests] of Object.entries(questsByType)) {
+        for (const quest of quests.slice(0, capacity[type])) {
+            userIDs.add(quest.userID);
+        }
+    }
+
+    return userIDs.size;
+}
+
 function getQuestLogData(quest) {
     return {
         userID: quest.userID,
@@ -1153,6 +1451,8 @@ function getQuestLogData(quest) {
         questType: quest.questType,
         startValue: quest.startValue,
         targetValue: quest.targetValue,
-        addedAt: quest.addedAt
+        addedAt: quest.addedAt,
+        ...(quest.count !== undefined ? { count: quest.count } : {}),
+        ...(quest.total !== undefined ? { total: quest.total } : {})
     };
 }
