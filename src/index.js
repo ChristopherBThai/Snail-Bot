@@ -39,7 +39,7 @@ async function main() {
     logging.setLevels(await loadLogLevels(databases));
 
     const modulesTimer = logger.time('startup.modules_initialized');
-    const commands = createCommands({ config, databases, logger, logging });
+    const commands = createCommands({ config, databases, logging });
     const modules = new ModuleRegistry([new QuestListModule({ config, databases, logging })]);
     await modules.init();
     modulesTimer.end(

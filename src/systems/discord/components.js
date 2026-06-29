@@ -37,10 +37,43 @@ export function fileDisplay(filename, { spoiler = false } = {}) {
     };
 }
 
+export function mediaGallery(...items) {
+    return {
+        type: ComponentType.MediaGallery,
+        items
+    };
+}
+
+export function mediaURLItem(url, { spoiler = false } = {}) {
+    return {
+        media: {
+            url
+        },
+        spoiler
+    };
+}
+
+export function thumbnailURL(url, { spoiler = false } = {}) {
+    return {
+        type: ComponentType.Thumbnail,
+        media: {
+            url
+        },
+        spoiler
+    };
+}
+
 export function accentContainer(accentColor, ...components) {
     return {
         type: ComponentType.Container,
         accent_color: accentColor,
+        components
+    };
+}
+
+export function container(...components) {
+    return {
+        type: ComponentType.Container,
         components
     };
 }
@@ -74,6 +107,16 @@ export function actionButton(label, customID, { style = ButtonStyle.Secondary, d
         style,
         label,
         custom_id: customID,
+        disabled
+    };
+}
+
+export function linkButton(label, url, { disabled = false } = {}) {
+    return {
+        type: ComponentType.Button,
+        style: ButtonStyle.Link,
+        label,
+        url,
         disabled
     };
 }

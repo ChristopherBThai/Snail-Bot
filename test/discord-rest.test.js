@@ -9,6 +9,7 @@ const restMock = vi.hoisted(() => ({
     post: vi.fn(),
     preferSnakeCase: vi.fn(),
     put: vi.fn(),
+    sendFollowupMessage: vi.fn(),
     sendMessage: vi.fn(),
     routes: {
         interactions: {
@@ -36,6 +37,10 @@ beforeEach(() => {
     }
 
     restMock.preferSnakeCase.mockReturnValue(restMock);
+    restMock.editOriginalInteractionResponse.mockResolvedValue({ id: 'edited-original' });
+    restMock.post.mockResolvedValue({});
+    restMock.put.mockResolvedValue({});
+    restMock.sendFollowupMessage.mockResolvedValue({ id: 'followup-message' });
     restMock.sendMessage.mockResolvedValue({ id: 'sent-message' });
     restMock.editMessage.mockResolvedValue({ id: 'edited-message' });
 });

@@ -39,7 +39,7 @@ A reference for the databases Snail connects to, why each connection exists, whe
 
 | Connection | Read/Write | Used By | Purpose |
 | --- | --- | --- | --- |
-| Snail Mongo | read/write | Global runtime, Quest List | Required startup dependency. Exposes Snail-owned `Config` and `Quest` models. Shared config helpers read/write `Config`; module infrastructure adapts those helpers for module enablement persistence; Quest List owns module-local data access for queued quests. |
+| Snail Mongo | read/write | Global runtime, Quest List, Tags, Message Builder | Required startup dependency. Exposes Snail-owned `Config`, `Quest`, `Tag`, `Channel`, and Message Builder draft models. Shared config helpers read/write `Config`; module infrastructure adapts those helpers for module enablement persistence; Quest List owns module-local data access for queued quests; Tags owns command-package-local access for tag records and tag channel policy; Message Builder owns per-user current drafts. |
 | OwO Mongo | read-only | Quest List | Exposes the OwO `UserQuest` model. Quest List owns the module-local data access that queries active V2 quest documents. |
 | OwO Redis | read-only | Quest List | Exposes the OwO Redis client. Quest List owns the module-local data access that reads `user_stats:{userId}` hashes. |
 
