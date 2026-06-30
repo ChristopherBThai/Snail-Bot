@@ -1,7 +1,9 @@
 import { expect, test } from 'vitest';
+import { ButtonStyle, ComponentType } from '../src/systems/discord/components.js';
 import { createLogging, LogLevels } from '../src/systems/logger/index.js';
 import { BlockKinds, BuilderActions, BuilderIDs, OpenModes } from '../src/systems/message-builder/constants.js';
-import { createMessageBuilder } from '../src/systems/message-builder/routes.js';
+import { createDraftFromMessage, HydrationRejectReasons } from '../src/systems/message-builder/hydrate.js';
+import { createMessageBuilder } from '../src/systems/message-builder/index.js';
 import { createContext, createDatabases } from './helpers/tagsMessageBuilder.js';
 
 function actionRoute(routes) {
@@ -579,4 +581,103 @@ test('message builder selecting blocks keeps URL previews link-only', async () =
     expect(selectContext.editMessage.attachments).toBeUndefined();
     expect(JSON.stringify(selectContext.editMessage.components)).toContain('https://images.example/one.png');
     expect(JSON.stringify(selectContext.editMessage.components)).toContain('https://files.example/guide.pdf');
+});
+
+test('message builder hydrates editable Discord messages into blocks', () => {
+    const result = createDraftFromMessage(
+        {
+            content: 'Plain content',
+            components: [
+                { type: ComponentType.TextDisplay, content: 'Text display' },
+                { type: ComponentType.Separator },
+                {
+                    type: ComponentType.ActionRow,
+                    components: [
+                        {
+                            type: ComponentType.Button,
+                            style: ButtonStyle.Link,
+                            label: 'Guide',
+                            url: 'https://example.com/guide'
+                        }
+                    ]
+                },
+                {
+                    type: ComponentType.Section,
+                    components: [{ type: ComponentType.TextDisplay, content: 'Section text' }],
+                    accessory: { type: ComponentType.Thumbnail, media: { url: 'https://example.com/thumb.png' } }
+                },
+                {
+                    type: ComponentType.MediaGallery,
+                    items: [{ media: { url: 'https://example.com/image.png' } }]
+                },
+                {
+                    type: ComponentType.Container,
+                    accent_color: 0x5865f2,
+                    spoiler: true,
+                    components: [{ type: ComponentType.TextDisplay, content: 'Inside' }]
+                }
+            ]
+        },
+        { ownerID: 'hydrate-user' }
+    );
+
+    expect(result).toMatchObject({
+        ok: true,
+        draft: {
+            blocks: [
+                { kind: BlockKinds.Text, content: 'Plain content' },
+                { kind: BlockKinds.Text, content: 'Text display' },
+                { kind: BlockKinds.Separator },
+                { kind: BlockKinds.LinkButtons, buttons: [{ label: 'Guide', url: 'https://example.com/guide' }] },
+                { kind: BlockKinds.Section, texts: ['Section text'], thumbnailURL: 'https://example.com/thumb.png' },
+                { kind: BlockKinds.MediaGallery, items: [{ url: 'https://example.com/image.png' }] },
+                {
+                    kind: BlockKinds.Container,
+                    accentColor: 0x5865f2,
+                    spoiler: true,
+                    children: [{ kind: BlockKinds.Text, content: 'Inside' }]
+                }
+            ],
+            selectedBlockPath: [0]
+        }
+    });
+});
+
+test('message builder rejects unsupported message hydration inputs', () => {
+    expect(createDraftFromMessage({ embeds: [{}] }, { ownerID: 'hydrate-user' })).toEqual({
+        ok: false,
+        reason: HydrationRejectReasons.Embeds
+    });
+    expect(createDraftFromMessage({ attachments: [{ id: '1' }] }, { ownerID: 'hydrate-user' })).toEqual({
+        ok: false,
+        reason: HydrationRejectReasons.Attachments
+    });
+    expect(createDraftFromMessage({ poll: { question: {} } }, { ownerID: 'hydrate-user' })).toEqual({
+        ok: false,
+        reason: HydrationRejectReasons.UnsupportedContent
+    });
+    expect(createDraftFromMessage({ sticker_items: [{ id: '1' }] }, { ownerID: 'hydrate-user' })).toEqual({
+        ok: false,
+        reason: HydrationRejectReasons.UnsupportedContent
+    });
+    expect(
+        createDraftFromMessage(
+            {
+                components: [
+                    {
+                        type: ComponentType.ActionRow,
+                        components: [
+                            {
+                                type: ComponentType.Button,
+                                style: ButtonStyle.Secondary,
+                                label: 'Nope',
+                                custom_id: 'nope'
+                            }
+                        ]
+                    }
+                ]
+            },
+            { ownerID: 'hydrate-user' }
+        )
+    ).toEqual({ ok: false, reason: HydrationRejectReasons.UnsupportedComponent });
 });

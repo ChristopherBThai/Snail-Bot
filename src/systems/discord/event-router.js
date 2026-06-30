@@ -193,6 +193,7 @@ function formatCooldown(availableAt) {
 function createInteractionContext({ config, interaction, logger, modules, rest, route }) {
     const data = interaction.data ?? {};
     const customID = data.custom_id ?? data.customId;
+    const resolvedMessages = normalizeResolvedCollection(data.resolved?.messages);
     let deferred = false;
 
     return {
@@ -202,6 +203,7 @@ function createInteractionContext({ config, interaction, logger, modules, rest, 
         logger,
         modules,
         module: route.module,
+        applicationID: config.discord.applicationId,
         commandName: data.name,
         customID,
         channelID: interaction.channel_id,
@@ -209,6 +211,9 @@ function createInteractionContext({ config, interaction, logger, modules, rest, 
         memberRoles: interaction.member?.roles ?? [],
         modalValues: extractModalValues(data.components ?? []),
         resolvedAttachments: normalizeResolvedCollection(data.resolved?.attachments),
+        resolvedMessages,
+        target: getTarget(data, resolvedMessages),
+        targetID: data.target_id ?? data.targetId,
         userID: interaction.member?.user?.id ?? interaction.user?.id,
         get deferred() {
             return deferred;
@@ -246,6 +251,12 @@ function createInteractionContext({ config, interaction, logger, modules, rest, 
             return rest.editMessage(channelID, messageID, message);
         }
     };
+}
+
+function getTarget(data, messages) {
+    const targetID = data.target_id ?? data.targetId;
+
+    return targetID ? messages[targetID] : undefined;
 }
 
 function normalizeResolvedCollection(collection) {

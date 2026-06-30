@@ -102,6 +102,7 @@ export function createContext({
     userID = 'manager-1'
 } = {}) {
     return {
+        applicationID: config.discord.applicationId,
         channelID,
         config,
         customID,
@@ -113,6 +114,7 @@ export function createContext({
         modalValues,
         responses: [],
         followUps: [],
+        editedMessages: [],
         sentMessages: [],
         userID,
         interaction,
@@ -131,6 +133,10 @@ export function createContext({
         },
         async editReply(message) {
             this.editReplyMessage = message;
+            return message;
+        },
+        async editMessage(channelID, messageID, message) {
+            this.editedMessages.push({ channelID, messageID, message });
             return message;
         },
         async followUp(message) {
@@ -155,6 +161,9 @@ function createTestConfig() {
     return {
         colors: {
             yellow: 0xf1c40f
+        },
+        discord: {
+            applicationId: 'bot-application'
         },
         roles: {
             admin: [],

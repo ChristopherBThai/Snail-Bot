@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { createEchoCommand } from '../src/commands/echo.js';
 import { createLogging, LogLevels } from '../src/systems/logger/index.js';
 import { BuilderActions, BuilderIDs } from '../src/systems/message-builder/constants.js';
-import { createMessageBuilder } from '../src/systems/message-builder/routes.js';
+import { createMessageBuilder } from '../src/systems/message-builder/index.js';
 import { createContext, createDatabases } from './helpers/tagsMessageBuilder.js';
 
 function createEchoCommandSet() {

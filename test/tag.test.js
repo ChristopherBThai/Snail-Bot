@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { createTagCommands, getTagBlocks } from '../src/commands/tag/index.js';
 import { createLogging, LogLevels } from '../src/systems/logger/index.js';
 import { BlockKinds, BuilderActions, BuilderIDs } from '../src/systems/message-builder/constants.js';
-import { createMessageBuilder } from '../src/systems/message-builder/routes.js';
+import { createMessageBuilder } from '../src/systems/message-builder/index.js';
 import { createContext, createDatabases, subcommand } from './helpers/tagsMessageBuilder.js';
 
 function createCommandSet(options) {
@@ -281,7 +281,7 @@ test('message builder refuses to submit tags with empty containers', async () =>
     expect(saveContext.response.components[0].content).toBe(
         'Remove empty containers or add content inside them before submitting.'
     );
-    expect(saveContext.editMessage).toBeUndefined();
+    expect(saveContext.editedMessages).toEqual([]);
     expect(databases.tags.has('emptycontainer')).toBe(false);
 });
 

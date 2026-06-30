@@ -1,4 +1,5 @@
 import { createEchoCommand } from './echo.js';
+import { createEditCommand } from './edit.js';
 import logs from './logs.js';
 import module from './module.js';
 import snail from './snail.js';
@@ -14,6 +15,7 @@ export function createCommands({ config, databases, logging, messageBuilder } = 
         module,
         logs({ databases, logging }),
         createEchoCommand({ messageBuilder }),
+        createEditCommand({ messageBuilder }),
         ...createTagCommands({
             config,
             databases,

@@ -1,12 +1,12 @@
 # Message Builder Guide
 
-Message Builder is Snail's staff tool for making reusable Components V2 tag messages without writing raw JSON.
+Message Builder is Snail's staff tool for making reusable Components V2 tag messages and staff-authored channel messages without writing raw JSON.
 
 ## The Big Idea
 
 You have one working draft. Snail keeps that draft for you, so if the builder goes inactive or the bot restarts, your next new builder session can pick up where you left off.
 
-Editing an existing tag intentionally replaces your draft with that tag's current blocks.
+Editing an existing tag or message intentionally replaces your draft with that tag or message's current blocks.
 
 ## Opening the Builder
 
@@ -40,8 +40,13 @@ Saving does whatever the command that opened the builder promised:
 - For tag create, submitting creates the tag.
 - For tag edit, submitting updates the tag.
 - For echo, submitting sends the built message to the selected channel.
+- For message edit, submitting updates the selected Snail message.
 
 If submitting fails, your draft stays open so you can try again after fixing the problem.
+
+## Editing Existing Messages
+
+Use the `edit` message context command on a Snail-authored message to open it in Message Builder. Snail can edit plain-content messages and supported Components V2 messages. Messages with embeds, attachments, stickers, polls, interactive components, non-link buttons, file components, or other unsupported component shapes cannot be edited through Message Builder.
 
 ## Tips
 
@@ -50,3 +55,4 @@ If submitting fails, your draft stays open so you can try again after fixing the
 - Use link buttons when a source or guide is more useful than a pasted wall of text.
 - Use image galleries only when the images clarify the answer.
 - Avoid mentions in tags. Snail suppresses tag mentions by default so public tags cannot unexpectedly ping people or roles.
+- Mentions in Echo and message edits are suppressed while previewing but allowed in the final sent or edited message.

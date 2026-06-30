@@ -1,3 +1,4 @@
+import { ApplicationCommandType } from 'discord-api-types/v10';
 import { expect, test, vi } from 'vitest';
 import moduleCommand, { buildModuleOverview, buildModulePanel, ModulePanelIDs } from '../src/commands/module.js';
 import { LogLevels, Module, ModuleRegistry } from '../src/modules/index.js';
@@ -316,6 +317,56 @@ test('router supports top-level component and modal routes', async () => {
     ]);
 });
 
+test('router exposes message context command targets', async () => {
+    let handled;
+    const command = {
+        definition: {
+            name: 'edit',
+            type: ApplicationCommandType.Message
+        },
+        handle(context) {
+            handled = {
+                applicationID: context.applicationID,
+                target: context.target,
+                targetID: context.targetID
+            };
+        }
+    };
+    const router = createTestRouter({
+        commands: [command],
+        config: testConfig(),
+        modules: new ModuleRegistry([]),
+        rest: {}
+    });
+    const target = { id: 'message-1', content: 'hello' };
+
+    await router.route({
+        t: 'INTERACTION_CREATE',
+        d: {
+            id: 'interaction-edit',
+            token: 'token',
+            type: 2,
+            data: {
+                name: 'edit',
+                target_id: 'message-1',
+                type: ApplicationCommandType.Message,
+                resolved: {
+                    messages: {
+                        'message-1': target
+                    }
+                }
+            },
+            member: { user: { id: 'manager-1' }, roles: [] }
+        }
+    });
+
+    expect(handled).toEqual({
+        applicationID: 'bot-application',
+        target,
+        targetID: 'message-1'
+    });
+});
+
 test('router rejects duplicate top-level and command route prefixes', () => {
     expect(() =>
         createTestRouter({
@@ -525,6 +576,9 @@ function testConfig() {
             warning: 0xf1c40f,
             danger: 0xe74c3c,
             neutral: 0x95a5a6
+        },
+        discord: {
+            applicationId: 'bot-application'
         },
         roles: {
             admin: [],

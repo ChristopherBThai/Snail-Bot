@@ -12,7 +12,7 @@ This system owns:
 
 - The Message Builder draft model and block operations.
 - Components V2 block compilation from prepared draft blocks.
-- Loading existing stored blocks back into editable drafts.
+- Loading existing stored blocks and supported Snail-authored Discord messages back into editable drafts.
 - Builder panel rendering, block selection, action selection, modal construction, and the single shared route set.
 - Shared submit validation helpers for command files, command packages, or modules that open builder sessions.
 - Per-user current draft persistence, active-session ownership, stale-session responses, and session-owned submit dispatch.
@@ -38,6 +38,7 @@ Delegate to:
 - Continue current draft: an owning command opens Message Builder and, when allowed by that context, resumes the user's persisted current draft from Snail Mongo.
 - Start a new draft: an owning command opens Message Builder with an empty block list and replaces the user's current draft.
 - Edit existing content: an owning command opens Message Builder with stored tag blocks and replaces the current draft when the context requires editing content as it exists now.
+- Edit an existing Snail message: an owning command hydrates supported message content/components into blocks and replaces the current draft.
 - Select a block: the user chooses the message root or one editable block from a select menu.
 - Add blocks: the user adds text, separators, link-button rows, containers, sections, and image galleries.
 - Edit blocks: the user edits supported selected blocks through modals.
@@ -123,7 +124,8 @@ Message Builder exposes a `start(context, options)` entry point plus `routes.com
 Implemented consumers:
 
 - Tags: create a new tag or replace an existing tag with built blocks.
-- Staff Echo: send built blocks to a selected Discord channel.
+- Echo: send built blocks to a selected Discord channel.
+- Edit: update an existing Snail-authored Discord message.
 
 The system compiles blocks into a message payload, but the submit callback decides whether that payload is sent, edited, or persisted.
 
@@ -135,7 +137,7 @@ Submit must fail safely:
 
 ## Authorization
 
-Message Builder sessions should use the authorization supplied by the command or module that opened the active session. For Tags and Staff Echo, builder sessions require manager access.
+Message Builder sessions should use the authorization supplied by the command or module that opened the active session. For Tags, Echo, and Edit, builder sessions require manager access.
 
 Auth edge cases:
 
@@ -156,6 +158,8 @@ Builder panels should use Components V2 and be ephemeral. The panel should show:
 - Live preview compiled from the current blocks.
 
 Compiled output should use Components V2. Link buttons, media, thumbnails, containers, separators, and text displays should be emitted through `systems/discord/` helpers. The renderer receives prepared draft blocks and should not query databases or perform feature-specific submit rules.
+
+Message hydration is intentionally conservative. Content-only messages hydrate into a leading text block. Supported Components V2 hydrate into matching builder blocks. Messages with embeds, attachments, stickers, polls, file components, interactive components, non-link buttons, unknown components, nested containers, malformed supported components, or too many editable/rendered blocks are rejected before a builder session opens.
 
 The manager-facing guide lives at [Message Builder Manager Guide](../../../docs/message-builder-guide.md). Treat it as a product-facing draft during implementation; rewrite it once the final interaction model settles.
 
@@ -191,6 +195,7 @@ Do not add a generic collector only to mimic Discord.js collectors. If the imple
 - Invalid URL: respond ephemerally and keep the modal/draft state as much as Discord allows.
 - Invalid color: respond ephemerally and keep the draft unchanged.
 - Missing image URL on old malformed data: render a clear missing-URL fallback in the preview.
+- Unsupported message hydration: reject the message before opening a builder session and explain the broad reason.
 - Component/selectable limit reached: respond ephemerally and keep the draft unchanged.
 - Submit failure: respond ephemerally, keep the draft, and do not report success.
 - Discord API failure: respond through the shared router error path when not handled locally.
@@ -214,9 +219,9 @@ Prefer IDs and counts for routine logs. Use trace level briefly when reproducing
 
 ## Test Plan
 
-- Unit: draft creation, per-user persisted draft replacement/resume modes, block add/edit/delete/move, selected path adjustment, component-limit enforcement, selectable-limit enforcement, URL normalization, color parsing, link validation, and compile output.
+- Unit: draft creation, per-user persisted draft replacement/resume modes, block add/edit/delete/move, selected path adjustment, component-limit enforcement, selectable-limit enforcement, URL normalization, color parsing, link validation, message hydration, and compile output.
 - Integration: start builder from Tags, create/edit tag submit callbacks, stale/superseded session handling, wrong-user handling, persisted draft recovery after restart, modal value extraction, submit failure preserving the draft, and old tag `data` rendering through Tags.
-- Manual: open builder from `/tag-manage create`; add text, separator, link row, container, section, and image gallery URL; move/delete blocks; submit; fetch rendered tag; edit the tag and verify existing blocks hydrate; restart the bot and verify a new create context resumes the previous current draft.
+- Manual: open builder from `/tag-manage create`; add text, separator, link row, container, section, and image gallery URL; move/delete blocks; submit; fetch rendered tag; edit the tag and verify existing blocks hydrate; use the `edit` message context command on a Snail-authored message and verify final mentions are allowed; restart the bot and verify a new create context resumes the previous current draft.
 - Regression: Quest List Components V2 rendering, module panel routes, command sync, `npm run check`, and `npm test`.
 
 ## Open Questions
