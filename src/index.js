@@ -8,6 +8,7 @@ import { createDiscordGateway } from './systems/discord/gateway.js';
 import { createDiscordRest } from './systems/discord/rest.js';
 import { loadLogLevels } from './systems/logger/data.js';
 import { createLogging } from './systems/logger/index.js';
+import { createMessageBuilder } from './systems/message-builder/index.js';
 
 async function main() {
     const config = await loadConfig();
@@ -39,7 +40,8 @@ async function main() {
     logging.setLevels(await loadLogLevels(databases));
 
     const modulesTimer = logger.time('startup.modules_initialized');
-    const commands = createCommands({ config, databases, logging });
+    const messageBuilder = createMessageBuilder({ databases, logging });
+    const commands = createCommands({ config, databases, logging, messageBuilder });
     const modules = new ModuleRegistry([new QuestListModule({ config, databases, logging })]);
     await modules.init();
     modulesTimer.end(
@@ -57,8 +59,10 @@ async function main() {
     const registeredCommands = [...commands, ...modules.commands];
     const router = createDiscordEventRouter({
         commands: registeredCommands,
+        components: messageBuilder.routes.components,
         config,
         logger: discordLogger,
+        modals: messageBuilder.routes.modals,
         modules,
         rest
     });

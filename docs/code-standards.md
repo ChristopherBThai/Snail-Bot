@@ -31,7 +31,7 @@ Helpers should earn their place by making behavior clearer, safer, or more consi
 
 Logs should help diagnose runtime behavior from user reports without requiring a debugger.
 
-- Create loggers through the owning system, command package, or module boundary.
+- Create loggers through the owning system, command file, command package, or module boundary.
 - Use stable dot-separated event names such as `message_builder.action`, `tag.created`, or `quest_list.quest_added`.
 - Use `trace` for detailed flow and state snapshots, `debug` for normal diagnostic actions, `info` for lifecycle and user-visible success, `warn` for rejected operations, and `error` for failures.
 - Prefer structured fields such as IDs, counts, modes, result codes, durations, and small state summaries.
@@ -53,7 +53,7 @@ Interaction handlers should use the simplest response flow that fits the current
 Put behavior where it is owned.
 
 - Event/lifecycle-driven behavior belongs in the owning module or a module-local service/domain file.
-- Command-only feature behavior belongs in the owning command package or a command-package-local service/domain file.
+- Command-only feature behavior belongs in the owning command file, command package, or command-package-local service/domain file.
 - Shared infrastructure belongs in `systems/`.
 - Persistence behavior belongs in `database/`.
 - Command files adapt Discord input/output and delegate behavior.
@@ -63,7 +63,7 @@ Put behavior where it is owned.
 
 Reject these during implementation and review:
 
-- Thin command handlers or interaction handlers that own long-term feature policy instead of delegating to the owning module or command package.
+- Thin command handlers or interaction handlers that own long-term feature policy instead of delegating to the owning module, command file, or command package.
 - Renderers that calculate domain behavior instead of rendering prepared state.
 - Database modules that accumulate business behavior unrelated to persistence.
 - Global helper files that become dumping grounds for feature-specific logic.

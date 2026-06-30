@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import { createLogging, LogLevels } from '../src/systems/logger/index.js';
 import { BlockKinds, BuilderActions, BuilderIDs, OpenModes } from '../src/systems/message-builder/constants.js';
-import { createMessageBuilderRoutes } from '../src/systems/message-builder/routes.js';
+import { createMessageBuilder } from '../src/systems/message-builder/routes.js';
 import { createContext, createDatabases } from './helpers/tagsMessageBuilder.js';
 
 function actionRoute(routes) {
@@ -24,12 +24,21 @@ function createBuilderLogging() {
     return logging;
 }
 
-function createRoutes({ databases, logging = createBuilderLogging(), saveHandlers = {} }) {
-    return createMessageBuilderRoutes({
-        databases,
-        logging,
-        saveHandlers
-    });
+function createRoutes({ databases, logging = createBuilderLogging(), submit, validators = [] }) {
+    const messageBuilder = createMessageBuilder({ databases, logging });
+
+    return {
+        start: (context, options = {}) =>
+            messageBuilder.start(context, {
+                label: 'Test draft',
+                submit: submit ?? (() => ({ ok: true, message: 'Submitted.' })),
+                submitLabel: 'Submit Draft',
+                validators,
+                ...options
+            }),
+        components: messageBuilder.routes.components,
+        modals: messageBuilder.routes.modals
+    };
 }
 
 function actionSelect(message) {
@@ -51,8 +60,7 @@ test('message builder previews suppress mentions', async () => {
 
     await routes.start(context, {
         blocks: [{ kind: BlockKinds.Text, content: 'Hello <@123456789012345678> <@&123456789012345678>' }],
-        mode: OpenModes.ReplaceFromBlocks,
-        target: { type: 'tag_create', name: 'mentions' }
+        mode: OpenModes.ReplaceFromBlocks
     });
 
     expect(context.response.allowed_mentions).toEqual({ parse: [] });
@@ -65,21 +73,19 @@ test('message builder persists and resumes a user current draft', async () => {
 
     await routes.start(firstContext, {
         blocks: [{ kind: BlockKinds.Text, content: 'saved draft' }],
-        mode: OpenModes.ReplaceFromBlocks,
-        target: { type: 'tag_create', name: 'draft' }
+        mode: OpenModes.ReplaceFromBlocks
     });
 
     const secondContext = createContext({ userID: 'builder-user' });
     await routes.start(secondContext, {
-        mode: OpenModes.Resume,
-        target: { type: 'tag_create', name: 'next' }
+        mode: OpenModes.Resume
     });
 
     expect(databases.builderDrafts.get('builder-user').blocks).toEqual([
         { kind: BlockKinds.Text, content: 'saved draft' }
     ]);
     expect(JSON.stringify(secondContext.response.components)).toContain('saved draft');
-    expect(JSON.stringify(secondContext.response.components)).toContain('Create tag next');
+    expect(JSON.stringify(secondContext.response.components)).toContain('Test draft');
 });
 
 test('message builder rejects a superseded panel', async () => {
@@ -87,15 +93,13 @@ test('message builder rejects a superseded panel', async () => {
     const routes = createRoutes({ databases });
     const firstContext = createContext({ userID: 'builder-user-2' });
     await routes.start(firstContext, {
-        mode: OpenModes.ReplaceFromBlocks,
-        target: { type: 'tag_create', name: 'first' }
+        mode: OpenModes.ReplaceFromBlocks
     });
     const staleCustomID = actionSelect(firstContext.response).custom_id;
 
     const secondContext = createContext({ userID: 'builder-user-2' });
     await routes.start(secondContext, {
-        mode: OpenModes.ReplaceFromBlocks,
-        target: { type: 'tag_create', name: 'second' }
+        mode: OpenModes.ReplaceFromBlocks
     });
 
     const staleAction = createContext({
@@ -108,13 +112,52 @@ test('message builder rejects a superseded panel', async () => {
     expect(staleAction.response.components[0].content).toBe('A newer Message Builder is active.');
 });
 
+test('message builder re-checks active session auth before handling routes', async () => {
+    const databases = createDatabases();
+    const routes = createRoutes({ databases });
+    const context = createContext({ userID: 'builder-user-auth' });
+    await routes.start(context, {
+        auth: () => false,
+        blocks: [{ kind: BlockKinds.Text, content: 'secret' }],
+        mode: OpenModes.ReplaceFromBlocks
+    });
+
+    const actionContext = createContext({
+        customID: actionSelect(context.response).custom_id,
+        data: { values: [BuilderActions.AddText] },
+        userID: 'builder-user-auth'
+    });
+    await actionRoute(routes).handle(actionContext);
+
+    expect(actionContext.response.components[0].content).toBe('You cannot use that Message Builder session.');
+    expect(actionContext.openedModal).toBeUndefined();
+});
+
+test('message builder allows active session when auth passes', async () => {
+    const databases = createDatabases();
+    const routes = createRoutes({ databases });
+    const context = createContext({ userID: 'builder-user-auth-pass' });
+    await routes.start(context, {
+        auth: () => true,
+        mode: OpenModes.ReplaceFromBlocks
+    });
+
+    const actionContext = createContext({
+        customID: actionSelect(context.response).custom_id,
+        data: { values: [BuilderActions.AddText] },
+        userID: 'builder-user-auth-pass'
+    });
+    await actionRoute(routes).handle(actionContext);
+
+    expect(actionContext.openedModal.title).toBe('Add Text');
+});
+
 test('message builder previews empty containers without sending an invalid empty container', async () => {
     const databases = createDatabases();
     const routes = createRoutes({ databases });
     const context = createContext({ userID: 'builder-user-3' });
     await routes.start(context, {
-        mode: OpenModes.ReplaceFromBlocks,
-        target: { type: 'tag_create', name: 'container' }
+        mode: OpenModes.ReplaceFromBlocks
     });
 
     const addContainerContext = createContext({
@@ -129,35 +172,32 @@ test('message builder previews empty containers without sending an invalid empty
     expect(JSON.stringify(addContainerContext.editMessage.components)).not.toContain('"components":[]');
 });
 
-test('message builder saves directly and deactivates the session', async () => {
+test('message builder submits directly and deactivates the session', async () => {
     const databases = createDatabases();
     const calls = [];
     const routes = createRoutes({
         databases,
-        saveHandlers: {
-            tag_create: async (context) => {
-                calls.push({ deferred: context.deferred });
-                return { ok: true, message: 'Saved.' };
-            }
+        submit: ({ context }) => {
+            calls.push({ deferred: context.deferred });
+            return { ok: true, message: 'Submitted.' };
         }
     });
     const context = createContext({ userID: 'builder-user-save-defer' });
     await routes.start(context, {
         blocks: [{ kind: BlockKinds.Text, content: 'save me' }],
-        mode: OpenModes.ReplaceFromBlocks,
-        target: { type: 'tag_create', name: 'save' }
+        mode: OpenModes.ReplaceFromBlocks
     });
 
     const saveContext = createContext({
         customID: actionSelect(context.response).custom_id,
-        data: { values: [BuilderActions.Save] },
+        data: { values: [BuilderActions.Submit] },
         userID: 'builder-user-save-defer'
     });
     await actionRoute(routes).handle(saveContext);
 
     expect(saveContext.deferUpdateCalled).toBe(false);
     expect(calls).toEqual([{ deferred: false }]);
-    expect(saveContext.editMessage.components[0].content).toBe('Saved.');
+    expect(saveContext.editMessage.components[0].content).toBe('Submitted.');
 
     const staleContext = createContext({
         customID: actionSelect(context.response).custom_id,
@@ -179,8 +219,7 @@ test('message builder filters invalid add and move actions', async () => {
             { kind: BlockKinds.Text, content: 'second' }
         ],
         mode: OpenModes.ReplaceFromBlocks,
-        selectedBlockPath: [0],
-        target: { type: 'tag_create', name: 'leaf' }
+        selectedBlockPath: [0]
     });
 
     const leafOptions = actionSelect(leafContext.response).options.map((option) => option.value);
@@ -206,8 +245,7 @@ test('message builder does not offer or allow nested containers', async () => {
     await routes.start(context, {
         blocks: [{ kind: BlockKinds.Container, children: [{ kind: BlockKinds.Text, content: 'inside' }] }],
         mode: OpenModes.ReplaceFromBlocks,
-        selectedBlockPath: [0],
-        target: { type: 'tag_create', name: 'nested' }
+        selectedBlockPath: [0]
     });
 
     expect(actionSelect(context.response).options.map((option) => option.value)).not.toContain(
@@ -230,8 +268,7 @@ test('message builder orders add actions for root and containers', async () => {
     const rootContext = createContext({ userID: 'builder-user-root' });
     await routes.start(rootContext, {
         mode: OpenModes.ReplaceFromBlocks,
-        selectedBlockPath: [],
-        target: { type: 'tag_create', name: 'root' }
+        selectedBlockPath: []
     });
 
     expect(
@@ -244,8 +281,7 @@ test('message builder orders add actions for root and containers', async () => {
     await routes.start(containerContext, {
         blocks: [{ kind: BlockKinds.Container, children: [{ kind: BlockKinds.Text, content: 'inside' }] }],
         mode: OpenModes.ReplaceFromBlocks,
-        selectedBlockPath: [0],
-        target: { type: 'tag_create', name: 'container' }
+        selectedBlockPath: [0]
     });
 
     expect(
@@ -262,8 +298,7 @@ test('message builder persists container spoiler edits', async () => {
     await routes.start(context, {
         blocks: [{ kind: BlockKinds.Container, children: [{ kind: BlockKinds.Text, content: 'inside' }] }],
         mode: OpenModes.ReplaceFromBlocks,
-        selectedBlockPath: [0],
-        target: { type: 'tag_create', name: 'container' }
+        selectedBlockPath: [0]
     });
 
     const openModalContext = createContext({
@@ -300,8 +335,7 @@ test('message builder appends and removes links from selected link rows', async 
     await routes.start(context, {
         blocks: [{ kind: BlockKinds.LinkButtons, buttons: [{ label: 'One', url: 'https://one.example' }] }],
         mode: OpenModes.ReplaceFromBlocks,
-        selectedBlockPath: [0],
-        target: { type: 'tag_create', name: 'links' }
+        selectedBlockPath: [0]
     });
 
     expect(actionSelect(context.response).options).toEqual(
@@ -366,8 +400,7 @@ test('message builder creates, appends, and removes URL image gallery items', as
     const routes = createRoutes({ databases });
     const context = createContext({ userID: 'builder-user-gallery-url' });
     await routes.start(context, {
-        mode: OpenModes.ReplaceFromBlocks,
-        target: { type: 'tag_create', name: 'galleryurl' }
+        mode: OpenModes.ReplaceFromBlocks
     });
 
     const addGalleryContext = createContext({
@@ -422,8 +455,7 @@ test('message builder rejects invalid image gallery URLs', async () => {
     const routes = createRoutes({ databases });
     const context = createContext({ userID: 'builder-user-invalid-image' });
     await routes.start(context, {
-        mode: OpenModes.ReplaceFromBlocks,
-        target: { type: 'tag_create', name: 'galleryurl' }
+        mode: OpenModes.ReplaceFromBlocks
     });
 
     const badGalleryContext = createContext({
@@ -443,8 +475,7 @@ test('message builder logs session starts, actions, and validation failures', as
     const context = createContext({ userID: 'builder-user-logs' });
 
     await routes.start(context, {
-        mode: OpenModes.ReplaceFromBlocks,
-        target: { type: 'tag_create', name: 'logs' }
+        mode: OpenModes.ReplaceFromBlocks
     });
 
     const actionContext = createContext({
@@ -468,15 +499,15 @@ test('message builder logs session starts, actions, and validation failures', as
         expect.arrayContaining([
             expect.objectContaining({
                 type: 'message_builder.started',
-                data: expect.objectContaining({ blockCount: 0, targetType: 'tag_create' })
+                data: expect.objectContaining({ blockCount: 0 })
             }),
             expect.objectContaining({
                 type: 'message_builder.action',
-                data: expect.objectContaining({ action: BuilderActions.AddLinkRow, targetType: 'tag_create' })
+                data: expect.objectContaining({ action: BuilderActions.AddLinkRow })
             }),
             expect.objectContaining({
                 type: 'message_builder.validation_failed',
-                data: expect.objectContaining({ reason: 'invalid_link_url', targetType: 'tag_create' })
+                data: expect.objectContaining({ reason: 'invalid_link_url' })
             })
         ])
     );
@@ -487,8 +518,7 @@ test('message builder supports section thumbnail URLs and rejects invalid thumbn
     const routes = createRoutes({ databases });
     const context = createContext({ userID: 'builder-user-section' });
     await routes.start(context, {
-        mode: OpenModes.ReplaceFromBlocks,
-        target: { type: 'tag_create', name: 'section' }
+        mode: OpenModes.ReplaceFromBlocks
     });
 
     const sectionContext = createContext({
@@ -534,8 +564,7 @@ test('message builder selecting blocks keeps URL previews link-only', async () =
             }
         ],
         mode: OpenModes.ReplaceFromBlocks,
-        selectedBlockPath: [0],
-        target: { type: 'tag_create', name: 'links' }
+        selectedBlockPath: [0]
     });
 
     const selectContext = createContext({

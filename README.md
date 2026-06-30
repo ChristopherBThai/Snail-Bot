@@ -6,7 +6,7 @@ Snail Bot helps run and support the OwO Bot Support server. It handles utility, 
 
 Source lives under `src/`, project-wide docs live in `docs/`, and local README files inside source folders describe subsystem-specific expectations.
 
-Feature details live close to the code that owns them. Runtime modules and command packages should have local READMEs that describe purpose, workflows, state, and tests when they become substantial.
+Feature details live close to the code that owns them. Runtime modules and substantial command packages should have local READMEs that describe purpose, workflows, state, and tests.
 
 ## Quick Start
 
@@ -42,5 +42,5 @@ Local folder docs may live under `src/**/README.md` and should be read before ch
 - No new privileged-message-content features unless explicitly approved.
 - Components V2 by default for bot-authored Discord messages.
 - Modules own event/lifecycle-driven runtime behavior, state, logs, panel UI, and routes.
-- Command packages own command-only features and keep Discord handlers thin.
+- Command files and command packages own command-only features and keep Discord handlers thin. Simple commands can stay as files; substantial command-only features can become packages.
 - Snail must not change OwO data except through named services.

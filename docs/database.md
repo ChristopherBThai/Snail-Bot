@@ -23,19 +23,19 @@ The runtime database object is grouped by data owner first, then store type:
 - `database.owo.mongo`
 - `database.owo.redis`
 
-Modules and command packages should not casually reach through multiple persistence layers. If a feature needs data from Snail and OwO sources, create a focused module-local data boundary that names the integration and documents any write behavior.
+Modules, command files, and command packages should not casually reach through multiple persistence layers. If a feature needs data from Snail and OwO sources, create a focused feature-local data boundary that names the integration and documents any write behavior.
 
 Module-local data boundaries are optional, not automatic. Use them when they make feature logic easier to understand, test, or maintain, especially for multi-query, multi-database, or feature-vocabulary access. Avoid creating stores or repositories for every collection by default.
 
 Commands, interactions, and event handlers should not directly query databases. They should parse input, authorize, call the owning module or system method, and return output.
 
-Database code should handle persistence mechanics: connecting, modeling, clients, indexes, and persistence-specific translation. Feature rules and feature-shaped data access belong in the owning module, command package, or local service unless the rule is truly about persistence.
+Database code should handle persistence mechanics: connecting, modeling, clients, indexes, and persistence-specific translation. Feature rules and feature-shaped data access belong in the owning module, command file, command package, or local service unless the rule is truly about persistence.
 
-Feature-specific data requirements belong in the owning module or command package README. This document defines cross-cutting persistence boundaries, not every feature's schema.
+Feature-specific data requirements belong in the owning module or substantial command package README when one exists. This document defines cross-cutting persistence boundaries, not every feature's schema.
 
 ## Connected Databases
 
-A reference for the databases Snail connects to, why each connection exists, whether Snail reads or writes it, and which modules or command packages use it.
+A reference for the databases Snail connects to, why each connection exists, whether Snail reads or writes it, and which modules, command files, or command packages use it.
 
 | Connection | Read/Write | Used By | Purpose |
 | --- | --- | --- | --- |

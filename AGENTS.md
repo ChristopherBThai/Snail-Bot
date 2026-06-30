@@ -16,7 +16,7 @@ The source layout is rooted at `src/`. Project docs describe the final architect
 
 ## First Principles
 
-1. **Find the owning feature boundary before writing code.** Put behavior in the module, command package, system, or database boundary that owns it.
+1. **Find the owning feature boundary before writing code.** Put behavior in the module, command file, command package, system, or database boundary that owns it.
 2. **Keep commands and interactions thin.** Commands, buttons, modals, and socket handlers parse input, authorize, call the owner, and return output.
 3. **Keep systems reusable.** Shared systems provide infrastructure, not feature-specific policy.
 4. **Keep persistence focused.** Database files model, load, save, and query data; business rules belong to the owning feature unless they are persistence-specific.
@@ -35,7 +35,7 @@ src/
   config/                   Runtime config loading and config values
   systems/                  Shared infrastructure
   modules/                  Event/lifecycle-driven runtime modules
-  commands/                 Command packages grouped by feature or audience
+  commands/                 Command files and substantial command packages grouped for developer ownership
   database/                 Snail and OwO persistence boundaries
   utils.js                  Small truly shared utilities
 docs/                       Project-level guides
@@ -65,7 +65,7 @@ Pending project-map decisions are tracked in the relevant docs until they become
 - `docs/database.md`: Snail/OwO data boundary and persistence conventions
 - `docs/development-workflow.md`: development expectations, feature specs, documentation updates, and verification
 - `docs/module-readme-template.md`: required README shape for runtime modules
-- `docs/command-package-readme-template.md`: required README shape for command packages
+- `docs/command-package-readme-template.md`: required README shape for substantial command packages
 - `docs/adr/`: architecture decision records and template
 - `src/**/README.md`: local folder-specific guidance when present
 
@@ -75,9 +75,9 @@ Use nested `AGENTS.md` files only when a subsystem needs stricter local operatin
 
 - Read this file and the closest relevant docs before editing.
 - Check the current worktree state.
-- Identify the owning module, command package, system, or database boundary.
+- Identify the owning module, command file, command package, system, or database boundary.
 - Keep changes scoped and preserve unrelated user work.
-- For substantial new modules or command packages, write or update the local README spec before the work is complete.
+- For substantial new modules or command packages, write or update the local README spec before the work is complete. Simple command files do not need local READMEs unless they grow into substantial features.
 - Update docs alongside behavior, setup, architecture, or operational changes.
 - Do not disable auth, skip validation, or bypass persistence boundaries as a shortcut.
 - Run the narrowest meaningful verification and state what was or was not verified.
@@ -89,7 +89,7 @@ Reviews should prioritize correctness and risk over rewriting style. Review in t
 1. Startup, runtime correctness, and user-visible behavior
 2. Auth, permissions, secrets, production safety, and data integrity
 3. Local README/spec alignment
-4. Module/command-package/system/database ownership boundaries
+4. Module/command-file/command-package/system/database ownership boundaries
 5. Missing tests or missing verification
 6. Documentation updates
 7. Maintainability, naming, and style
@@ -113,4 +113,4 @@ Always report what changed, what verification ran, what could not be verified, a
 - Add nested `AGENTS.md` files only if a subsystem develops local rules that README docs cannot express clearly.
 - Vitest is the standard test framework. The focused-test command can be finalized once testable code exists.
 - Runtime config lives under `src/config/`; update configuration docs if the config loading model changes.
-- Document the command package registration model in command docs once that design is chosen.
+- Command folder layout is for developer ownership, not user-facing grouping; simple commands may stay as files and substantial command-only features may become packages.

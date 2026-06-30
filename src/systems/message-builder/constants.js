@@ -35,7 +35,7 @@ export const BuilderActions = Object.freeze({
     MoveUp: 'move_up',
     MoveDown: 'move_down',
     Clear: 'clear',
-    Save: 'save'
+    Submit: 'submit'
 });
 
 export const BlockKinds = Object.freeze({

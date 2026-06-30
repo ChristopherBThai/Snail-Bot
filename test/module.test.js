@@ -272,6 +272,71 @@ test('router supports command-owned modal prefix routes', async () => {
     });
 });
 
+test('router supports top-level component and modal routes', async () => {
+    const handled = [];
+    const router = createTestRouter({
+        commands: [],
+        components: [
+            {
+                prefix: 'global_component:',
+                handle(context, route) {
+                    handled.push({ customID: context.customID, prefix: route.prefix, type: 'component' });
+                }
+            }
+        ],
+        config: testConfig(),
+        modals: [
+            {
+                prefix: 'global_modal:',
+                handle(context, route) {
+                    handled.push({
+                        customID: context.customID,
+                        modalValues: context.modalValues,
+                        prefix: route.prefix,
+                        type: 'modal'
+                    });
+                }
+            }
+        ],
+        modules: new ModuleRegistry([]),
+        rest: {}
+    });
+
+    await router.route(componentInteraction('global_component:alpha'));
+    await router.route(modalInteraction('global_modal:beta', textInputComponent('name', 'Snail')));
+
+    expect(handled).toEqual([
+        { customID: 'global_component:alpha', prefix: 'global_component:', type: 'component' },
+        {
+            customID: 'global_modal:beta',
+            modalValues: { name: 'Snail' },
+            prefix: 'global_modal:',
+            type: 'modal'
+        }
+    ]);
+});
+
+test('router rejects duplicate top-level and command route prefixes', () => {
+    expect(() =>
+        createTestRouter({
+            commands: [
+                {
+                    components: [{ prefix: 'duplicate:', handle() {} }],
+                    definition: {
+                        name: 'test',
+                        description: 'Test command.'
+                    },
+                    handle() {}
+                }
+            ],
+            components: [{ prefix: 'duplicate:', handle() {} }],
+            config: testConfig(),
+            modules: new ModuleRegistry([]),
+            rest: {}
+        })
+    ).toThrow('Duplicate component route prefix: duplicate:');
+});
+
 test('router applies command cooldowns per user', async () => {
     const handle = vi.fn();
     const respond = vi.fn();
@@ -427,9 +492,11 @@ function createRestMock() {
 
 function createTestRouter({
     commands,
+    components,
     config = testConfig(),
     logger,
     logging,
+    modals,
     modules = new ModuleRegistry([]),
     rest
 }) {
@@ -437,8 +504,10 @@ function createTestRouter({
 
     return createDiscordEventRouter({
         commands,
+        components,
         config,
         logger: logger ?? routerLogging.createLogger({ sourceID: 'runtime' }),
+        modals,
         modules,
         rest
     });

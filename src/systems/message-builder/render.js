@@ -35,19 +35,19 @@ import {
     getSelectedBlockPath
 } from './model.js';
 
-export function buildCompiledMessage(blocks) {
-    return {
-        ...componentsMessage(...compileBlocks(blocks)),
-        allowed_mentions: { parse: [] }
-    };
+export function buildCompiledMessage(blocks, { suppressMentions = true } = {}) {
+    const message = componentsMessage(...compileBlocks(blocks));
+
+    return suppressMentions ? { ...message, allowed_mentions: { parse: [] } } : message;
 }
 
-export function buildPanel(draft) {
+export function buildPanel(session) {
+    const { draft, label = 'Draft' } = session;
     const items = getBlockItems(draft);
     const selected = getSelectedBlock(draft);
     const header = [
         '## Message Builder',
-        `Target: ${getTargetLabel(draft.target)}`,
+        `Target: ${label}`,
         `Components: ${getRenderedComponentCount(draft)}/${MaxRenderedComponents}`,
         `Editable blocks: ${getSelectableBlockCount(draft)}/${MaxSelectableBlocks}`,
         selected ? `Selected: ${getBlockLabel(selected)}` : 'Selected: Message root'
@@ -57,7 +57,7 @@ export function buildPanel(draft) {
         ...componentsMessage(
             textDisplay(header.join('\n')),
             ...(items.length ? [buildBlockSelect(draft, items)] : []),
-            buildActionSelect(draft),
+            buildActionSelect(session),
             ...compileBlocks(draft.blocks)
         ),
         allowed_mentions: { parse: [] }
@@ -202,17 +202,19 @@ function buildBlockSelect(draft, items) {
     );
 }
 
-function buildActionSelect(draft) {
+function buildActionSelect(session) {
+    const { draft } = session;
     return actionRow(
         stringSelect(
             getSessionCustomID(BuilderIDs.Action, draft.sessionID),
-            getActionOptions(draft),
+            getActionOptions(session),
             'Choose an action'
         )
     );
 }
 
-function getActionOptions(draft) {
+function getActionOptions(session) {
+    const { draft, submitLabel = 'Submit' } = session;
     const selected = getSelectedBlock(draft);
     const selectedPath = getSelectedBlockPath(draft);
     const addOptions = [
@@ -259,7 +261,7 @@ function getActionOptions(draft) {
         ...appendOptions,
         ...blockOptions,
         { label: 'Clear draft', value: BuilderActions.Clear },
-        { label: 'Save', value: BuilderActions.Save, description: getTargetLabel(draft.target), default: false }
+        { label: submitLabel, value: BuilderActions.Submit, default: false }
     ].map(({ kind, ...option }) => option);
 }
 
@@ -269,18 +271,6 @@ function optionLabel(value) {
 
 function canEditBlock(block) {
     return [BlockKinds.Container, BlockKinds.Section, BlockKinds.Text].includes(block?.kind);
-}
-
-function getTargetLabel(target) {
-    if (target?.type === 'tag_create') {
-        return `Create tag ${target.name}`;
-    }
-
-    if (target?.type === 'tag_edit') {
-        return `Edit tag ${target.name}`;
-    }
-
-    return 'Draft';
 }
 
 export function getSessionCustomID(baseID, sessionID) {

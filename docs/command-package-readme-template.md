@@ -2,7 +2,9 @@
 
 Use this template for `src/commands/<package>/README.md`.
 
-Command package READMEs are specs for command-only features. Use a command package when a feature is primarily invoked through application commands/components/modals and does not need gateway event handling, lifecycle hooks, module panels, or long-lived runtime state.
+Command package READMEs are specs for substantial command-only features. Not every command needs a package or README. Use a command package when a feature is primarily invoked through application commands/components/modals, does not need gateway event handling, lifecycle hooks, module panels, or long-lived runtime state, and has enough behavior, state, persistence/cache policy, command-owned interaction routes, or supporting files to benefit from a local feature boundary.
+
+Simple commands should usually live as single files under `src/commands/`. The command folder layout is for developer ownership and maintainability, not user-facing command grouping.
 
 Keep this README current with the implemented command package. Remove sections that truly do not apply, but prefer writing "None" or "Not applicable" when an absence is an intentional part of the design.
 

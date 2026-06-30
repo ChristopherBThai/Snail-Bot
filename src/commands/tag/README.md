@@ -27,7 +27,7 @@ This command package does not own:
 
 Delegate to:
 
-- `systems/message-builder/` for reusable message draft creation, editing, rendering, hydration, and save routing.
+- `systems/message-builder/` for reusable message draft creation, editing, rendering, hydration, and submit routing.
 - `systems/discord/` for Discord response helpers, Components V2 helpers, component/modal routing, and REST calls.
 - `database/snail/` for raw `Tag` and `Channel` models.
 - `utils.js` for shared command option parsing and staff authorization helpers.
@@ -54,7 +54,7 @@ Delegate to:
 | `/tag-manage delete` | managers | Delete a tag. | `staff: true`, runtime `auth.manager`. |
 | `/tag-manage public` | managers | Set whether a tag is public in a selected channel, or set channel default with `all`. | `staff: true`, runtime `auth.manager`. |
 | `/tag-manage public-list` | managers | Inspect public channel policy. | `staff: true`, runtime `auth.manager`. |
-| `message_builder:*` components and modals | managers | Build and save rich tag content. | Owned by `systems/message-builder/`; Tags provides the save target. |
+| `message_builder:*` components and modals | managers | Build and submit rich tag content. | Shared global routes owned by `systems/message-builder/`; Tags supplies submit behavior when opening a builder session. |
 
 Tag names must match lowercase ASCII letters and digits only: `^[a-z0-9]+$`. The reserved value `all` is allowed only for public-channel management subcommands.
 
@@ -94,13 +94,13 @@ The Tags command package owns tag-specific rules such as name validation, public
 - User actions: any guild user may run `/tag get` and `/tag list`.
 - Staff actions: `/tag-manage` and all Message Builder sessions opened by tag management require manager access.
 - Owner/admin actions: owner/admin access is inherited through `auth.manager`.
-- Auth edge cases: component and modal handlers must re-check authorization through the route that owns the Message Builder session. A stale builder panel is not proof of permission. Builder sessions are scoped to the initiating user.
+- Auth edge cases: Tags supplies manager auth when opening Message Builder. Message Builder re-checks that auth on the active session. A stale builder panel is not proof of permission. Builder sessions are scoped to the initiating user.
 
 ## Rendering and Responses
 
 Tags should render as Components V2 messages using Message Builder blocks.
 
-Plain text create/edit should be converted into a single text block. Rich create/edit should use the Message Builder and save the resulting block array. Renderers receive stored blocks and compile them; they should not query the database.
+Plain text create/edit should be converted into a single text block. Rich create/edit should use the Message Builder and submit the resulting block array. Renderers receive stored blocks and compile them; they should not query the database.
 
 `/tag get` responses:
 
@@ -117,7 +117,7 @@ All tag renders, including public tag renders, must suppress mentions by default
 - Missing config: Snail startup owns config validation before commands are created.
 - Database unavailable: Snail Mongo is already a required startup dependency. Tag commands should surface a generic interaction failure if persistence fails.
 - External service unavailable: not applicable.
-- Discord API failure: failed responses should use the shared router error path. Builder save failures must not report success unless persistence and the intended Discord operation both succeed.
+- Discord API failure: failed responses should use the shared router error path. Builder submit failures must not report success unless persistence and the intended Discord operation both succeed.
 - Partial update: public-channel config changes and tag mutations should be single-record operations where possible. Do not update in-memory caches until persistence succeeds.
 - Invalid tag name: respond ephemerally with the valid name rule.
 - Missing tag: respond ephemerally that the tag does not exist.
@@ -127,7 +127,7 @@ All tag renders, including public tag renders, must suppress mentions by default
 ## Test Plan
 
 - Unit: tag name validation, reserved `all` handling, autocomplete filtering/limit/cache invalidation, public-vs-ephemeral policy, plain-text-to-block conversion, save create/edit results, and public-channel list formatting.
-- Integration: `/tag get`, `/tag list`, `/tag-manage create/edit/delete`, public add/remove/list, Message Builder save into a tag, and auth failures for non-managers.
+- Integration: `/tag get`, `/tag list`, `/tag-manage create/edit/delete`, public add/remove/list, Message Builder submit into a tag, and auth failures for non-managers.
 - Manual: create a plain-text tag; fetch it in a normal channel and verify ephemeral; mark that tag public in a channel and verify public send; set channel default with `all`; create/edit a rich tag through Message Builder; delete a tag; verify autocomplete updates.
 - Regression: `/snail`, `/module`, Quest List interactions, command sync, `npm run check`, and `npm test`.
 

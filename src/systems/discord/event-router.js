@@ -3,18 +3,20 @@ import { LogLevels } from '../logger/index.js';
 import { getCommandKey } from './commands.js';
 import { ephemeralText } from './components.js';
 
-export function createDiscordEventRouter({ commands, config, logger, modules, rest }) {
+export function createDiscordEventRouter({ commands, components = [], config, logger, modals = [], modules, rest }) {
     const commandMap = collectCommandRoutes(commands);
     const cooldowns = new Map();
     let botUserID;
     const componentRoutes = collectCustomIDRoutes({
         commands,
+        globalRoutes: components,
         moduleRoutes: modules.components,
         routeType: 'components',
         surface: 'component'
     });
     const modalRoutes = collectCustomIDRoutes({
         commands,
+        globalRoutes: modals,
         moduleRoutes: modules.modals,
         routeType: 'modals',
         surface: 'modal'
@@ -309,32 +311,51 @@ function collectCommandRoutes(commands) {
     return routes;
 }
 
-function collectCustomIDRoutes({ commands, moduleRoutes, routeType, surface }) {
-    const exact = new Map(moduleRoutes ?? []);
+function collectCustomIDRoutes({ commands, globalRoutes, moduleRoutes, routeType, surface }) {
+    const exact = new Map();
     const prefixes = [];
 
+    addCustomIDRoutes(exact, prefixes, globalRoutes ?? [], surface);
+    addCustomIDRoutes(exact, prefixes, moduleRoutes ?? [], surface);
+
     for (const command of commands) {
-        for (const route of command[routeType] ?? []) {
-            if (route.customID) {
-                if (exact.has(route.customID)) {
-                    throw new Error(`Duplicate ${surface} route: ${route.customID}`);
-                }
-
-                exact.set(route.customID, route);
-                continue;
-            }
-
-            if (route.prefix) {
-                if (prefixes.some((existing) => existing.prefix === route.prefix)) {
-                    throw new Error(`Duplicate ${surface} route prefix: ${route.prefix}`);
-                }
-
-                prefixes.push(route);
-            }
-        }
+        addCustomIDRoutes(exact, prefixes, command[routeType] ?? [], surface);
     }
 
     return { exact, prefixes };
+}
+
+function addCustomIDRoutes(exact, prefixes, routes, surface) {
+    if (routes instanceof Map) {
+        for (const [customID, route] of routes) {
+            if (exact.has(customID)) {
+                throw new Error(`Duplicate ${surface} route: ${customID}`);
+            }
+
+            exact.set(customID, route);
+        }
+
+        return;
+    }
+
+    for (const route of routes) {
+        if (route.customID) {
+            if (exact.has(route.customID)) {
+                throw new Error(`Duplicate ${surface} route: ${route.customID}`);
+            }
+
+            exact.set(route.customID, route);
+            continue;
+        }
+
+        if (route.prefix) {
+            if (prefixes.some((existing) => existing.prefix === route.prefix)) {
+                throw new Error(`Duplicate ${surface} route prefix: ${route.prefix}`);
+            }
+
+            prefixes.push(route);
+        }
+    }
 }
 
 function getCustomIDRoute(routes, customID) {

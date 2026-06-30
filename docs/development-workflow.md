@@ -14,10 +14,10 @@ Contributors may use different personal workflows as long as changes preserve:
 
 ## Feature Specs
 
-Substantial runtime modules and command packages should have a local README spec by the time the feature is complete. Writing the README before implementation is recommended for new features, but the important requirement is that the final implementation and README agree.
+Substantial runtime modules and command packages should have a local README spec by the time the feature is complete. Simple command files do not need local READMEs until they grow into substantial command-only features. Writing the README before implementation is recommended for new substantial features, but the important requirement is that the final implementation and README agree.
 
 - Runtime modules use `src/modules/<ModuleName>/README.md` from `docs/module-readme-template.md`.
-- Command-only features use `src/commands/<package>/README.md` from `docs/command-package-readme-template.md`.
+- Substantial command-only features use `src/commands/<package>/README.md` from `docs/command-package-readme-template.md`.
 - Local READMEs should describe purpose, ownership, user workflows, commands/interactions, state, authorization, failure modes, and test plan.
 - Update the local README whenever implementation clarifies or changes the spec.
 - Write or update an ADR when a decision changes global architecture.
@@ -27,15 +27,15 @@ Substantial runtime modules and command packages should have a local README spec
 1. Read `AGENTS.md`.
 2. Read the closest project doc or local README for the area you touch, when one exists.
 3. Check current worktree state.
-4. Identify the owning module, command package, system, or database boundary.
+4. Identify the owning module, command file, command package, system, or database boundary.
 5. For substantial modules or command packages, create or update the local README spec before the work is considered complete.
 6. Note any global doc or ADR updates before editing.
 
 ## Adding Features
 
-- Add or update the owning module or command package first.
+- Add or update the owning module, command file, or command package first.
 - Register module-owned commands, components, modals, and events through the owning module when practical.
-- Keep command-only features in command packages such as `src/commands/tags/`.
+- Keep small command-only features as files under `src/commands/`. Promote them to command packages such as `src/commands/tag/` only when they need multiple files, local services, command-owned routes, significant persistence/cache rules, or a local feature README.
 - Keep command files thin.
 - Put reusable Discord infrastructure in `systems/`.
 - Put persistence access behind focused database or service boundaries.

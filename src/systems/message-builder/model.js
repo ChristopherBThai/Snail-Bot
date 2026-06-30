@@ -12,8 +12,7 @@ export function createDraft({
     ownerID,
     selectedBlockPath = blocks.length ? [0] : undefined,
     sessionID = crypto.randomUUID(),
-    source,
-    target
+    source
 }) {
     return {
         blocks,
@@ -21,7 +20,6 @@ export function createDraft({
         selectedBlockPath,
         sessionID,
         source,
-        target,
         updatedAt: Date.now()
     };
 }
@@ -41,8 +39,7 @@ export function restoreDraft(ownerID, doc, options = {}) {
         ownerID,
         selectedBlockPath: doc?.selectedBlockPath,
         sessionID: options.sessionID,
-        source: doc?.source,
-        target: options.target
+        source: doc?.source
     });
 }
 

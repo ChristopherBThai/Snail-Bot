@@ -5,7 +5,7 @@ import {
     ephemeralText,
     textDisplay
 } from '../../systems/discord/components.js';
-import { createMessageBuilderRoutes, OpenModes } from '../../systems/message-builder/index.js';
+import { OpenModes, validateRenderableDraft } from '../../systems/message-builder/index.js';
 import { buildCompiledMessage } from '../../systems/message-builder/render.js';
 import { auth, getCommandOptions, getOptionValue, getSubcommand } from '../../utils.js';
 
@@ -13,28 +13,55 @@ const TagNamePattern = /^[a-z0-9]+$/;
 const AllTags = 'all';
 const TagAutocompleteLimit = 25;
 
-export function createTagCommands({ config, databases, logging }) {
-    const tagNames = createTagNameCache(databases);
-    const builderRoutes = createMessageBuilderRoutes({
-        databases,
-        logging,
-        saveHandlers: {
-            tag_create: (context, draft) => saveBuilderTag({ context, databases, draft, mode: 'create', tagNames }),
-            tag_edit: (context, draft) => saveBuilderTag({ context, databases, draft, mode: 'edit' })
-        }
-    });
+export function createTagCommands({ config, databases, messageBuilder }) {
+    if (!messageBuilder) {
+        throw new Error('createTagCommands requires a Message Builder system.');
+    }
+
+    const tagNameCache = createTagNameCache(databases);
 
     return [
-        createTagCommand({ accentColor: config.colors.yellow, databases, tagNames }),
+        createTagCommand({ accentColor: config.colors.yellow, databases, tagNameCache }),
         createTagManageCommand({
-            builderRoutes,
             databases,
-            tagNames
+            messageBuilder,
+            tagNameCache
         })
     ];
 }
 
-function createTagCommand({ accentColor, databases, tagNames }) {
+function createTagNameCache(databases) {
+    let names;
+
+    return {
+        async get() {
+            if (names) {
+                return names;
+            }
+
+            const tags = await databases.snail.mongo.Tag.find({}, { _id: 1 }).sort({ _id: 1 }).lean();
+            names = sortTagNames(tags.map((tag) => tag._id));
+
+            return names;
+        },
+        add(name) {
+            if (!names) {
+                return;
+            }
+
+            names = sortTagNames([...new Set([...names, name])]);
+        },
+        delete(name) {
+            if (!names) {
+                return;
+            }
+
+            names = names.filter((existing) => existing !== name);
+        }
+    };
+}
+
+function createTagCommand({ accentColor, databases, tagNameCache }) {
     return {
         definition: {
             name: 'tag',
@@ -53,14 +80,14 @@ function createTagCommand({ accentColor, databases, tagNames }) {
                 }
             ]
         },
-        autocomplete: (context) => autocompleteTags(context, tagNames),
+        autocomplete: (context) => autocompleteTags(context, tagNameCache),
         async handle(context) {
             switch (getSubcommand(context.data)?.name) {
                 case 'get':
                     await sendTag(context, databases);
                     return;
                 case 'list':
-                    await listTags(context, tagNames, accentColor);
+                    await listTags(context, tagNameCache, accentColor);
                     return;
                 default:
                     await context.respond(ephemeralText('Choose a valid tag action.'));
@@ -69,7 +96,7 @@ function createTagCommand({ accentColor, databases, tagNames }) {
     };
 }
 
-function createTagManageCommand({ builderRoutes, databases, tagNames }) {
+function createTagManageCommand({ databases, messageBuilder, tagNameCache }) {
     return {
         auth: auth.manager,
         staff: true,
@@ -137,19 +164,17 @@ function createTagManageCommand({ builderRoutes, databases, tagNames }) {
                 }
             ]
         },
-        autocomplete: (context) => autocompleteTags(context, tagNames),
-        components: withRouteAuth(builderRoutes.components, auth.manager),
-        modals: withRouteAuth(builderRoutes.modals, auth.manager),
+        autocomplete: (context) => autocompleteTags(context, tagNameCache),
         async handle(context) {
             switch (getSubcommand(context.data)?.name) {
                 case 'create':
-                    await createTag(context, databases, builderRoutes.start, tagNames);
+                    await createTag(context, databases, messageBuilder.start, tagNameCache);
                     return;
                 case 'edit':
-                    await editTag(context, databases, builderRoutes.start);
+                    await editTag(context, databases, messageBuilder.start);
                     return;
                 case 'delete':
-                    await deleteTag(context, databases, tagNames);
+                    await deleteTag(context, databases, tagNameCache);
                     return;
                 case 'public':
                     await setPublicChannel(context, databases);
@@ -162,10 +187,6 @@ function createTagManageCommand({ builderRoutes, databases, tagNames }) {
             }
         }
     };
-}
-
-function withRouteAuth(routes, routeAuth) {
-    return routes.map((route) => ({ ...route, auth: routeAuth }));
 }
 
 async function sendTag(context, databases) {
@@ -203,8 +224,8 @@ async function sendTag(context, databases) {
     await context.respond(message);
 }
 
-async function listTags(context, tagNames, accentColor) {
-    const names = await tagNames.get();
+async function listTags(context, tagNameCache, accentColor) {
+    const names = await tagNameCache.get();
     if (!names.length) {
         await context.respond(ephemeralText("Oh no! I don't have any tags."));
         return;
@@ -220,7 +241,7 @@ async function listTags(context, tagNames, accentColor) {
     );
 }
 
-async function createTag(context, databases, startBuilder, tagNames) {
+async function createTag(context, databases, startBuilder, tagNameCache) {
     const name = getTagName(context);
     if (!name) {
         await invalidTagName(context);
@@ -243,14 +264,19 @@ async function createTag(context, databases, startBuilder, tagNames) {
             updatedBy: context.userID
         });
         context.logger.info('tag.created', { tag: name, mode: 'plain_text', userID: context.userID });
-        tagNames.add(name);
+        tagNameCache.add(name);
         await context.respond(ephemeralText(`Created the tag \`${name}\`.`));
         return;
     }
 
     await startBuilder(context, {
+        auth: auth.manager,
+        label: `Create tag ${name}`,
         mode: OpenModes.Resume,
-        target: { type: 'tag_create', name }
+        submit: ({ context: submitContext, draft }) =>
+            submitBuilderTag({ context: submitContext, databases, draft, mode: 'create', name, tagNameCache }),
+        submitLabel: 'Create Tag',
+        validators: [validateRenderableDraft]
     });
 }
 
@@ -280,14 +306,19 @@ async function editTag(context, databases, startBuilder) {
 
     const blocks = getTagBlocks(tag);
     await startBuilder(context, {
+        auth: auth.manager,
         blocks,
+        label: `Edit tag ${name}`,
         mode: OpenModes.ReplaceFromBlocks,
         selectedBlockPath: blocks.length ? [0] : undefined,
-        target: { type: 'tag_edit', name }
+        submit: ({ context: submitContext, draft }) =>
+            submitBuilderTag({ context: submitContext, databases, draft, mode: 'edit', name }),
+        submitLabel: 'Update Tag',
+        validators: [validateRenderableDraft]
     });
 }
 
-async function deleteTag(context, databases, tagNames) {
+async function deleteTag(context, databases, tagNameCache) {
     const name = getTagName(context);
     if (!name) {
         await invalidTagName(context);
@@ -300,7 +331,7 @@ async function deleteTag(context, databases, tagNames) {
         return;
     }
 
-    tagNames.delete(name);
+    tagNameCache.delete(name);
     await context.respond(ephemeralText(`Deleted the tag \`${name}\`.`));
 }
 
@@ -403,45 +434,37 @@ async function listPublicChannels(context, databases) {
     );
 }
 
-async function saveBuilderTag({ context, databases, draft, mode, tagNames }) {
-    if (!draft.blocks.length) {
-        return { ok: false, message: 'Add at least one block before saving.' };
-    }
-
-    if (hasEmptyContainers(draft.blocks)) {
-        return { ok: false, message: 'Remove empty containers or add content inside them before saving.' };
-    }
-
+async function submitBuilderTag({ context, databases, draft, mode, name, tagNameCache }) {
     if (mode === 'create') {
-        const existing = await databases.snail.mongo.Tag.findById(draft.target.name).lean();
+        const existing = await databases.snail.mongo.Tag.findById(name).lean();
         if (existing) {
-            return { ok: false, message: `The tag \`${draft.target.name}\` already exists.` };
+            return { ok: false, message: `The tag \`${name}\` already exists.` };
         }
 
         await databases.snail.mongo.Tag.create({
-            _id: draft.target.name,
+            _id: name,
             blocks: draft.blocks,
             publicChannelIDs: [],
             createdBy: context.userID,
             updatedBy: context.userID
         });
-        context.logger.info('tag.created', { tag: draft.target.name, mode: 'builder', userID: context.userID });
-        tagNames.add(draft.target.name);
+        context.logger.info('tag.created', { tag: name, mode: 'builder', userID: context.userID });
+        tagNameCache.add(name);
 
-        return { ok: true, message: `Created the tag \`${draft.target.name}\`.` };
+        return { ok: true, message: `Created the tag \`${name}\`.` };
     }
 
     const result = await databases.snail.mongo.Tag.updateOne(
-        { _id: draft.target.name },
+        { _id: name },
         { $set: { blocks: draft.blocks, updatedBy: context.userID } }
     );
     if (result.matchedCount === 0) {
-        return { ok: false, message: `The tag \`${draft.target.name}\` does not exist.` };
+        return { ok: false, message: `The tag \`${name}\` does not exist.` };
     }
 
-    context.logger.info('tag.updated', { tag: draft.target.name, mode: 'builder', userID: context.userID });
+    context.logger.info('tag.updated', { tag: name, mode: 'builder', userID: context.userID });
 
-    return { ok: true, message: `Updated the tag \`${draft.target.name}\`.` };
+    return { ok: true, message: `Updated the tag \`${name}\`.` };
 }
 
 export function buildTagMessage(tag) {
@@ -462,14 +485,6 @@ export function getTagBlocks(tag) {
 
 function textBlocks(content) {
     return [{ kind: 'text', content: content.trim() }];
-}
-
-function hasEmptyContainers(blocks) {
-    return blocks.some(
-        (block) =>
-            (block.kind === 'container' && !block.children?.length) ||
-            (block.children?.length ? hasEmptyContainers(block.children) : false)
-    );
 }
 
 async function isTagPublicInChannel(databases, tag, channelID) {
@@ -496,48 +511,17 @@ async function getTagsPublicInChannel(databases, channelID) {
     return tags.filter((tag) => tag.publicChannelIDs?.includes(channelID));
 }
 
-function createTagNameCache(databases) {
-    let names;
-
-    return {
-        async get() {
-            if (names) {
-                return names;
-            }
-
-            const tags = await databases.snail.mongo.Tag.find({}, { _id: 1 }).sort({ _id: 1 }).lean();
-            names = sortTagNames(tags.map((tag) => tag._id));
-
-            return names;
-        },
-        add(name) {
-            if (!names) {
-                return;
-            }
-
-            names = sortTagNames([...new Set([...names, name])]);
-        },
-        delete(name) {
-            if (!names) {
-                return;
-            }
-
-            names = names.filter((existing) => existing !== name);
-        }
-    };
-}
-
 function sortTagNames(names) {
     return names.sort((left, right) => left.localeCompare(right));
 }
 
-async function autocompleteTags(context, tagNames) {
+async function autocompleteTags(context, tagNameCache) {
     const focused = getFocusedOption(context.data);
     const value = String(focused?.value ?? '').toLowerCase();
     const allowAll = getSubcommand(context.data)?.name?.startsWith('public');
-    const names = await tagNames.get();
+    const names = await tagNameCache.get();
 
-    return [...(allowAll ? [AllTags] : []), ...names]
+    return [...(allowAll ? [AllTags] : []), ...names.filter((name) => allowAll || name !== AllTags)]
         .filter((name) => name.includes(value))
         .slice(0, TagAutocompleteLimit)
         .map((name) => ({ name, value: name }));
@@ -549,8 +533,8 @@ function getFocusedOption(data) {
 
 function getTagName(context, { allowAll = false } = {}) {
     const name = String(getOptionValue(context.data, 'name') ?? '').toLowerCase();
-    if (allowAll && name === AllTags) {
-        return name;
+    if (name === AllTags) {
+        return allowAll ? name : undefined;
     }
 
     return TagNamePattern.test(name) ? name : undefined;
@@ -580,5 +564,5 @@ function channelOption({ description = 'Channel to configure.', required = true 
 }
 
 async function invalidTagName(context) {
-    await context.respond(ephemeralText('Use only lowercase letters and numbers for tag names.'));
+    await context.respond(ephemeralText('Use only lowercase letters and numbers for tag names. `all` is reserved.'));
 }

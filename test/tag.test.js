@@ -2,18 +2,34 @@ import { expect, test } from 'vitest';
 import { createTagCommands, getTagBlocks } from '../src/commands/tag/index.js';
 import { createLogging, LogLevels } from '../src/systems/logger/index.js';
 import { BlockKinds, BuilderActions, BuilderIDs } from '../src/systems/message-builder/constants.js';
+import { createMessageBuilder } from '../src/systems/message-builder/routes.js';
 import { createContext, createDatabases, subcommand } from './helpers/tagsMessageBuilder.js';
 
-function createCommands(options) {
+function createCommandSet(options) {
     const logging = createLogging({ limit: 100 });
+    const messageBuilder = createMessageBuilder({
+        databases: options.databases,
+        logging
+    });
 
     logging.setLevel('message_builder', LogLevels.Trace);
 
-    return createTagCommands({
+    const commands = createTagCommands({
         config: { colors: { yellow: 0xf1c40f } },
         ...options,
+        messageBuilder,
         logging
     });
+
+    return { commands, messageBuilder };
+}
+
+function createCommands(options) {
+    return createCommandSet(options).commands;
+}
+
+function builderRoute(messageBuilder, routeType, prefix) {
+    return messageBuilder.routes[routeType].find((route) => route.prefix === prefix);
 }
 
 test('legacy tag data renders as a text block without writing the old field', async () => {
@@ -138,17 +154,80 @@ test('plain tag create writes blocks instead of legacy data', async () => {
     expect(context.response.components[0].content).toContain('Created the tag `hello`.');
 });
 
-test('tag-managed builder routes require manager auth', () => {
-    const databases = createDatabases();
-    const manageCommand = createCommands({ databases }).find((command) => command.definition.name === 'tag-manage');
+test('reserved all tag name is only accepted by public channel management', async () => {
+    const databases = createDatabases({
+        tags: [{ _id: 'all', blocks: [{ kind: BlockKinds.Text, content: 'bad legacy all' }], publicChannelIDs: [] }]
+    });
+    const commands = createCommands({ databases });
+    const tagCommand = commands.find((command) => command.definition.name === 'tag');
+    const manageCommand = commands.find((command) => command.definition.name === 'tag-manage');
 
-    expect(manageCommand.components.every((route) => route.auth)).toBe(true);
-    expect(manageCommand.modals.every((route) => route.auth)).toBe(true);
+    const getContext = createContext({ data: subcommand('get', [{ name: 'name', value: 'all' }]) });
+    await tagCommand.handle(getContext);
+    expect(getContext.response.components[0].content).toBe(
+        'Use only lowercase letters and numbers for tag names. `all` is reserved.'
+    );
+
+    const createContextForAll = createContext({
+        data: subcommand('create', [
+            { name: 'name', value: 'all' },
+            { name: 'message', value: 'Should not create' }
+        ])
+    });
+    await manageCommand.handle(createContextForAll);
+    expect(createContextForAll.response.components[0].content).toBe(
+        'Use only lowercase letters and numbers for tag names. `all` is reserved.'
+    );
+    expect(databases.tags.get('all').blocks[0].content).toBe('bad legacy all');
+
+    const editContext = createContext({
+        data: subcommand('edit', [
+            { name: 'name', value: 'all' },
+            { name: 'message', value: 'Should not edit' }
+        ])
+    });
+    await manageCommand.handle(editContext);
+    expect(editContext.response.components[0].content).toBe(
+        'Use only lowercase letters and numbers for tag names. `all` is reserved.'
+    );
+    expect(databases.tags.get('all').blocks[0].content).toBe('bad legacy all');
+
+    const deleteContext = createContext({ data: subcommand('delete', [{ name: 'name', value: 'all' }]) });
+    await manageCommand.handle(deleteContext);
+    expect(deleteContext.response.components[0].content).toBe(
+        'Use only lowercase letters and numbers for tag names. `all` is reserved.'
+    );
+    expect(databases.tags.has('all')).toBe(true);
+
+    const getAutocomplete = await tagCommand.autocomplete(
+        createContext({ data: subcommand('get', [{ name: 'name', value: 'a', focused: true }]) })
+    );
+    expect(getAutocomplete).not.toContainEqual({ name: 'all', value: 'all' });
+
+    const publicAutocomplete = await manageCommand.autocomplete(
+        createContext({ data: subcommand('public', [{ name: 'name', value: 'a', focused: true }]) })
+    );
+    expect(publicAutocomplete).toContainEqual({ name: 'all', value: 'all' });
+});
+
+test('tag-managed builder sessions store manager auth instead of command-owned routes', async () => {
+    const databases = createDatabases();
+    const { commands } = createCommandSet({ databases });
+    const manageCommand = commands.find((command) => command.definition.name === 'tag-manage');
+    const context = createContext({
+        data: subcommand('create', [{ name: 'name', value: 'authcheck' }])
+    });
+
+    await manageCommand.handle(context);
+
+    expect(manageCommand.components).toBeUndefined();
+    expect(manageCommand.modals).toBeUndefined();
+    expect(context.response.components[0].content).toContain('Target: Create tag authcheck');
 });
 
 test('blank tag create builder carries the user current draft', async () => {
     const databases = createDatabases();
-    const commands = createCommands({ databases });
+    const { commands, messageBuilder } = createCommandSet({ databases });
     const manageCommand = commands.find((command) => command.definition.name === 'tag-manage');
     const firstContext = createContext({
         data: subcommand('create', [{ name: 'name', value: 'firstdraft' }]),
@@ -161,7 +240,7 @@ test('blank tag create builder carries the user current draft', async () => {
         modalValues: { [BuilderIDs.TextInput]: 'carried text' },
         userID: 'builder-user-carry'
     });
-    await manageCommand.modals.find((route) => route.prefix === `${BuilderIDs.TextModal}:`).handle(addTextContext);
+    await builderRoute(messageBuilder, 'modals', `${BuilderIDs.TextModal}:`).handle(addTextContext);
 
     const secondContext = createContext({
         data: subcommand('create', [{ name: 'name', value: 'seconddraft' }]),
@@ -173,9 +252,9 @@ test('blank tag create builder carries the user current draft', async () => {
     expect(JSON.stringify(secondContext.response.components)).toContain('Create tag seconddraft');
 });
 
-test('message builder refuses to save tags with empty containers', async () => {
+test('message builder refuses to submit tags with empty containers', async () => {
     const databases = createDatabases();
-    const commands = createCommands({ databases });
+    const { commands, messageBuilder } = createCommandSet({ databases });
     const manageCommand = commands.find((command) => command.definition.name === 'tag-manage');
     const context = createContext({
         data: subcommand('create', [{ name: 'name', value: 'emptycontainer' }]),
@@ -189,20 +268,18 @@ test('message builder refuses to save tags with empty containers', async () => {
         data: { values: [BuilderActions.AddContainer] },
         userID: 'builder-user-4'
     });
-    await manageCommand.components
-        .find((route) => route.prefix === `${BuilderIDs.Action}:`)
-        .handle(addContainerContext);
+    await builderRoute(messageBuilder, 'components', `${BuilderIDs.Action}:`).handle(addContainerContext);
     const saveContext = createContext({
         customID: addContainerContext.editMessage.components[1].components[0].custom_id,
-        data: { values: [BuilderActions.Save] },
+        data: { values: [BuilderActions.Submit] },
         userID: 'builder-user-4'
     });
 
-    await manageCommand.components.find((route) => route.prefix === `${BuilderIDs.Action}:`).handle(saveContext);
+    await builderRoute(messageBuilder, 'components', `${BuilderIDs.Action}:`).handle(saveContext);
 
     expect(saveContext.deferUpdateCalled).toBe(false);
     expect(saveContext.response.components[0].content).toBe(
-        'Remove empty containers or add content inside them before saving.'
+        'Remove empty containers or add content inside them before submitting.'
     );
     expect(saveContext.editMessage).toBeUndefined();
     expect(databases.tags.has('emptycontainer')).toBe(false);

@@ -37,10 +37,11 @@ For image galleries and section thumbnails, use a direct image URL when possible
 
 Saving does whatever the command that opened the builder promised:
 
-- For tag create, saving creates the tag.
-- For tag edit, saving updates the tag.
+- For tag create, submitting creates the tag.
+- For tag edit, submitting updates the tag.
+- For echo, submitting sends the built message to the selected channel.
 
-If saving fails, your draft stays open so you can try again after fixing the problem.
+If submitting fails, your draft stays open so you can try again after fixing the problem.
 
 ## Tips
 

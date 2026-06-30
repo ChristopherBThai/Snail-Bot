@@ -10,7 +10,7 @@ This document describes the runtime shape for Snail.
 2. Create runtime logging.
 3. Connect required databases and external services.
 4. Load persisted non-module logger levels.
-5. Create command packages and the module registry.
+5. Create commands, command packages, and the module registry.
 6. Initialize modules.
 7. Create Discord REST/gateway infrastructure.
 8. Sync application commands.
@@ -28,16 +28,18 @@ Module construction should register commands, components, modals, and event hand
 
 - `systems/` owns reusable infrastructure such as Discord REST helpers, interaction routing, socket handling, components, and message building.
 - `modules/` owns event/lifecycle-driven runtime features: gateway event handling, startup/ready behavior, background state, logs, admin panel output, and module route registration.
-- `commands/` owns command packages: command-only features, command definitions, Discord-facing adaptation, and delegation to services/systems when needed.
+- `commands/` owns command-only features, command definitions, Discord-facing adaptation, and delegation to services/systems when needed. Simple commands may live as single files; substantial command-only features may live in command packages with local READMEs.
 - `database/` owns connections, schemas, repositories, and persistence-specific helpers.
 
-Commands, components, modals, socket handlers, and gateway event handlers should route to the owning module, command package, or system. Thin Discord handlers should not become the place where feature rules live long term.
+Commands, components, modals, socket handlers, and gateway event handlers should route to the owning module, command file, command package, or system. Thin Discord handlers should not become the place where feature rules live long term.
+
+Some shared systems may own top-level interaction routes when their UI is reused by multiple command packages or modules. Message Builder owns one shared component/modal route set; callers provide labels, validators, auth, and submit behavior when opening a builder session.
 
 Discord gateway setup lives in `systems/discord/gateway.js`. It owns Discordeno gateway manager creation, gateway intents, ready logging, and forwarding raw gateway payloads to the Discord event router. `src/index.js` remains the runtime composition root. Add stores, repositories, factories, or adapters only when they remove meaningful complexity, protect ownership boundaries, or isolate an unstable integration.
 
 ## Feature Specs
 
-Local READMEs are the source of truth for feature-level requirements. Runtime modules use `docs/module-readme-template.md`; command packages use `docs/command-package-readme-template.md`.
+Local READMEs are the source of truth for substantial feature-level requirements. Runtime modules use `docs/module-readme-template.md`; substantial command packages use `docs/command-package-readme-template.md`. Simple command files do not need local READMEs unless they grow enough behavior, state, routes, or operational nuance to need a feature spec.
 
 Global architecture docs define shared constraints. Local READMEs define the feature contract within those constraints.
 
@@ -63,8 +65,8 @@ The REST wrapper isolates Discord API and library quirks, centralizes message no
 
 Use raw gateway payloads when Discordeno helpers do not expose newer Discord API fields. Keep raw payload handling close to shared systems so feature modules do not each invent their own Discord compatibility layer.
 
-## Command Registration Direction
+## Command Layout Direction
 
-Module-owned commands should be registered by their owning module when practical. Command-only features should live in command packages such as `src/commands/tags/`.
+Module-owned commands should be registered by their owning module when practical. Command-only features should live under `src/commands/` as either simple command files or substantial command packages.
 
-The final command package registration model is a pending architecture decision and should become an ADR once chosen.
+Command folder layout is for developer ownership, not user-facing command grouping. Use single files under `src/commands/` for small commands, and use `src/commands/<package>/` only when a command-only feature needs multiple files, local services, meaningful persistence/cache policy, command-owned interaction routes, or a local README spec.

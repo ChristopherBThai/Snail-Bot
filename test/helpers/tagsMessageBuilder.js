@@ -93,6 +93,7 @@ export function createDatabases({ channels = [], drafts = [], tags = [] } = {}) 
 
 export function createContext({
     channelID = '111111111111111111',
+    config = createTestConfig(),
     customID,
     data = {},
     interaction,
@@ -102,15 +103,17 @@ export function createContext({
 } = {}) {
     return {
         channelID,
+        config,
         customID,
         data,
         deferOptions: undefined,
         deferred: false,
         deferUpdateCalled: false,
-        memberRoles: [],
+        memberRoles: ['manager-role'],
         modalValues,
         responses: [],
         followUps: [],
+        sentMessages: [],
         userID,
         interaction,
         logger,
@@ -140,6 +143,26 @@ export function createContext({
         async respond(message) {
             this.response = message;
             this.responses.push(message);
+        },
+        async sendMessage(channelID, message) {
+            this.sentMessages.push({ channelID, message });
+            return message;
+        }
+    };
+}
+
+function createTestConfig() {
+    return {
+        colors: {
+            yellow: 0xf1c40f
+        },
+        roles: {
+            admin: [],
+            helper: [],
+            manager: ['manager-role']
+        },
+        users: {
+            owner: 'manager-1'
         }
     };
 }

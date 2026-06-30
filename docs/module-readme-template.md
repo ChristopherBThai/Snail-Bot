@@ -2,7 +2,7 @@
 
 Use this template for `src/modules/<ModuleName>/README.md`.
 
-Module READMEs are specs for runtime modules: features that react to Discord gateway events, lifecycle hooks, background state, module panels, structured logs, or module-specific routes. Command-only features should use `docs/command-package-readme-template.md` instead.
+Module READMEs are specs for runtime modules: features that react to Discord gateway events, lifecycle hooks, background state, module panels, structured logs, or module-specific routes. Substantial command-only features should use `docs/command-package-readme-template.md` instead; simple commands can stay as single files.
 
 Keep this README current with the implemented module. Remove sections that truly do not apply, but prefer writing "None" or "Not applicable" when an absence is an intentional part of the design.
 
