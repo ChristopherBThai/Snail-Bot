@@ -70,7 +70,7 @@ Describe who can use each action and why.
 
 ## Admin Panel
 
-Describe `state()`, `panelComponents()`, structured logs, exports, and module-specific admin actions.
+Describe `state()`, `panelPages()`, structured logs, exports, and module-specific admin actions. Name each module-owned panel page and summarize the controls on it. Shared Runtime controls such as enable/disable, log export, state export, and log level belong to the shared `/module` panel, not the module-specific page list.
 
 ## Failure Modes
 

@@ -18,9 +18,11 @@ export const ModulePanelIDs = Object.freeze({
     LogLevelPrefix: 'module_panel:log_level:',
     LogsPrefix: 'module_panel:logs:',
     OpenPrefix: 'module_panel:open:',
+    PagePrefix: 'module_panel:page:',
     StatePrefix: 'module_panel:state:',
     TogglePrefix: 'module_panel:toggle:'
 });
+export const ModuleRuntimePageID = 'runtime';
 
 const ModuleStatus = Object.freeze({
     Active: {
@@ -70,6 +72,11 @@ export default {
             prefix: ModulePanelIDs.OpenPrefix,
             auth: auth.manager,
             handle: openModulePanel
+        },
+        {
+            prefix: ModulePanelIDs.PagePrefix,
+            auth: auth.manager,
+            handle: openModulePanelPage
         },
         {
             prefix: ModulePanelIDs.LogsPrefix,
@@ -125,15 +132,17 @@ export function buildModuleOverview(context) {
     );
 }
 
-export function buildModulePanel(context, module) {
+export function buildModulePanel(context, module, { pageID } = {}) {
     const status = getModuleStatus(module);
+    const pages = buildModulePanelPages(context, module, status);
+    const page = getSelectedPanelPage(module, pages, pageID);
 
     return componentsMessage(
         accentContainer(
             getColor(context, status.color),
             ...(module.description ? [textDisplay(lines(`## ${module.name}`, module.description))] : []),
-            ...buildModuleRuntimeSections(module, status),
-            ...module.panelComponents()
+            ...(pages.length > 1 ? [buildModulePanelNavigation(module, pages, page.id), separator()] : []),
+            ...page.components
         )
     );
 }
@@ -147,6 +156,10 @@ function buildJsonFileMessage(prefix, data) {
 
 export function getModuleActionID(prefix, moduleID) {
     return `${prefix}${moduleID}`;
+}
+
+export function getModulePageActionID(moduleID, pageID) {
+    return `${ModulePanelIDs.PagePrefix}${moduleID}:${pageID}`;
 }
 
 function countStatuses(modules) {
@@ -165,25 +178,35 @@ function buildModuleRuntimeSections(module, status) {
     const toggleButtonLabel = module.toggleable ? (module.enabled ? 'Disable' : 'Enable') : 'Always On';
     const sections = [
         section(
-            [textDisplay(lines('**Status**', statusLabel, `\`${module.id}\``))],
+            [textDisplay(lines(`**Status**  \`${module.id}\``, `${statusLabel} module.`))],
             actionButton(toggleButtonLabel, getModuleActionID(ModulePanelIDs.TogglePrefix, module.id), {
                 disabled: !module.toggleable,
                 style: module.enabled ? ButtonStyle.Danger : ButtonStyle.Success
             })
         ),
+        separator(),
         section(
             [
                 textDisplay(
                     lines(
-                        '**Logs**',
-                        `${state.logsSize.toLocaleString()}/${state.logsLimit.toLocaleString()} entries`,
-                        `Level \`${state.logLevel}\``
+                        '**State Export**',
+                        'Download the full current module state as JSON for inspection or debugging.'
                     )
+                )
+            ],
+            actionButton('Export State', getModuleActionID(ModulePanelIDs.StatePrefix, module.id))
+        ),
+        separator(),
+        section(
+            [
+                textDisplay(
+                    lines('**Logs**', `${state.logsSize.toLocaleString()}/${state.logsLimit.toLocaleString()} entries`)
                 )
             ],
             actionButton('Export Logs', getModuleActionID(ModulePanelIDs.LogsPrefix, module.id))
         ),
-        actionRow(actionButton('Export State', getModuleActionID(ModulePanelIDs.StatePrefix, module.id))),
+        separator(),
+        textDisplay('**Log Level**'),
         actionRow(
             stringSelect(
                 getModuleActionID(ModulePanelIDs.LogLevelPrefix, module.id),
@@ -194,6 +217,39 @@ function buildModuleRuntimeSections(module, status) {
     ];
 
     return sections;
+}
+
+function buildModulePanelPages(context, module, status) {
+    const modulePages = module.panelPages(context).filter((page) => page?.id && page?.label);
+
+    return [
+        {
+            id: ModuleRuntimePageID,
+            label: 'Runtime',
+            components: buildModuleRuntimeSections(module, status)
+        },
+        ...modulePages.map((page) => ({
+            ...page,
+            components: page.components ?? []
+        }))
+    ];
+}
+
+function buildModulePanelNavigation(module, pages, activePageID) {
+    return actionRow(
+        ...pages.slice(0, 5).map((page) =>
+            actionButton(page.label, getModulePageActionID(module.id, page.id), {
+                disabled: page.id === activePageID,
+                style: page.id === activePageID ? ButtonStyle.Primary : ButtonStyle.Secondary
+            })
+        )
+    );
+}
+
+function getSelectedPanelPage(module, pages, pageID) {
+    const defaultPageID = module.panelDefaultPageID?.() ?? pages.find((page) => page.id !== ModuleRuntimePageID)?.id;
+
+    return pages.find((page) => page.id === (pageID ?? defaultPageID)) ?? pages[0];
 }
 
 function buildLogLevelOptions(module) {
@@ -247,7 +303,7 @@ async function toggleModule(context, route) {
         await context.modules.enable(module, context);
     }
 
-    await context.edit(buildModulePanel(context, module));
+    await context.edit(buildModulePanel(context, module, { pageID: ModuleRuntimePageID }));
 }
 
 async function openModulePanel(context, route) {
@@ -257,6 +313,15 @@ async function openModulePanel(context, route) {
     }
 
     await context.edit(buildModulePanel(context, module));
+}
+
+async function openModulePanelPage(context, route) {
+    const { module, pageID } = await getPageAction(context, route);
+    if (!module) {
+        return;
+    }
+
+    await context.edit(buildModulePanel(context, module, { pageID }));
 }
 
 async function sendModuleLogs(context, route) {
@@ -291,7 +356,7 @@ async function setModuleLogLevel(context, route) {
     }
 
     await module.setLogLevel(level);
-    await context.edit(buildModulePanel(context, module));
+    await context.edit(buildModulePanel(context, module, { pageID: ModuleRuntimePageID }));
 }
 
 async function getActionModule(context, route) {
@@ -302,6 +367,20 @@ async function getActionModule(context, route) {
     }
 
     return module;
+}
+
+async function getPageAction(context, route) {
+    const value = context.customID.slice(route.prefix.length);
+    const separatorIndex = value.indexOf(':');
+    const moduleID = separatorIndex === -1 ? value : value.slice(0, separatorIndex);
+    const pageID = separatorIndex === -1 ? undefined : value.slice(separatorIndex + 1);
+    const module = context.modules.get(moduleID);
+
+    if (!module) {
+        await context.respond(ephemeralText('Choose a valid module.'));
+    }
+
+    return { module, pageID };
 }
 
 function getFocusedOptionValue(data) {

@@ -142,6 +142,16 @@ export function channelSelect(customID, { channelTypes, defaultValues, placehold
     };
 }
 
+export function roleSelect(customID, { defaultValues, placeholder, required } = {}) {
+    return {
+        type: ComponentType.RoleSelect,
+        custom_id: customID,
+        placeholder,
+        default_values: defaultValues,
+        required
+    };
+}
+
 export function userSelect(customID, { maxValues = 25, minValues = 1, placeholder, required } = {}) {
     return {
         type: ComponentType.UserSelect,

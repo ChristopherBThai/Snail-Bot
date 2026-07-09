@@ -1,9 +1,14 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import moduleCommand, { buildModulePanel, getModuleActionID, ModulePanelIDs } from '../src/commands/module.js';
+import moduleCommand, {
+    buildModulePanel,
+    getModuleActionID,
+    ModulePanelIDs,
+    ModuleRuntimePageID
+} from '../src/commands/module.js';
 import { LogLevels, ModuleRegistry } from '../src/modules/index.js';
 import { QuestListIDs } from '../src/modules/quest-list/constants.js';
 import { buildQuestListMessage, buildVisibleMentionsResponse } from '../src/modules/quest-list/display.js';
-import { QuestListModule } from '../src/modules/quest-list/index.js';
+import { QuestListModule, QuestListPanelPages } from '../src/modules/quest-list/index.js';
 import { createDiscordEventRouter } from '../src/systems/discord/event-router.js';
 import { createLogging } from '../src/systems/logger/index.js';
 
@@ -15,7 +20,7 @@ test('does nothing beyond module logs when no quest list channel is configured',
 
     expect(databases.loadCalls).toBe(0);
     expect(module.state().channelID).toBeUndefined();
-    expect(JSON.stringify(module.panelComponents())).toContain('Not set. Select a channel to start Quest List.');
+    expect(JSON.stringify(module.panelPages())).toContain('Not set. Select a channel to start Quest List.');
     expect(module.getLogs().map((entry) => entry.type)).toContain('quest_list.no_channel_configured');
 });
 
@@ -112,8 +117,8 @@ test('Quest List panel uses a channel select for channel setting', async () => {
 
     await module.onEnable();
 
-    const controls = module.panelComponents();
-    const channelRow = controls.find(
+    const channelPage = module.panelPages().find((page) => page.id === QuestListPanelPages.Channel);
+    const channelRow = channelPage.components.find(
         (component) => component.components?.[0]?.custom_id === QuestListIDs.ChannelSelect
     );
 
@@ -133,9 +138,12 @@ test('Quest List module panel stays within Discord component limit', async () =>
 
     await module.onEnable();
 
-    const panel = buildModulePanel(createContext({ modules }), module);
+    for (const pageID of [ModuleRuntimePageID, ...Object.values(QuestListPanelPages)]) {
+        const panel = buildModulePanel(createContext({ modules }), module, { pageID });
 
-    expect(countComponents(panel.components)).toBeLessThanOrEqual(40);
+        expect(countComponents(panel.components)).toBeLessThanOrEqual(40);
+        expect(findDuplicateCustomIDs(panel)).toEqual([]);
+    }
 });
 
 test('Quest List message shows same-type quests for one user as separate entries', () => {
@@ -189,6 +197,42 @@ function countComponents(components = []) {
             countComponents(component.accessory ? [component.accessory] : []),
         0
     );
+}
+
+function findDuplicateCustomIDs(messageOrComponents) {
+    const customIDs = collectCustomIDs(messageOrComponents);
+    const seen = new Set();
+    const duplicates = new Set();
+
+    for (const customID of customIDs) {
+        if (seen.has(customID)) {
+            duplicates.add(customID);
+        }
+        seen.add(customID);
+    }
+
+    return [...duplicates];
+}
+
+function collectCustomIDs(messageOrComponents) {
+    const components = Array.isArray(messageOrComponents)
+        ? messageOrComponents
+        : (messageOrComponents.components ?? []);
+    const customIDs = [];
+
+    for (const component of components) {
+        if (component.custom_id) {
+            customIDs.push(component.custom_id);
+        }
+
+        customIDs.push(...collectCustomIDs(component.components ?? []));
+
+        if (component.accessory) {
+            customIDs.push(...collectCustomIDs([component.accessory]));
+        }
+    }
+
+    return customIDs;
 }
 
 test('Manage Queue modal uses a user select for targeted removals', async () => {

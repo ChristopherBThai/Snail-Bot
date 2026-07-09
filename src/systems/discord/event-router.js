@@ -41,6 +41,14 @@ export function createDiscordEventRouter({ commands, components = [], config, lo
                 return;
             }
 
+            if (payload.t === GatewayDispatchEvents.MessageDelete) {
+                const timer = logger.time('discord.message_delete.dispatched', getMessageLogData(payload.d));
+
+                await modules.dispatch('message_delete', payload.d, { ...rest, botUserID });
+                timer.end({}, { level: LogLevels.Trace });
+                return;
+            }
+
             if (payload.t !== GatewayDispatchEvents.InteractionCreate) {
                 logger.trace('discord.gateway_event.ignored', { eventType: payload.t });
                 return;
@@ -194,6 +202,7 @@ function createInteractionContext({ config, interaction, logger, modules, rest, 
     const data = interaction.data ?? {};
     const customID = data.custom_id ?? data.customId;
     const resolvedMessages = normalizeResolvedCollection(data.resolved?.messages);
+    const resolvedRoles = normalizeResolvedCollection(data.resolved?.roles);
     let deferred = false;
 
     return {
@@ -212,6 +221,7 @@ function createInteractionContext({ config, interaction, logger, modules, rest, 
         modalValues: extractModalValues(data.components ?? []),
         resolvedAttachments: normalizeResolvedCollection(data.resolved?.attachments),
         resolvedMessages,
+        resolvedRoles,
         target: getTarget(data, resolvedMessages),
         targetID: data.target_id ?? data.targetId,
         userID: interaction.member?.user?.id ?? interaction.user?.id,
@@ -249,6 +259,18 @@ function createInteractionContext({ config, interaction, logger, modules, rest, 
         },
         editMessage(channelID, messageID, message) {
             return rest.editMessage(channelID, messageID, message);
+        },
+        getMessage(channelID, messageID) {
+            return rest.getMessage(channelID, messageID);
+        },
+        deleteMessage(channelID, messageID) {
+            return rest.deleteMessage(channelID, messageID);
+        },
+        addGuildMemberRole(guildID, userID, roleID) {
+            return rest.addGuildMemberRole(guildID, userID, roleID);
+        },
+        setChannelRoleOverwrite(channelID, roleID, overwrite) {
+            return rest.setChannelRoleOverwrite(channelID, roleID, overwrite);
         }
     };
 }

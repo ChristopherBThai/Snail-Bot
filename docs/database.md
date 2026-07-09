@@ -10,22 +10,33 @@ OwO data is external integration data. Snail may read OwO data through explicit 
 
 ## Boundaries
 
-`src/database/` owns connections, schemas/models, raw database clients, and persistence-specific helpers.
+`src/database/` owns shared connections, shared schemas/models, raw database clients, and persistence-specific helpers.
 
 The top-level `src/database/index.js` composes raw database groups only. Individual database folders own their connection setup and schema/model registration. Database constructors throw when required connection config is missing or the connection fails; returned handles are assumed connected.
 
-- `src/database/snail/`: Snail Mongo connection, Snail-owned models, and shared Snail config helpers.
-- `src/database/owo/`: OwO Mongo model registration and OwO Redis client setup.
+- `src/database/snail/`: Snail Mongo connection, shared Snail-owned models, and shared Snail config helpers.
+- `src/database/owo/`: OwO Mongo model registration, OwO Redis client setup, and read-only OwO MySQL helpers.
 
 The runtime database object is grouped by data owner first, then store type:
 
 - `database.snail.mongo`
 - `database.owo.mongo`
 - `database.owo.redis`
+- `database.owo.mysql`
 
 Modules, command files, and command packages should not casually reach through multiple persistence layers. If a feature needs data from Snail and OwO sources, create a focused feature-local data boundary that names the integration and documents any write behavior.
 
-Module-local data boundaries are optional, not automatic. Use them when they make feature logic easier to understand, test, or maintain, especially for multi-query, multi-database, or feature-vocabulary access. Avoid creating stores or repositories for every collection by default.
+Module-local data boundaries are optional, not automatic. Use them when they make feature logic easier to understand, test, or maintain, especially for multi-query, multi-database, or feature-vocabulary access. Module-specific schemas and models should live with that module's data boundary instead of shared database index files. Cross-feature records, such as Snail-owned user state and user logs, belong in shared database models with feature state isolated in named subdocuments. Avoid creating stores or repositories for every collection by default.
+
+Database connection modules should expose connected clients, pools, connections, and shared models only. They should not expose feature-specific query helpers such as "get this module's count" or "load this feature's data." Those helpers belong in the owning module, command package, or local data boundary.
+
+Use the module `getConfig` and `setConfig` helpers for module settings unless a feature has a concrete need to query, index, or relate settings as first-class records. Do not add a dedicated settings collection or packed settings document just because a settings group has several fields.
+
+Use shared `User` records for cross-feature user state. Store only current state needed for fast checks on the user document, with feature state isolated in a named subdocument such as `ticketMarket`. Store repeated user-directed action history in `UserLog`, not in arrays or repeated actor/reason fields on `User`.
+
+Choose field types by meaning. Use `Date` for points in time, such as `createdAt`, `deletedAt`, `bannedAt`, and agreement timestamps. Use `Number` for durations and counts, such as cooldown milliseconds, ticket counts, and prices.
+
+Add indexes only for known query patterns. When adding an index, be able to name the read path it supports. Prefer removing speculative indexes until an admin view, runtime path, or report actually needs them.
 
 Commands, interactions, and event handlers should not directly query databases. They should parse input, authorize, call the owning module or system method, and return output.
 
@@ -39,9 +50,26 @@ A reference for the databases Snail connects to, why each connection exists, whe
 
 | Connection | Read/Write | Used By | Purpose |
 | --- | --- | --- | --- |
-| Snail Mongo | read/write | Global runtime, Quest List, Tags, Message Builder | Required startup dependency. Exposes Snail-owned `Config`, `Quest`, `Tag`, `Channel`, and Message Builder draft models. Shared config helpers read/write `Config`; module infrastructure adapts those helpers for module enablement persistence; Quest List owns module-local data access for queued quests; Tags owns command-package-local access for tag records and tag channel policy; Message Builder owns per-user current drafts. |
+| Snail Mongo | read/write | Global runtime, Quest List, Tags, Message Builder, Ticket Market | Required startup dependency. Exposes the shared Snail Mongo connection plus shared `Config`, `Quest`, `Tag`, `Channel`, `User`, `UserLog`, and Message Builder draft models. Module config helpers read/write individual `Config` keys; Quest List owns module-local data access for queued quests; Tags owns command-package-local access for tag records and tag channel policy; Message Builder owns per-user current drafts; Ticket Market stores settings through module config helpers, stores user-level state under `User.ticketMarket`, writes durable action history to `UserLog`, and owns its module-local ad schema. |
 | OwO Mongo | read-only | Quest List | Exposes the OwO `UserQuest` model. Quest List owns the module-local data access that queries active V2 quest documents. |
 | OwO Redis | read-only | Quest List | Exposes the OwO Redis client. Quest List owns the module-local data access that reads `user_stats:{userId}` hashes. |
+| OwO MySQL | read-only | Ticket Market | Exposes Wrapped Ticket inventory from the OwO `owo` database. Ticket Market reads `user.id`, `user.uid`, and `user_item` rows where `name = 'common_tickets'` to verify sellers have enough Wrapped Tickets before posting ads. |
+
+## User Logs
+
+`UserLog` is the shared append-only history collection for user-directed actions from modules, moderation tools, automod, and future systems.
+
+Fields:
+
+- `userID`: target Discord user ID.
+- `actorID`: user, staff member, bot, or system actor that caused the event when known.
+- `source`: owning system, such as `ticket_market`, `moderation`, or `automod`.
+- `kind`: stable action name used for filtering, such as `ad.posted` or `market.banned`.
+- `summary`: optional human-entered context.
+- `metadata`: structured action-specific details.
+- `createdAt`: event timestamp.
+
+Use `kind`, `source`, IDs, and structured `metadata` for filtering. Do not require staff to maintain separate free-form reason and note fields.
 
 ## Cross-Database Safety
 

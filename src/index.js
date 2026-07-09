@@ -3,6 +3,7 @@ import { loadConfig } from './config/index.js';
 import { createDatabases } from './database/index.js';
 import { ModuleRegistry } from './modules/index.js';
 import { QuestListModule } from './modules/quest-list/index.js';
+import { TicketMarketModule } from './modules/ticket-market/index.js';
 import { createDiscordEventRouter } from './systems/discord/event-router.js';
 import { createDiscordGateway } from './systems/discord/gateway.js';
 import { createDiscordRest } from './systems/discord/rest.js';
@@ -42,7 +43,10 @@ async function main() {
     const modulesTimer = logger.time('startup.modules_initialized');
     const messageBuilder = createMessageBuilder({ databases, logging });
     const commands = createCommands({ config, databases, logging, messageBuilder });
-    const modules = new ModuleRegistry([new QuestListModule({ config, databases, logging })]);
+    const modules = new ModuleRegistry([
+        new QuestListModule({ config, databases, logging }),
+        new TicketMarketModule({ config, databases, logging })
+    ]);
     await modules.init();
     modulesTimer.end(
         {

@@ -46,6 +46,7 @@ This table is the source of truth for supported config options.
 | `snailMongoUri` | runtime | `.env` | Snail-owned Mongo persistence | Secret/private connection string. Read as `SNAIL_MONGO_URI`. Required for startup because shared module config and module enablement are persisted there. |
 | `owoMongoUri` | Quest List runtime | `.env` | Read-only OwO quest document access | Secret/private connection string. Read as `OWO_MONGO_URI`. Quest List reads active V2 quest docs only. |
 | `owoRedisUrl` | Quest List runtime | `.env` | Read-only OwO user stat access | Secret/private connection string. Read as `OWO_REDIS_URL`. Quest List reads `user_stats:{userId}` hashes only. |
+| `owoMysqlUri` | Ticket Market runtime | `.env` | Read-only OwO Wrapped Ticket inventory access | Secret/private connection string. Read as `OWO_MYSQL_URI`. Ticket Market reads the OwO MySQL `owo` database, specifically `user` and `user_item` rows for `common_tickets`. |
 | `modules.defaultLogsLimit` | runtime | `config.js` | Default number of recent log entries retained per module | Public operational setting. Individual modules may override this when they need a different in-memory log limit. |
 | `colors.primary` | runtime | `config.js` | Primary UI accent color | Public Discord component color as a number literal. Used for generic admin and overview surfaces. |
 | `colors.success` | runtime | `config.js` | Success UI accent color | Public Discord component color as a number literal. Used for active or healthy states. |
@@ -83,4 +84,5 @@ BOT_TOKEN=
 SNAIL_MONGO_URI=
 OWO_MONGO_URI=
 OWO_REDIS_URL=
+OWO_MYSQL_URI=
 ```

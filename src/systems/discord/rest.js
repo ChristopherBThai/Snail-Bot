@@ -129,6 +129,37 @@ export function createDiscordRest(token, { applicationId, logger } = {}) {
             return await rest
                 .editMessage(channelID, messageID, normalizeMessage(message))
                 .catch(logAndThrow('discord.message.edit_failed'));
+        },
+
+        async getMessage(channelID, messageID) {
+            return await rest
+                .get(rest.routes.channels.message(channelID, messageID))
+                .catch(logAndThrow('discord.message.get_failed'));
+        },
+
+        async deleteMessage(channelID, messageID) {
+            return await rest
+                .delete(rest.routes.channels.message(channelID, messageID))
+                .catch(logAndThrow('discord.message.delete_failed'));
+        },
+
+        async addGuildMemberRole(guildID, userID, roleID) {
+            return await rest
+                .put(rest.routes.guilds.roles.member(guildID, userID, roleID))
+                .catch(logAndThrow('discord.guild_member_role.add_failed'));
+        },
+
+        async setChannelRoleOverwrite(channelID, roleID, overwrite) {
+            return await rest
+                .put(rest.routes.channels.overwrite(channelID, roleID), {
+                    body: {
+                        id: roleID,
+                        type: 0,
+                        allow: String(overwrite.allow ?? 0),
+                        deny: String(overwrite.deny ?? 0)
+                    }
+                })
+                .catch(logAndThrow('discord.channel_overwrite.set_failed'));
         }
     };
 }

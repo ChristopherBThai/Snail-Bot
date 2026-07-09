@@ -13,6 +13,8 @@ This document captures repo-wide code quality rules and review standards.
 - Treat runtime entry points as direct execution files unless the current code imports them. Do not add import-safe guards only for hypothetical reuse.
 - Do not over-normalize data the codebase owns. Normalize external text input, env values, Discord payloads, and database records at their boundaries; do not add defensive cleanup around trusted internal config or objects without a current reason.
 - Trust required runtime dependencies after startup and composition. Do not add fallback defaults or optional chaining around config, loggers, databases, module dependencies, or interaction context fields that Snail creates and requires.
+- Use existing shared persistence patterns before creating new ones. Module settings should use the module `getConfig` and `setConfig` helpers unless they need queryable records; cross-feature user state should use shared user/log models rather than feature-specific user collections.
+- Add persistence fields and indexes for current behavior, not possible future admin screens. Store current state separately from append-only history.
 - Keep mode and option behavior direct. If a caller wants resume behavior, use a resume mode; do not hide special-case behavior inside a different mode plus target or option checks.
 - Add comments only for non-obvious decisions, invariants, or operational risks.
 - Avoid unrelated formatting churn.
@@ -45,8 +47,28 @@ Interaction handlers should use the simplest response flow that fits the current
 - Use direct `respond` and `edit` calls for fast interactions.
 - Use `defer`, `editReply`, and followups only when the current implementation does slow work that needs the extra interaction window or when Discord requires that response shape.
 - Validation failures from component actions should usually respond ephemerally without replacing the current panel.
+- Do not ask users or staff to paste multiple Discord IDs into one modal. A clipboard can only hold one ID at once, and blank fields are easy to submit as accidental clears. Prefer Discord selects, one-setting controls, or small single-purpose modals.
 - Bot-authored user-facing messages should suppress mentions unless a feature explicitly documents an exception.
 - Component builders should make invalid Discord payloads impossible through available actions, not rely on Discord rejecting bad messages.
+- Every interactive component `custom_id` in a rendered Discord message must be unique. If several buttons perform similar work on one page, give each button a distinct ID and route them to the same handler rather than reusing one ID.
+
+## Module Panels
+
+Module panels should be paginated by default once a module has more than a small amount of staff UI.
+
+- The shared `/module` panel owns the Runtime page for enable/disable, state export, log export, and log level controls.
+- State export should be a section with a short explanation of what the export contains. Avoid adding dense state-summary blocks to Runtime; useful operational summaries belong on module-owned Overview pages.
+- Module-owned pages should focus on feature workflows such as Overview, Settings, Access, Channels, or Moderation. Do not repeat shared Runtime controls on every feature page.
+- Keep module panel navigation to at most five pages total, including Runtime, because Discord action rows can hold at most five buttons. If a module needs more than four feature pages, combine adjacent concepts or switch the shared navigation pattern deliberately.
+- Modules should implement `panelPages()` for module-owned panel UI and, when useful, `panelDefaultPageID()`.
+- Prefer a short Overview page as the default for configured state and the most common actions. Put bulky channel, role, user, and moderation controls on separate pages.
+- Prefer separated layouts for settings pages: short heading or status text, then one logical section per setting/action, with separators between major ideas when it improves scanning. This held up well on both desktop and mobile.
+- Avoid dense dashboard-style panels that compress unrelated state, policy, copy, channels, and actions into one text block. They save components, but they are harder to scan and blur unrelated settings together.
+- Use section components with accessory buttons for editable settings when the action clearly belongs to one visible block. Use a shared action row only when the actions are tightly related and the surrounding text remains easy to scan.
+- Channel, role, and user settings should use Discord channel, role, and user select components respectively. Do not collect those IDs through text inputs unless Discord does not provide a suitable select.
+- Display configured channel, role, and user values on one line with the setting label, such as `**Rules Channel:** <#...>` or `**Market Access Role:** <@&...>`, followed by the matching select component.
+- Each visible panel control should update one setting or one coherent setting group. Split large multiline text settings, timing settings, channels, roles, and moderation actions into separate controls/pages.
+- Panel tests should count the complete `buildModulePanel(...)` payload for each page that can render, including the shared container and navigation, to guard Discord's component limits. They should also assert that rendered `custom_id` values are unique.
 
 ## Ownership
 
@@ -66,6 +88,9 @@ Reject these during implementation and review:
 - Thin command handlers or interaction handlers that own long-term feature policy instead of delegating to the owning module, command file, or command package.
 - Renderers that calculate domain behavior instead of rendering prepared state.
 - Database modules that accumulate business behavior unrelated to persistence.
+- Database connection modules that expose feature-specific query helpers instead of raw clients, pools, connections, or shared models.
+- Dedicated settings collections, packed settings documents, or user collections that duplicate module config helpers, shared `Config`, or shared `User` patterns without a concrete query/indexing need.
+- Speculative indexes that cannot be tied to a current read path.
 - Global helper files that become dumping grounds for feature-specific logic.
 - Thin wrappers that only rename or proxy one existing call.
 - Static facades that construct an object only to call one method.

@@ -255,7 +255,7 @@ export class Module {
         };
     }
 
-    panelComponents() {
+    panelPages() {
         return [];
     }
 

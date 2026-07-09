@@ -1,7 +1,14 @@
 import { ApplicationCommandType } from 'discord-api-types/v10';
 import { expect, test, vi } from 'vitest';
-import moduleCommand, { buildModuleOverview, buildModulePanel, ModulePanelIDs } from '../src/commands/module.js';
+import moduleCommand, {
+    buildModuleOverview,
+    buildModulePanel,
+    getModulePageActionID,
+    ModulePanelIDs,
+    ModuleRuntimePageID
+} from '../src/commands/module.js';
 import { LogLevels, Module, ModuleRegistry } from '../src/modules/index.js';
+import { textDisplay } from '../src/systems/discord/components.js';
 import { createDiscordEventRouter } from '../src/systems/discord/event-router.js';
 import { createLogging } from '../src/systems/logger/index.js';
 
@@ -203,10 +210,33 @@ test('module panel exposes state export and log level controls', () => {
 
     expect(content).toContain(`${ModulePanelIDs.StatePrefix}${module.id}`);
     expect(content).toContain(`${ModulePanelIDs.LogLevelPrefix}${module.id}`);
+    expect(content).toContain('**State Export**');
     expect(content).toContain('Export Logs');
+    expect(content).toContain('**Log Level**');
     for (const level of Object.values(LogLevels)) {
         expect(content).toContain(level);
     }
+});
+
+test('module panel renders feature pages with shared navigation', async () => {
+    const module = new PagedTestModule();
+    const modules = new ModuleRegistry([module]);
+    const overview = buildModulePanel(createContext({ modules }), module);
+    const runtime = buildModulePanel(createContext({ modules }), module, { pageID: ModuleRuntimePageID });
+    const rest = createRestMock();
+    const router = createTestRouter({
+        commands: [moduleCommand],
+        modules,
+        rest
+    });
+
+    expect(JSON.stringify(overview)).toContain('Feature overview');
+    expect(JSON.stringify(overview)).toContain(getModulePageActionID(module.id, ModuleRuntimePageID));
+    expect(JSON.stringify(runtime)).toContain('**Status**');
+
+    await router.route(componentInteraction(getModulePageActionID(module.id, 'details')));
+
+    expect(JSON.stringify(rest.edits[0].message)).toContain('Feature details');
 });
 
 test('module command autocompletes module names and IDs', () => {
@@ -494,6 +524,27 @@ class TestModule extends Module {
 
     async onEnable() {
         this.enableCalls++;
+    }
+}
+
+class PagedTestModule extends TestModule {
+    panelDefaultPageID() {
+        return 'overview';
+    }
+
+    panelPages() {
+        return [
+            {
+                id: 'overview',
+                label: 'Overview',
+                components: [textDisplay('Feature overview')]
+            },
+            {
+                id: 'details',
+                label: 'Details',
+                components: [textDisplay('Feature details')]
+            }
+        ];
     }
 }
 

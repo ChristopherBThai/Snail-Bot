@@ -39,6 +39,11 @@ const ConfigKeys = Object.freeze({
         emoteBy: 'action_capacity'
     }
 });
+export const QuestListPanelPages = Object.freeze({
+    Channel: 'channel',
+    Overview: 'overview',
+    Settings: 'settings'
+});
 
 export class QuestListModule extends Module {
     static LogTypes = Object.freeze({
@@ -218,20 +223,48 @@ export class QuestListModule extends Module {
         this.logger.debug('quest_list.disabled_runtime_cleared');
     }
 
-    panelComponents() {
-        const controls = [
-            separator(),
+    panelDefaultPageID() {
+        return QuestListPanelPages.Overview;
+    }
+
+    panelPages() {
+        return [
+            {
+                id: QuestListPanelPages.Overview,
+                label: 'Overview',
+                components: this.#overviewPanelComponents()
+            },
+            {
+                id: QuestListPanelPages.Settings,
+                label: 'Settings',
+                components: this.#settingsPanelComponents()
+            },
+            {
+                id: QuestListPanelPages.Channel,
+                label: 'Channel',
+                components: this.#channelPanelComponents()
+            }
+        ];
+    }
+
+    #overviewPanelComponents() {
+        return [
             section(
                 [textDisplay(lines('**Message**', this.#messageLink()))],
                 actionButton('Repost', QuestListIDs.ForceRepost, { style: ButtonStyle.Primary })
             ),
+            separator(),
             section(
                 [textDisplay(lines('**Queued Quests**', this.#quests.length.toLocaleString()))],
                 actionButton('Manage', QuestListIDs.ManageQueue)
             ),
-            textDisplay(lines('**Messages Since Repost**', this.#messagesSinceRepost.toLocaleString())),
             separator(),
-            textDisplay('### Settings'),
+            textDisplay(lines('**Messages Since Repost**', this.#messagesSinceRepost.toLocaleString()))
+        ];
+    }
+
+    #settingsPanelComponents() {
+        return [
             section(
                 [
                     textDisplay(
@@ -252,13 +285,14 @@ export class QuestListModule extends Module {
             section(
                 [textDisplay(lines('**Empty Message**', this.#emptyMessage))],
                 actionButton('Edit', QuestListIDs.EditEmptyMessage)
-            ),
-            separator(),
+            )
+        ];
+    }
+
+    #channelPanelComponents() {
+        return [
             textDisplay(
-                lines(
-                    '**Post Channel**',
-                    this.#channelID ? `<#${this.#channelID}>` : 'Not set. Select a channel to start Quest List.'
-                )
+                `**Post Channel:** ${this.#channelID ? `<#${this.#channelID}>` : 'Not set. Select a channel to start Quest List.'}`
             ),
             actionRow(
                 channelSelect(QuestListIDs.ChannelSelect, {
@@ -268,8 +302,6 @@ export class QuestListModule extends Module {
                 })
             )
         ];
-
-        return controls;
     }
 
     async #loadConfig() {
@@ -666,7 +698,11 @@ export class QuestListModule extends Module {
             await this.#refreshQuests('channel_set');
             await this.#publishList(context, { repost: true });
         }
-        await this.#updateModulePanel(context, `Set the Quest List channel to <#${channelID}>.`);
+        await this.#updateModulePanel(
+            context,
+            `Set the Quest List channel to <#${channelID}>.`,
+            QuestListPanelPages.Channel
+        );
         this.#logConfigUpdated('channel', { channelID });
     }
 
@@ -697,7 +733,7 @@ export class QuestListModule extends Module {
             await this.#publishList(context);
         }
 
-        await this.#updateModulePanel(context, 'Updated the Quest List visible limits.');
+        await this.#updateModulePanel(context, 'Updated the Quest List visible limits.', QuestListPanelPages.Settings);
         this.#logConfigUpdated('capacity', { capacity });
     }
 
@@ -717,7 +753,8 @@ export class QuestListModule extends Module {
         await this.setConfig(ConfigKeys.RepostInterval, repostInterval);
         await this.#updateModulePanel(
             context,
-            `Set the Quest List repost interval to ${repostInterval.toLocaleString()} messages.`
+            `Set the Quest List repost interval to ${repostInterval.toLocaleString()} messages.`,
+            QuestListPanelPages.Settings
         );
         this.#logConfigUpdated('repost_interval', { repostInterval });
     }
@@ -740,7 +777,7 @@ export class QuestListModule extends Module {
             await this.#publishList(context);
         }
 
-        await this.#updateModulePanel(context, 'Updated the Quest List empty message.');
+        await this.#updateModulePanel(context, 'Updated the Quest List empty message.', QuestListPanelPages.Settings);
         this.#logConfigUpdated('empty_message', { contentLength: emptyMessage.length });
     }
 
@@ -1265,9 +1302,9 @@ export class QuestListModule extends Module {
         );
     }
 
-    async #updateModulePanel(context, fallback) {
+    async #updateModulePanel(context, fallback, pageID = QuestListPanelPages.Overview) {
         try {
-            await context.edit(buildModulePanel(context, this));
+            await context.edit(buildModulePanel(context, this, { pageID }));
         } catch {
             await context.respond(ephemeralText(fallback));
         }

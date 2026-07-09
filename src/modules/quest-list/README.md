@@ -147,10 +147,13 @@ If role or owner authorization requires new config in this repo, update `docs/co
 Quest List exposes module panel state through the shared `/module` command.
 
 - `state()`: includes channel ID, message ID, repost interval, messages since repost, capacity, empty message, supported quest types, queued quest count, queued user count, quests by type, and current hydrated quests.
-- `panelComponents()`: contributes Quest List runtime and settings sections to the shared module panel container, including waiting status, message/repost and queue-management sections, editable Visible Limits, Repost Interval, and Empty Message sections, and the post-channel select at the bottom.
+- `panelPages()`: contributes Quest List feature pages to the shared module panel.
+  - Overview: current Quest List message link, force repost, queue management, queued quest count, and messages since repost.
+  - Settings: editable Visible Limits, Repost Interval, and Empty Message controls.
+  - Channel: current post channel and a channel select.
 - Queue management modals should prefer Discord-native selects. User removal uses a user select instead of parsing mentions or raw IDs; leaving users empty clears the selected type or all types.
 - Structured logs: log quests loaded, quests added, quests removed with per-quest reasons, quests refreshed, list published, and config updated.
-- Shared module admin actions: persisted enable/disable, recent log viewing, state export, and log usage display.
+- Shared module admin actions: persisted enable/disable, recent log viewing, state export, log level, and log usage display on the Runtime page.
 - Module-specific admin actions: settings modal submissions, manage queue modal submission, and force repost.
 
 ## Rendering and Responses
@@ -207,7 +210,7 @@ The first implementation must not depend on message content. Reference code expl
 
 Implementing Quest List requires these supporting pieces:
 
-- A module base/registry that supports initialization, enabled state, logs, events, module-owned commands, components, modals, `state()`, and `panelComponents()`.
+- A module base/registry that supports initialization, enabled state, logs, events, module-owned commands, components, modals, `state()`, and `panelPages()`.
 - Interaction routing for application commands, message components, and modal submissions.
 - Modal value extraction, including text inputs, string selects, channel selects, user selects, and checkboxes.
 - Discord REST wrapper methods for `defer`, `editReply`, `edit`, `openModal`, `sendMessage`, and `editMessage`.

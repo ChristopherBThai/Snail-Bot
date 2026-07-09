@@ -26,6 +26,7 @@ export async function loadConfig() {
         database: {
             snailMongoUri: process.env.SNAIL_MONGO_URI,
             owoMongoUri: process.env.OWO_MONGO_URI,
+            owoMysqlUri: process.env.OWO_MYSQL_URI,
             owoRedisUrl: process.env.OWO_REDIS_URL
         },
         discord: {
