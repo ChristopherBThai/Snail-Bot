@@ -2,6 +2,7 @@ import { createEchoCommand } from './echo.js';
 import { createEditCommand } from './edit.js';
 import logs from './logs.js';
 import module from './module.js';
+import nick from './nick.js';
 import snail from './snail.js';
 import { createTagCommands } from './tag/index.js';
 
@@ -12,6 +13,7 @@ export function createCommands({ config, databases, logging, messageBuilder } = 
 
     return [
         snail,
+        nick,
         module,
         logs({ databases, logging }),
         createEchoCommand({ messageBuilder }),

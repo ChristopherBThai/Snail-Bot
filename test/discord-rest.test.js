@@ -4,6 +4,7 @@ import { componentsMessage, fileDisplay } from '../src/systems/discord/component
 import { createDiscordRest, normalizeMessage } from '../src/systems/discord/rest.js';
 
 const restMock = vi.hoisted(() => ({
+    editBotMember: vi.fn(),
     editMessage: vi.fn(),
     editOriginalInteractionResponse: vi.fn(),
     post: vi.fn(),
@@ -43,6 +44,7 @@ beforeEach(() => {
     restMock.sendFollowupMessage.mockResolvedValue({ id: 'followup-message' });
     restMock.sendMessage.mockResolvedValue({ id: 'sent-message' });
     restMock.editMessage.mockResolvedValue({ id: 'edited-message' });
+    restMock.editBotMember.mockResolvedValue({ nick: 'Snail' });
 });
 
 test('file components include upload attachment metadata', () => {
@@ -200,6 +202,16 @@ test('guild command sync applies staff visibility permissions', async () => {
             }
         ]
     });
+});
+
+test('editBotNickname updates the current guild member nickname', async () => {
+    const rest = createDiscordRest('token');
+
+    await rest.editBotNickname('guild-1', 'Snail Jr');
+    await rest.editBotNickname('guild-1', null);
+
+    expect(restMock.editBotMember).toHaveBeenNthCalledWith(1, 'guild-1', { nick: 'Snail Jr' });
+    expect(restMock.editBotMember).toHaveBeenNthCalledWith(2, 'guild-1', { nick: null });
 });
 
 test('rest failures log original error objects with discord metadata', async () => {

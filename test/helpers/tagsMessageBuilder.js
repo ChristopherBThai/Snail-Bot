@@ -115,6 +115,7 @@ export function createContext({
         responses: [],
         followUps: [],
         editedMessages: [],
+        editedNicknames: [],
         sentMessages: [],
         userID,
         interaction,
@@ -138,6 +139,9 @@ export function createContext({
         async editMessage(channelID, messageID, message) {
             this.editedMessages.push({ channelID, messageID, message });
             return message;
+        },
+        async editBotNickname(guildID, nickname) {
+            this.editedNicknames.push({ guildID, nickname });
         },
         async followUp(message) {
             this.followUpMessage = message;

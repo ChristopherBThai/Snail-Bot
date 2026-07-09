@@ -271,6 +271,9 @@ function createInteractionContext({ config, interaction, logger, modules, rest, 
         },
         setChannelRoleOverwrite(channelID, roleID, overwrite) {
             return rest.setChannelRoleOverwrite(channelID, roleID, overwrite);
+        },
+        editBotNickname(guildID, nickname) {
+            return rest.editBotNickname(guildID, nickname);
         }
     };
 }

@@ -160,6 +160,12 @@ export function createDiscordRest(token, { applicationId, logger } = {}) {
                     }
                 })
                 .catch(logAndThrow('discord.channel_overwrite.set_failed'));
+        },
+
+        async editBotNickname(guildID, nickname) {
+            return await rest
+                .editBotMember(guildID, { nick: nickname })
+                .catch(logAndThrow('discord.member.edit_bot_failed'));
         }
     };
 }

@@ -17,7 +17,7 @@ test('command composition consumes Message Builder without owning its routes', (
     });
 
     expect(commands.map((command) => command.definition.name)).toEqual(
-        expect.arrayContaining(['edit', 'echo', 'tag', 'tag-manage'])
+        expect.arrayContaining(['edit', 'echo', 'nick', 'tag', 'tag-manage'])
     );
     expect(messageBuilder.routes.components.map((route) => route.prefix)).toEqual([
         `${BuilderIDs.SelectBlock}:`,
