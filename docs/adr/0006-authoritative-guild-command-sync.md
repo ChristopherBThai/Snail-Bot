@@ -12,21 +12,21 @@ Snail will sync guild application commands on startup using the command list def
 
 The sync is authoritative. If the running code provides an empty guild command list, Snail should sync that empty list and remove registered guild commands for the configured guild.
 
-Normal commands are guild commands. Rare global command exceptions should be handled explicitly by the code that owns them, not through a generic command scope config.
+Normal commands are guild commands. Global commands must opt in explicitly on the route that owns the command.
 
 ## Alternatives Considered
 
 | Alternative | Summary | Rejected Because |
 | --- | --- | --- |
 | Skip command sync while the list is empty | Avoid deleting existing Discord commands until new commands exist. | This preserves command state that the current code no longer owns and makes Discord diverge from the running source. |
-| Add a generic command scope config | Configure whether command sync is guild or global. | Normal commands are guild commands, and rare global exceptions should be explicit code paths rather than broad runtime mode switches. |
+| Add a generic command scope config | Configure whether command sync is guild or global. | Normal commands are guild commands, and global commands should opt in on the owning command route instead of broad runtime mode switches. |
 | Manual command sync only | Require a separate command or deployment step to sync definitions. | This makes command state easier to forget and allows Discord to drift from the deployed code. |
 
 ## Pros
 
 - Keeps Discord command state aligned with the running code.
 - Makes stale command removal intentional instead of accidental or manual.
-- Keeps the normal command path guild-scoped while allowing explicit global exceptions later.
+- Keeps the normal command path guild-scoped while allowing route-owned global command opt-in.
 
 ## Cons
 

@@ -1,122 +1,260 @@
 # Code Standards
 
-This document captures repo-wide code quality rules and review standards.
+This is the repo-wide code-quality standard for Snail. `AGENTS.md` points here so agents and humans can use one shared checklist before implementing or reviewing non-trivial changes.
+
+Use this document before architecture, runtime, Discord route, feature package, data, logging, or configuration work. Feature-specific UI layout, copy, settings, admin pages, and workflow details belong in the owning feature README.
+
+## Goal
+
+Snail code should be easy to read, easy to navigate, and organized around the real owner of each behavior. Do not trade clear ownership for speculative extension points, helper noise, defensive checks around code Snail controls, or abstractions that only exist because an earlier design shape suggested them.
+
+## Non-Negotiable Rules
+
+1. **Ownership first.** Before adding data, copy, helpers, conditionals, lookup maps, validation, or logging, identify the owning feature or runtime folder.
+2. **Feature behavior belongs to features.** Product decisions, user workflows, long-term feature state, and feature policy belong in `src/features/<feature-id>/`.
+3. **Runtime infrastructure stays reusable.** `runtime/`, `discord/`, `config/`, `logging/`, and `data/` provide infrastructure and shared contracts, not feature-specific policy.
+4. **Routes stay thin.** Commands, components, modals, autocomplete handlers, context commands, and gateway handlers parse input, authorize, call the owner, and return output.
+5. **Renderers render.** Renderers may own display copy, labels, layout, component ordering, and presentation choices. They must not own database access, feature rules, state transitions, or saved-record semantics.
+6. **Database code stores and loads.** Shared database modules expose clients, shared models, and narrow database services. Feature-specific queries belong in the owning feature repository.
+7. **Trust Snail-created runtime objects after startup.** Do not add fallback defaults or optional chaining around required config, loggers, databases, feature services, or interaction context fields that Snail creates and requires.
+8. **Validate at trust boundaries.** Validate Discord payloads, custom IDs, environment values, database rows, serialized records, external service payloads, and user input. Do not defensively normalize values the current code just created.
+9. **Helpers must pass the deletion test.** If deleting a helper makes the caller simpler or only moves a one-line expression back to one call site, delete it.
+10. **No speculative architecture.** Add folders, services, fields, config, indexes, extension points, and docs for current features or clearly identified planned features, not vague future categories.
+11. **No compatibility shims for unshipped work.** Prefer one clean canonical shape unless the maintainer explicitly asks for migration, backfill, or compatibility behavior.
+12. **Tests use production seams.** Do not split code into tiny helpers just to test them. Test the feature, route, registry, renderer, repository, or runtime interface that production callers use.
 
 ## Style
 
 - Use modern ESM JavaScript.
-- Use project import aliases for stable shared boundaries.
-- Use the configured formatter/checker when one exists. Biome is the expected default; see [ADR 7](adr/0007-biome-formatting-and-checking.md).
+- Use relative imports. Do not add project import aliases without an ADR.
+- Use the package formatter/checker scripts. Biome is the project formatter/checker; see [ADR 7](adr/0007-biome-formatting-and-checking.md).
 - Keep files focused on one clear responsibility.
 - Prefer explicit names over clever abbreviations.
-- Implement the shape that exists now. Do not add fields, branches, spreads, adapters, or extension points only for possible future config or feature needs.
-- Treat runtime entry points as direct execution files unless the current code imports them. Do not add import-safe guards only for hypothetical reuse.
-- Do not over-normalize data the codebase owns. Normalize external text input, env values, Discord payloads, and database records at their boundaries; do not add defensive cleanup around trusted internal config or objects without a current reason.
-- Trust required runtime dependencies after startup and composition. Do not add fallback defaults or optional chaining around config, loggers, databases, module dependencies, or interaction context fields that Snail creates and requires.
-- Use existing shared persistence patterns before creating new ones. Module settings should use the module `getConfig` and `setConfig` helpers unless they need queryable records; cross-feature user state should use shared user/log models rather than feature-specific user collections.
-- Add persistence fields and indexes for current behavior, not possible future admin screens. Store current state separately from append-only history.
-- Keep mode and option behavior direct. If a caller wants resume behavior, use a resume mode; do not hide special-case behavior inside a different mode plus target or option checks.
 - Add comments only for non-obvious decisions, invariants, or operational risks.
 - Avoid unrelated formatting churn.
 
-## Helpers and Abstractions
+These style rules support ownership and readability. They are not a reason to preserve a bad shape.
 
-Helpers should earn their place by making behavior clearer, safer, or more consistent.
+## Feature Package Shape
 
-- Prefer direct calls when a helper only renames or proxies one existing operation.
-- Inline one-use helpers when the call site becomes easier to read with the code in place.
-- Keep helpers when they centralize repeated policy, enforce an invariant, or apply consistent logging, validation, or Discord response shape.
-- Finished features should not keep transitional helpers, compatibility branches, and old terminology once the final direction no longer needs them.
-- Prefer small local helpers over global utilities unless multiple owners truly share the behavior.
+Substantial features should use boring, predictable files when those files have real work:
 
-## Logging
+- `index.js`: compose and export the feature definition.
+- `routes.js`: adapt Discord inputs and call feature services.
+- `service.js`: own workflows, lifecycle behavior, runtime state, and feature policy.
+- `admin.js`: contribute Admin Console pages and admin route helpers.
+- `render.js`: build Discord output from prepared state.
+- `repository.js`: own feature-specific database queries.
+- `rules.js`: hold pure feature decisions when separating them improves clarity or tests.
 
-Logs should help diagnose runtime behavior from user reports without requiring a debugger.
+Not every feature needs every file. Tiny features may stay in `index.js` until they grow multiple responsibilities.
 
-- Create loggers through the owning system, command file, command package, or module boundary.
-- Use stable dot-separated event names such as `message_builder.action`, `tag.created`, or `quest_list.quest_added`.
-- Use `trace` for detailed flow and state snapshots, `debug` for normal diagnostic actions, `info` for lifecycle and user-visible success, `warn` for rejected operations, and `error` for failures.
-- Prefer structured fields such as IDs, counts, modes, result codes, durations, and small state summaries.
-- Avoid logging raw user-authored text unless the text itself is needed to diagnose the feature and is acceptable to expose in runtime logs.
-- Do not add logger optional chaining in code paths where Snail owns logger creation.
+## Do / Don't Examples
 
-## Discord Interactions
+### Do Not Add Future Buckets
 
-Interaction handlers should use the simplest response flow that fits the current behavior.
+Do not add a generic folder because Snail might need that category later:
 
-- Use direct `respond` and `edit` calls for fast interactions.
-- Use `defer`, `editReply`, and followups only when the current implementation does slow work that needs the extra interaction window or when Discord requires that response shape.
-- Validation failures from component actions should usually respond ephemerally without replacing the current panel.
-- Do not ask users or staff to paste multiple Discord IDs into one modal. A clipboard can only hold one ID at once, and blank fields are easy to submit as accidental clears. Prefer Discord selects, one-setting controls, or small single-purpose modals.
-- Bot-authored user-facing messages should suppress mentions unless a feature explicitly documents an exception.
-- Component builders should make invalid Discord payloads impossible through available actions, not rely on Discord rejecting bad messages.
-- Every interactive component `custom_id` in a rendered Discord message must be unique. If several buttons perform similar work on one page, give each button a distinct ID and route them to the same handler rather than reusing one ID.
+```text
+src/integrations/
+```
 
-## Module Panels
+Do keep concrete current behavior in the folder that owns it:
 
-Module panels should be paginated by default once a module has more than a small amount of staff UI.
+```text
+src/data/owo/
+```
 
-- The shared `/module` panel owns the Runtime page for enable/disable, state export, log export, and log level controls.
-- State export should be a section with a short explanation of what the export contains. Avoid adding dense state-summary blocks to Runtime; useful operational summaries belong on module-owned Overview pages.
-- Module-owned pages should focus on feature workflows such as Overview, Settings, Access, Channels, or Moderation. Do not repeat shared Runtime controls on every feature page.
-- Keep module panel navigation to at most five pages total, including Runtime, because Discord action rows can hold at most five buttons. If a module needs more than four feature pages, combine adjacent concepts or switch the shared navigation pattern deliberately.
-- Modules should implement `panelPages()` for module-owned panel UI and, when useful, `panelDefaultPageID()`.
-- Prefer a short Overview page as the default for configured state and the most common actions. Put bulky channel, role, user, and moderation controls on separate pages.
-- Prefer separated layouts for settings pages: short heading or status text, then one logical section per setting/action, with separators between major ideas when it improves scanning. This held up well on both desktop and mobile.
-- Avoid dense dashboard-style panels that compress unrelated state, policy, copy, channels, and actions into one text block. They save components, but they are harder to scan and blur unrelated settings together.
-- Use section components with accessory buttons for editable settings when the action clearly belongs to one visible block. Use a shared action row only when the actions are tightly related and the surrounding text remains easy to scan.
-- Channel, role, and user settings should use Discord channel, role, and user select components respectively. Do not collect those IDs through text inputs unless Discord does not provide a suitable select.
-- Display configured channel, role, and user values on one line with the setting label, such as `**Rules Channel:** <#...>` or `**Market Access Role:** <@&...>`, followed by the matching select component.
-- Each visible panel control should update one setting or one coherent setting group. Split large multiline text settings, timing settings, channels, roles, and moderation actions into separate controls/pages.
-- Panel tests should count the complete `buildModulePanel(...)` payload for each page that can render, including the shared container and navigation, to guard Discord's component limits. They should also assert that rendered `custom_id` values are unique.
+Add a new top-level category only when a current feature or explicit plan needs behavior that no existing owner should hold.
 
-## Ownership
+### Do Not Split Old Concepts Back Out
 
-Put behavior where it is owned.
+Do not model one feature as separate module, command, and system owners:
 
-- Event/lifecycle-driven behavior belongs in the owning module or a module-local service/domain file.
-- Command-only feature behavior belongs in the owning command file, command package, or command-package-local service/domain file.
-- Shared infrastructure belongs in `systems/`.
-- Persistence behavior belongs in `database/`.
-- Command files adapt Discord input/output and delegate behavior.
-- Renderers and message builders render prepared state; they should not calculate domain rules.
+```js
+registerModule(ticketMarketModule);
+registerCommand(ticketMarketCommand);
+registerSystem(ticketMarketSystem);
+```
+
+Do let one feature contribute the runtime surfaces it owns:
+
+```js
+export default defineFeature({
+    id: 'ticket_market',
+    setup(context) {
+        const service = createTicketMarketService(context);
+
+        return {
+            routes: ticketMarketRoutes(service),
+            admin: ticketMarketAdmin(service),
+            health: () => service.health()
+        };
+    }
+});
+```
+
+### Keep Routes Thin
+
+Do not put feature policy in a route handler:
+
+```js
+async function handleButton(context) {
+    if (context.userTickets < 25 || context.marketClosed) {
+        return context.respond({ content: 'You cannot post here.' });
+    }
+
+    await saveSellerAd(context.user.id, context.fields);
+}
+```
+
+Do delegate the decision to the owning feature:
+
+```js
+async function handleButton(context) {
+    const result = await service.createSellerAd(context.user.id, context.fields);
+    return context.respond(renderSellerAdResult(result));
+}
+```
+
+### Keep Renderers Out Of Feature Rules
+
+Do not calculate eligibility, state transitions, or database reads in a renderer:
+
+```js
+export function renderQuestList(user, quests) {
+    const eligible = quests.filter((quest) => quest.level <= user.level);
+    return buildQuestMessage(eligible);
+}
+```
+
+Do pass prepared display state into the renderer:
+
+```js
+export function renderQuestList(view) {
+    return buildQuestMessage(view.visibleQuests);
+}
+```
+
+### Validate Boundaries, Not Internal Echoes
+
+Do validate external input before it enters Snail-owned behavior:
+
+```js
+const route = routeRegistry.resolveComponent(interaction.data.custom_id);
+```
+
+Do not re-check values that were created by Snail during the same flow unless there is a real invariant worth enforcing:
+
+```js
+const logger = context.logger;
+logger.info('ticket_market.loaded');
+```
+
+### Helpers Must Earn Their Keep
+
+Do not add a helper that only renames one call:
+
+```js
+function getFeatureLogger(context) {
+    return context.logger;
+}
+```
+
+Do keep helpers that centralize validation, ownership policy, logging shape, routing shape, or repeated Discord payload rules.
 
 ## Anti-Patterns
 
 Reject these during implementation and review:
 
-- Thin command handlers or interaction handlers that own long-term feature policy instead of delegating to the owning module, command file, or command package.
-- Renderers that calculate domain behavior instead of rendering prepared state.
-- Database modules that accumulate business behavior unrelated to persistence.
-- Database connection modules that expose feature-specific query helpers instead of raw clients, pools, connections, or shared models.
-- Dedicated settings collections, packed settings documents, or user collections that duplicate module config helpers, shared `Config`, or shared `User` patterns without a concrete query/indexing need.
-- Speculative indexes that cannot be tied to a current read path.
-- Global helper files that become dumping grounds for feature-specific logic.
+- Feature policy in route handlers, renderers, shared database setup, or generic runtime services.
+- Shared modules that expose feature-specific query helpers.
+- Global utility files that collect unrelated feature behavior.
 - Thin wrappers that only rename or proxy one existing call.
-- Static facades that construct an object only to call one method.
+- Static facades or factories that only hide ordinary construction.
 - New abstractions introduced before Snail has enough real usage to justify them.
+- Optional branches around required runtime objects.
 - Defensive normalization against data shapes the current code cannot produce.
 - Hidden mode behavior where one mode silently behaves like another because of specific target or option combinations.
-- Stale feature artifacts such as old command names, old log event names, old upload/storage terminology, or unused compatibility branches after scope changes.
+- Speculative indexes, config values, services, or extension points with no current read path or caller.
+- Stale artifacts such as old names, old log events, old terminology, or unused compatibility branches after the current direction changes.
 - Debug-only shortcuts that can leak into production.
 
-## Review Standards
+## Enforce With Code
 
-Reviews should prioritize correctness, safety, ownership boundaries, missing verification, and documentation accuracy before style preferences.
+Important standards should become helper validation or focused tests when the relevant code exists.
 
-Review findings should explain concrete risk and include file and line references when possible. Style feedback should not fight formatter output.
+- Feature definition helpers should reject duplicate feature IDs and invalid contribution shapes.
+- Route helpers should reject duplicate route IDs.
+- Command route registration should reject duplicate Discord command names within the same scope.
+- Command sync should treat guild scope as the default and require global commands to opt in on the owning command route.
+- Component and modal helpers should make invalid Discord payloads hard to construct.
+- Render tests should count complete Discord payloads for component-heavy messages that can approach Discord limits.
+- Render tests should assert rendered `custom_id` values are unique per message.
+- Database setup should expose clients and shared models, not feature-specific query helpers.
+- Config tests should verify static config exports include required values and expected value shapes.
 
-## Tests and Type Checks
+Do not add tests that only prove a library constructor, parser, or one-line pass-through works. Add tests where Snail owns validation, routing, translation, limits, ownership rules, or production-sensitive behavior.
 
-Use `npm test` as the standard way to run tests. If a component does not have tests yet, add focused tests when behavior risk justifies them.
+## Review Rubric
 
-Test Snail behavior, not external libraries. Do not add tests that only prove a dependency constructor, parser, or API works as documented. Tests around wrappers or adapters should verify Snail's validation, normalization, routing, error handling, or boundary contract.
+A code architecture review should request changes when any answer below is bad:
 
-Avoid tests that only mirror a one-line guard or pass-through wrapper. Add focused tests when the wrapper owns meaningful validation, transformation, routing, error handling, or production-risk behavior.
+- **Ownership:** Can each behavior be traced to the feature or runtime folder that owns it?
+- **Interface depth:** Did the change create useful modules with simple caller knowledge, or shallow pass-through wrappers?
+- **Helpers:** Are helpers shared because multiple owners need them, or because code was split before it earned the split?
+- **Routes:** Do routes adapt Discord input/output and delegate feature behavior?
+- **Renderers:** Are renderers free of database access, state transitions, and feature rules?
+- **Data:** Do shared database modules expose shared clients/models/services instead of feature-specific policy?
+- **Runtime objects:** Are required runtime objects trusted after startup instead of treated as optional throughout the code?
+- **Tests:** Do tests exercise production interfaces instead of private helper seams?
+- **Compatibility:** Did the change avoid legacy shims and fallback paths unless the task explicitly requires them?
+- **Speculation:** Is every new folder, field, service, option, and extension point tied to current or explicitly planned behavior?
 
-Tests should describe the final user-visible and persistence behavior, not transitional implementation details. When a feature no longer defers, uploads files, or uses an old command shape, update tests to assert the new shape instead of preserving the old path.
+## Feedback Closure
 
-Prefer regression tests for bugs and risks Snail has actually hit, especially invalid Discord component payloads, stale interaction sessions, missing fallback rendering, permission boundaries, persistence updates, and log events used for debugging.
+If the maintainer or a reviewer names specific architecture concerns, those concerns become blocking acceptance criteria for the task.
+
+Before reporting completion, create a short feedback closure check that maps every named concern to source evidence:
+
+- original concern
+- broader smell category, such as ownership, route-owned policy, renderer-owned rules, helper noise, defensive internals, speculative architecture, stale terminology, or database ownership
+- status: fixed, still present, or intentionally deferred
+- exact files or symbols checked
+- searches or inspections performed
+- remaining violations, if any
+
+Do not claim work is fixed, ready, or aligned while a named architecture concern is still present unless the maintainer explicitly accepts the deferral. Passing tests does not replace source-level verification.
+
+Derive verification from the current feedback instead of maintaining a permanent checklist of one-off symbol names. Use concrete symbols from the current task as evidence, but keep the lasting standard focused on the smell category.
+
+## Required Workflow For Big Tasks
+
+1. Read `AGENTS.md`, this standards doc, and the closest relevant architecture, database, configuration, workflow, or feature README.
+2. Inspect or sketch the proposed module shape before implementation.
+3. Implement one coherent slice at a time.
+4. Run focused checks for the touched area.
+5. Review the diff for ownership, helper noise, defensive internals, speculative structure, and stale terminology before reporting completion.
+6. If the maintainer or reviewer gave specific architecture feedback, complete the feedback closure check before reporting completion.
+7. Fix architecture regressions directly instead of adding comments that explain bad structure.
+
+## PR Checklist
+
+Use this checklist for non-trivial work:
+
+- [ ] Behavior lives with the owning feature or runtime folder.
+- [ ] Routes are thin adapters.
+- [ ] Renderers are presentation-only.
+- [ ] Shared data modules do not contain feature policy.
+- [ ] Helpers pass the deletion test.
+- [ ] Required runtime objects are trusted after startup.
+- [ ] Validation happens at trust boundaries.
+- [ ] New structure is tied to current or explicitly planned behavior.
+- [ ] Stale names, compatibility branches, and old terminology were removed.
+- [ ] Tests cover public production behavior where risk justifies them.
+- [ ] Named architecture feedback has source-backed closure, or the maintainer accepted deferral.
+
+## Tests And Type Checks
 
 Use the package scripts for verification and formatting:
 
@@ -124,3 +262,4 @@ Use the package scripts for verification and formatting:
 - `npm run check:fix`: run Biome checks and safe writes.
 - `npm run format`: run Biome formatting checks.
 - `npm run format:fix`: run Biome formatting writes.
+- `npm test`: run tests.

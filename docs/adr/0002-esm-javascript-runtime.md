@@ -4,25 +4,25 @@
 
 Snail needs one JavaScript module system for runtime code, tests, and tooling. The reference implementation already used native ESM with `"type": "module"` and imported Discordeno standalone packages with ESM syntax.
 
-The rewrite should preserve that baseline unless there is a strong reason to change it. Switching module systems during the rewrite would add churn without solving a current problem.
+Snail should preserve that baseline unless there is a strong reason to change it. Switching module systems would add churn without solving a current problem.
 
 ## Decision
 
 Snail will use native ESM JavaScript, with `"type": "module"` in `package.json`.
 
-Snail will not adopt TypeScript for this rewrite. TypeScript would add a larger developer, build, and production deployment change than the project currently needs. A future switch would require a very compelling reason and a separate ADR.
+Snail will not adopt TypeScript at this time. TypeScript would add a larger developer, build, and production deployment change than the project currently needs. A future switch would require a very compelling reason and a separate ADR.
 
 ## Alternatives Considered
 
 | Alternative | Summary | Rejected Because |
 | --- | --- | --- |
 | CommonJS | Use `require` and `module.exports`. | The reference implementation already moved to ESM and imported Discordeno standalone packages with ESM syntax. Returning to CommonJS would add compatibility churn around the Discord library direction and the existing reference code. |
-| TypeScript | Add a compile/typecheck step and write source in TypeScript. | This is too large a developer, build, and production setup change for the rewrite. There is no current need strong enough to justify adding a compile step and changing how Snail is built or deployed. |
+| TypeScript | Add a compile/typecheck step and write source in TypeScript. | This is too large a developer, build, and production setup change. There is no current need strong enough to justify adding a compile step and changing how Snail is built or deployed. |
 
 ## Pros
 
 - Uses the current Node module standard.
-- Keeps the rewrite free of a build step.
+- Keeps the project free of a build step.
 - Lets source, tests, and tooling run directly under Node.
 - Matches the module style already used by the reference implementation.
 
@@ -30,7 +30,7 @@ Snail will not adopt TypeScript for this rewrite. TypeScript would add a larger 
 
 - No static type checking by default.
 - Some older libraries or examples may require CommonJS interop.
-- A future TypeScript migration would be larger once more JavaScript exists.
+- A future TypeScript adoption would be larger once more JavaScript exists.
 - Runtime-only errors that TypeScript could catch need to be managed through focused tests, review, and clear boundaries.
 
 ## Consequences

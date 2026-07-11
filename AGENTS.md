@@ -1,116 +1,94 @@
 # Snail Bot Agent Guide
 
-This guide is for coding agents and humans working on Snail Bot. Read it before making non-trivial changes, then read the closest project doc or local README for the area you touch.
+This file is for AI agents working on Snail Bot. Read it before making non-trivial changes, then read the closest project doc or local feature README for the area you touch.
 
-Snail is an interaction-first Discord utility bot with clear ownership boundaries, maintainable feature routes, safe operational defaults, and documented feature specs.
+Snail is an interaction-first Discord utility bot built from feature packages and concrete runtime infrastructure.
 
-## Maintenance
-
-This file is living repo-wide guidance. Update it when source layout, workflow, architecture expectations, safety rules, review process, or other project-wide operating rules change.
-
-Keep this file short. If guidance applies only to one system, module, command group, database boundary, or workflow, put it in that doc instead of expanding this file.
-
-## Source Route
-
-The source layout is rooted at `src/`. Project docs describe the final architecture, not transitional folders or scratch migration paths.
+The canonical detailed coding and review standard is [`docs/code-standards.md`](docs/code-standards.md). Keep this file as the short agent entrypoint; add detailed examples, review rubrics, and project-wide coding rules to the standards doc instead of duplicating them here.
 
 ## First Principles
 
-1. **Find the owning feature boundary before writing code.** Put behavior in the module, command file, command package, system, or database boundary that owns it.
-2. **Keep commands and interactions thin.** Commands, buttons, modals, and socket handlers parse input, authorize, call the owner, and return output.
-3. **Keep systems reusable.** Shared systems provide infrastructure, not feature-specific policy.
-4. **Keep persistence focused.** Database files model, load, save, and query data; business rules belong to the owning feature unless they are persistence-specific.
+1. **Find the owner before writing code.** Product behavior belongs in the owning feature package; reusable infrastructure belongs in the concrete runtime folder that owns it.
+2. **Keep Discord routes thin.** Commands, buttons, selects, modals, and gateway event handlers parse input, authorize, call the owner, and return output.
+3. **Keep runtime infrastructure reusable.** Runtime, Discord, config, logging, and data code provide infrastructure, not feature-specific policy.
+4. **Keep database code focused.** Database code loads, saves, connects, and translates database-specific records; feature rules belong to the owning feature.
 5. **Prefer interaction-first Discord UX.** Application commands, components, and modals are the primary UI. Prefix commands are not part of Snail.
-6. **Document lasting choices.** Major architecture choices should get ADRs.
-7. **Preserve user work.** Inspect diffs before editing, keep changes scoped, and do not overwrite unrelated changes.
-8. **Be production-conservative.** Discord actions, database mutations, socket events, auth changes, and secrets handling are production-sensitive unless explicitly scoped to local development.
+6. **Preserve user work.** Inspect diffs before editing, keep changes scoped, and do not overwrite unrelated changes.
+7. **Be production-conservative.** Discord actions, database mutations, gateway events, auth changes, command sync, and secrets handling are production-sensitive unless explicitly scoped to local development.
+8. **Avoid speculative architecture.** Add folders, services, fields, config, extension points, and docs for current features or clearly identified planned features. Do not add generic buckets for unspecified future work.
 
-## Project Map
-
-The high-level layout is:
+## Source Map
 
 ```text
 src/
-  index.js                  Runtime composition and startup flow
-  config/                   Runtime config loading and config values
-  systems/                  Shared infrastructure
-  modules/                  Event/lifecycle-driven runtime modules
-  commands/                 Command files and substantial command packages grouped for developer ownership
-  database/                 Snail and OwO persistence boundaries
-  utils.js                  Small truly shared utilities
+  index.js                  Runtime entry point
+  runtime/                  Runtime composition, feature setup, registries, startup ordering
+  discord/                  REST, gateway, routing, command sync, component helpers
+  config/                   Runtime config loading and config catalog
+  logging/                  Logger creation, log levels, log export support
+  data/                     Snail databases, OwO database clients, and saved records
+  features/                 Product, utility, and admin feature packages
+  util/                     Small general utilities
 docs/                       Project-level guides
-AGENTS.md                   Repo-wide agent and contributor operating guide
+docs/adr/                   Architecture decision records
+AGENTS.md                   AI agent operating guide
 README.md                   Human-facing project overview and quick start
 ```
 
-Pending project-map decisions are tracked in the relevant docs until they become ADRs.
+Use this map unless a newer ADR changes it.
+
+## Required Context
+
+Before non-trivial edits or reviews:
+
+- Read this file.
+- Read [`docs/code-standards.md`](docs/code-standards.md) and apply it as a checklist.
+- Read the closest relevant project doc, such as [`docs/architecture.md`](docs/architecture.md), [`docs/configuration.md`](docs/configuration.md), or [`docs/database.md`](docs/database.md).
+- Read `src/features/<feature-id>/README.md` before changing a feature when one exists.
+- Check `git status --short` before editing and again before reporting completion.
 
 ## Core Guardrails
 
-- Snail must not change OwO data except through named services that exist specifically for that integration.
+- Snail must not change OwO data except through named OwO services.
 - New features must not depend on privileged message content unless the maintainer explicitly approves the tradeoff.
 - Bot-authored Discord messages should use Components V2 by default unless a documented Discord limitation or compatibility exception applies.
 - Discord API calls should go through the Discord REST wrapper or interaction context where possible.
-- The configuration catalog must stay complete and safe.
+- The configuration catalog and config shape tests must stay complete and safe.
 - Do not commit secrets, real tokens, database credentials, socket tokens, or production-only private config.
 - Command sync happens in production on startup, so command definition changes are production-visible.
-- Use the configured formatter/checker when one exists. Biome is the expected default unless an ADR chooses different tooling.
+- Use the package formatter/checker scripts. Biome is the project formatter/checker unless an ADR chooses different tooling.
 
-## Documentation Map
+## Working Rules
 
-- `README.md`: project overview, quick start, and docs index
-- `docs/architecture.md`: startup flow, system boundaries, module lifecycle, and request/event flow
-- `docs/code-standards.md`: coding standards, anti-patterns, and review rubric details
-- `docs/configuration.md`: runtime config loader, normal/debug config files, and ignored `.env` values
-- `docs/database.md`: Snail/OwO data boundary and persistence conventions
-- `docs/development-workflow.md`: development expectations, feature specs, documentation updates, and verification
-- `docs/module-readme-template.md`: required README shape for runtime modules
-- `docs/command-package-readme-template.md`: required README shape for substantial command packages
-- `docs/adr/`: architecture decision records and template
-- `src/**/README.md`: local folder-specific guidance when present
+- Identify the owning feature, runtime service, database code, or utility helper before editing.
+- Keep changes scoped. Avoid unrelated refactors, formatting churn, and cleanup outside the task.
+- For substantial features, write or update the local feature README contract before the work is complete.
+- Update docs alongside behavior, setup, architecture, operational, or safety changes.
+- Do not disable auth, skip validation, bypass database ownership rules, or hide production failures as a shortcut.
+- If the maintainer names architecture concerns, treat them as blocking acceptance criteria and use the feedback closure process in [`docs/code-standards.md`](docs/code-standards.md) before claiming completion.
+- Preserve intentional user-visible Discord copy, layout, and interaction behavior unless the task asks to change it or the current behavior is unsafe.
 
-Use nested `AGENTS.md` files only when a subsystem needs stricter local operating rules than a README can comfortably explain.
+## Review Stance
 
-## Agent Expectations
-
-- Read this file and the closest relevant docs before editing.
-- Check the current worktree state.
-- Identify the owning module, command file, command package, system, or database boundary.
-- Keep changes scoped and preserve unrelated user work.
-- For substantial new modules or command packages, write or update the local README spec before the work is complete. Simple command files do not need local READMEs unless they grow into substantial features.
-- Update docs alongside behavior, setup, architecture, or operational changes.
-- Do not disable auth, skip validation, or bypass persistence boundaries as a shortcut.
-- Run the narrowest meaningful verification and state what was or was not verified.
-
-## Review Expectations
-
-Reviews should prioritize correctness and risk over rewriting style. Review in this order:
+When asked for a review, prioritize findings in this order:
 
 1. Startup, runtime correctness, and user-visible behavior
 2. Auth, permissions, secrets, production safety, and data integrity
-3. Local README/spec alignment
-4. Module/command-file/command-package/system/database ownership boundaries
+3. Feature README/spec alignment
+4. Feature/runtime/database ownership
 5. Missing tests or missing verification
 6. Documentation updates
 7. Maintainability, naming, and style
 
-Review findings should explain concrete risk, include file and line references when possible, and avoid broad rewrites unless the current approach is unsafe or likely to harden into the wrong architecture.
+Review findings should explain concrete risk, include file and line references when possible, and avoid broad restructuring unless the current approach is unsafe or likely to harden into the wrong architecture.
 
 ## Verification
 
 Use the smallest check that gives meaningful confidence.
 
-- Docs-only changes: proofread, check paths/links, and make sure examples match the source route.
+- Docs-only changes: proofread, check paths/links, and make sure examples match the source map.
 - JavaScript changes: run the configured checker or the closest available focused check.
 - Tested behavior or shared runtime changes: run focused tests, and run `npm test` when appropriate.
-- Startup, Discord, database, socket, or auth changes: verify as much as possible without touching production services unless explicitly approved.
+- Startup, Discord, database, gateway, or auth changes: verify as much as possible without touching production services unless explicitly approved.
 
 Always report what changed, what verification ran, what could not be verified, and any remaining risks.
-
-## Pending Architecture Decisions
-
-- The project map may evolve through ADRs, but use the map above until a decision changes it.
-- Add nested `AGENTS.md` files only if a subsystem develops local rules that README docs cannot express clearly.
-- Vitest is the standard test framework. The focused-test command can be finalized once testable code exists.
-- Runtime config lives under `src/config/`; update configuration docs if the config loading model changes.
-- Command folder layout is for developer ownership, not user-facing grouping; simple commands may stay as files and substantial command-only features may become packages.

@@ -37,4 +37,4 @@ State the chosen approach directly.
 
 ## Links
 
-- Related docs: [Example](../example.md)
+- Related docs: [Architecture](../architecture.md)

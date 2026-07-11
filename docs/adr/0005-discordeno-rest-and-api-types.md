@@ -26,7 +26,7 @@ The Discord REST wrapper owns REST manager construction. Other code should ask t
 | --- | --- | --- |
 | Continue using Eris | Keep the previous production Discord library. | Eris took too much control over gateway data and could silently drop, reshape, or fail to handle newer Discord object types before Snail could inspect them. |
 | Build gateway and REST directly | Own the gateway websocket, heartbeat, reconnect, rate-limit, REST route, and auth behavior in Snail. | This would keep Snail close to Discord payloads, but it would make the project responsible for too much fragile Discord infrastructure. |
-| Lean Discord.js usage | Use Discord.js while trying to avoid its higher-level abstractions. | Discord.js still brings a larger framework and object model than Snail wants for this rewrite, and using it "leanly" would fight the library's normal shape. |
+| Lean Discord.js usage | Use Discord.js while trying to avoid its higher-level abstractions. | Discord.js still brings a larger framework and object model than Snail wants, and using it "leanly" would fight the library's normal shape. |
 
 ## Pros
 
@@ -37,15 +37,15 @@ The Discord REST wrapper owns REST manager construction. Other code should ask t
 
 ## Cons
 
-- Adds runtime dependencies before the final routing boundary exists.
+- Adds runtime dependencies to the Discord infrastructure boundary.
 - The REST wrapper and event router are intentionally narrow and will need to grow with command behavior.
 
 ## Consequences
 
 - Startup may fail clearly when Discord REST or gateway setup is missing required config.
 - Command sync and gateway startup now run during `src/index.js`.
-- Discord event routing currently lives in `src/systems/discord/event-router.js`.
-- `src/systems/discord/` owns reusable Discord behavior once it exists.
+- Discord event routing lives under `src/discord/`.
+- `src/discord/` owns reusable Discord behavior.
 - Add new Discord REST behavior to the wrapper before exposing raw REST manager access elsewhere.
 
 ## Links

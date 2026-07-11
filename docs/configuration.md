@@ -1,88 +1,107 @@
 # Configuration
 
-This document describes Snail's runtime config loader and ignored `.env` values.
+This document describes Snail runtime configuration.
 
-## Local Values
+## Goals
 
-Snail starts from `src/config/index.js`, which builds the final runtime config from `.env` and the selected public config file.
+Configuration should make production-sensitive values explicit, keep secrets out of source, and make the bot's required startup values easy to review.
 
-Secrets and private machine-specific values live in `.env` and are read by `src/config/index.js` through `process.env`. Local toggles such as `DEBUG` also live in `.env`.
+Runtime config is loaded once during startup and passed through the app context to runtime services and features. Because Snail uses static exported config plus environment values, config shape should be checked by tests instead of a separate runtime validation layer.
 
-Public Discord IDs live in `src/config/config.js` or ignored local debug config.
+## Sources
 
-Never commit `.env` files, real tokens, API keys, database credentials, socket tokens, or production-only secrets.
+Snail uses two categories of config:
 
-## Runtime Config
+- Source-controlled config files for non-secret, environment-specific defaults such as guild IDs, role IDs, user IDs, colors, and feature defaults.
+- Local environment values for secrets and connection strings, loaded from `.env` during local development.
 
-Snail uses one committed runtime config loader and one selected public config file.
-
-Expected files:
-
-```text
-src/config/index.js          Runtime config loader and normalizer. Committed.
-src/config/config.js         Normal public config values. Committed.
-src/config/config.debug.js   Debug/local public config values. Always ignored.
-.env                         Secrets and local toggles. Always ignored.
-```
-
-Use the Config Catalog below as the source of truth when creating or updating `src/config/config.js`, `src/config/config.debug.js`, and `.env`.
-
-Startup should load `.env` before reading env-derived values so `process.env` is available. Only `src/config/index.js` should read `.env` or `process.env`; the rest of the app should use exported config values.
-
-If `DEBUG=true`, use `src/config/config.debug.js`; otherwise use `src/config/config.js`. The normal and debug config files are alternatives, not overlays.
-
-Most public config values should not need parsing or normalization because they are maintained as JavaScript values in config files. Private connection strings are read directly from `.env`; the bot token is normalized to remove a leading `Bot` prefix.
-
-## Config Catalog
-
-This table is the source of truth for supported config options.
-
-| Name | Required In | Source | Purpose | Notes |
-| --- | --- | --- | --- | --- |
-| `debug` | optional | `.env` | Enables local diagnostics | Not a secret, but keep it in `.env` with other machine-local values. Read as `DEBUG`; only `true` enables debug mode. |
-| `applicationId` | runtime | `config.js` | Discord application ID | Not a secret. Read from `discord.applicationId` in the selected config file. |
-| `guildId` | runtime | `config.js` | Discord guild ID for normal command sync | Not a secret. Read from `discord.guildId` in the selected config file. |
-| `token` | runtime | `.env` | Discord bot token | Secret. Never commit real `.env` files. Read as `BOT_TOKEN` and normalize away a leading `Bot` prefix. |
-| `snailMongoUri` | runtime | `.env` | Snail-owned Mongo persistence | Secret/private connection string. Read as `SNAIL_MONGO_URI`. Required for startup because shared module config and module enablement are persisted there. |
-| `owoMongoUri` | Quest List runtime | `.env` | Read-only OwO quest document access | Secret/private connection string. Read as `OWO_MONGO_URI`. Quest List reads active V2 quest docs only. |
-| `owoRedisUrl` | Quest List runtime | `.env` | Read-only OwO user stat access | Secret/private connection string. Read as `OWO_REDIS_URL`. Quest List reads `user_stats:{userId}` hashes only. |
-| `owoMysqlUri` | Ticket Market runtime | `.env` | Read-only OwO Wrapped Ticket inventory access | Secret/private connection string. Read as `OWO_MYSQL_URI`. Ticket Market reads the OwO MySQL `owo` database, specifically `user` and `user_item` rows for `common_tickets`. |
-| `modules.defaultLogsLimit` | runtime | `config.js` | Default number of recent log entries retained per module | Public operational setting. Individual modules may override this when they need a different in-memory log limit. |
-| `colors.primary` | runtime | `config.js` | Primary UI accent color | Public Discord component color as a number literal. Used for generic admin and overview surfaces. |
-| `colors.success` | runtime | `config.js` | Success UI accent color | Public Discord component color as a number literal. Used for active or healthy states. |
-| `colors.warning` | runtime | `config.js` | Warning UI accent color | Public Discord component color as a number literal. Reserved for degraded or waiting states. |
-| `colors.danger` | runtime | `config.js` | Danger UI accent color | Public Discord component color as a number literal. Used for error or destructive states. |
-| `colors.neutral` | runtime | `config.js` | Neutral UI accent color | Public Discord component color as a number literal. Used for disabled or inactive states. |
-| `colors.red` | runtime | `config.js` | Red UI accent color | Public Discord component color as a number literal. Part of the shared rainbow palette. |
-| `colors.orange` | runtime | `config.js` | Orange UI accent color | Public Discord component color as a number literal. Part of the shared rainbow palette. |
-| `colors.yellow` | runtime | `config.js` | Yellow UI accent color | Public Discord component color as a number literal. Part of the shared rainbow palette; used by Quest List. |
-| `colors.green` | runtime | `config.js` | Green UI accent color | Public Discord component color as a number literal. Part of the shared rainbow palette. |
-| `colors.blue` | runtime | `config.js` | Blue UI accent color | Public Discord component color as a number literal. Part of the shared rainbow palette. |
-| `colors.purple` | runtime | `config.js` | Purple UI accent color | Public Discord component color as a number literal. Part of the shared rainbow palette. |
-| `colors.pastel.red` | runtime | `config.js` | Pastel red UI accent color | Public Discord component color as a number literal. Part of the shared pastel rainbow palette. |
-| `colors.pastel.orange` | runtime | `config.js` | Pastel orange UI accent color | Public Discord component color as a number literal. Part of the shared pastel rainbow palette. |
-| `colors.pastel.yellow` | runtime | `config.js` | Pastel yellow UI accent color | Public Discord component color as a number literal. Part of the shared pastel rainbow palette. |
-| `colors.pastel.green` | runtime | `config.js` | Pastel green UI accent color | Public Discord component color as a number literal. Part of the shared pastel rainbow palette. |
-| `colors.pastel.blue` | runtime | `config.js` | Pastel blue UI accent color | Public Discord component color as a number literal. Part of the shared pastel rainbow palette. |
-| `colors.pastel.purple` | runtime | `config.js` | Pastel purple UI accent color | Public Discord component color as a number literal. Part of the shared pastel rainbow palette. |
-| `roles.helper` | staff features | `config.js` | Discord helper role IDs | Public Discord IDs. Grants helper/staff-level access. |
-| `roles.manager` | staff features | `config.js` | Discord manager role IDs | Public Discord IDs. Grants manager-level access, including Quest List settings/actions. |
-| `roles.admin` | staff features | `config.js` | Discord admin role IDs | Public Discord IDs. Grants admin-level access and includes manager-level permissions. |
-| `users.owner` | staff features | `config.js` | Discord user ID with owner override | Public Discord ID. Owner can use staff controls even without a staff role. |
-
-Staff authorization is hierarchical: owner includes admin, manager, and helper permissions; admin includes manager and helper permissions; manager includes helper permissions.
+Do not commit real tokens, database credentials, socket tokens, or production-only private config.
 
 ## Environment Values
 
-Use this as a copy/paste starting point for ignored `.env`:
+These values are secrets or deployment-local connection strings and should come from the environment:
 
-```sh
-DEBUG=false
+| Value | Purpose |
+| --- | --- |
+| `BOT_TOKEN` | Discord REST and gateway authentication. |
+| `SNAIL_MONGO_URI` | Snail-owned Mongo data. |
+| `OWO_MONGO_URI` | Read-only OwO quest documents. |
+| `OWO_REDIS_URL` | Read-only OwO stat hashes. |
+| `OWO_MYSQL_URI` | Read-only Wrapped Ticket inventory. |
 
-BOT_TOKEN=
+`BOT_TOKEN` may be supplied with or without the `Bot ` prefix. The config loader should normalize it before Discord REST/gateway setup.
 
-SNAIL_MONGO_URI=
-OWO_MONGO_URI=
-OWO_REDIS_URL=
-OWO_MYSQL_URI=
+## Config Files
+
+The config loader lives under `src/config/`.
+
+Non-secret config should be explicit and grouped by purpose:
+
+```js
+export default {
+    discord: {
+        applicationId: '...',
+        guildId: '...'
+    },
+    roles: {
+        manager: [],
+        helper: []
+    },
+    users: {
+        owner: '...'
+    },
+    colors: {
+        primary: 0x5865f2
+    },
+    features: {
+        defaultLogsLimit: 50000
+    }
+};
 ```
+
+Debug/local variants may exist, but the active selection must be obvious during startup. Avoid broad runtime mode switches that hide production behavior.
+
+## Config Shape Tests
+
+Static config should have focused tests that assert required groups and values exist.
+
+Config tests should cover:
+
+- required Discord IDs and token mapping
+- required database connection values
+- required auth roles and owner IDs
+- required color and feature-default groups
+- expected value types for numbers, booleans, arrays, and IDs
+
+These tests catch accidental removal, renaming, or blanking of required config without adding runtime ceremony.
+
+Feature settings that staff change at runtime should be saved as Snail data, not source-controlled config files.
+
+## Discord Config
+
+`discord.applicationId`, `discord.guildId`, and `BOT_TOKEN` are required before command sync can run.
+
+Guild command sync is authoritative. If the running code provides an empty guild command list, Snail should sync that empty list and remove registered guild commands for the configured guild.
+
+## Auth Config
+
+Role and owner config supports runtime authorization helpers. Discord-side command visibility is not a substitute for runtime authorization checks.
+
+Feature routes that require staff access should use shared runtime auth helpers and should re-check authorization on every interaction.
+
+## Feature Runtime Config
+
+Feature runtime settings include values such as enabled state, log level, Quest List channel, Ticket Market rules channel, market access role, timing, copy, and similar staff-managed settings.
+
+These settings should be persisted under Snail-owned storage and scoped by feature ID. Use individual settings unless the feature has a concrete reason to query or relate a settings document as a first-class record.
+
+## Documentation Updates
+
+Update this document when:
+
+- a required environment value is added or removed
+- a source-controlled config group is added or removed
+- the config loader behavior changes
+- config shape test expectations change
+- command sync requirements change
+- auth config expectations change

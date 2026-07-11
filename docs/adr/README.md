@@ -10,8 +10,8 @@ Create an ADR when a decision:
 
 - changes project structure or ownership boundaries
 - chooses a major library, framework, database, or service
-- creates a lasting integration pattern
-- changes how commands, modules, interactions, config, or persistence work
+- creates a lasting external-service or database pattern
+- changes how commands, modules, interactions, config, or saved records work
 - accepts a meaningful tradeoff
 
 Do not create ADRs for routine feature work, small refactors, obvious bug fixes, or local implementation details already explained by nearby code and docs.

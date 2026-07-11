@@ -6,13 +6,13 @@ Snail is already a Discord utility bot for OwO Bot Support workflows. Historical
 
 Discord has changed privileged-intent access review. Apps that can access 10,000 or more users now need review for Privileged Intents, and apps with approved access must reapply annually. Discord specifically identifies application commands as an alternative for bots that previously used prefix commands to read message content.
 
-Snail is being rewritten so its normal operation does not require the Message Content intent and does not need a privileged-intent application for prefix-command behavior. The rewrite should preserve Snail's utility role while moving user workflows to Discord-native interactions: application commands, context commands, buttons, selects, and modals.
+Snail's normal operation should not require the Message Content intent and should not need a privileged-intent application for prefix-command behavior. Snail should preserve its utility role while using Discord-native interactions: application commands, context commands, buttons, selects, and modals.
 
 ## Decision
 
 Snail will use interaction-first Discord UX by default: application commands, context commands, components, and modals.
 
-Prefix commands are not part of the rewrite architecture because they require message-content access for normal command handling.
+Prefix commands are not part of the architecture because they require message-content access for normal command handling.
 
 New features must not depend on privileged message content unless the maintainer explicitly approves the tradeoff and documents why the feature cannot reasonably be built with Discord interaction APIs.
 
@@ -20,7 +20,7 @@ New features must not depend on privileged message content unless the maintainer
 
 | Alternative | Summary | Rejected Because |
 | --- | --- | --- |
-| Prefix-first commands | Keep command behavior centered on message content. | This keeps Snail dependent on the Message Content intent for normal command handling and makes the rewrite fail its privileged-intent reduction goal. |
+| Prefix-first commands | Keep command behavior centered on message content. | This keeps Snail dependent on the Message Content intent for normal command handling and fails the privileged-intent reduction goal. |
 | Mixed prefix and interaction command surface | Support both prefix commands and application commands for most features. | This preserves the message-content dependency, doubles the command surface, increases review burden, and makes behavior drift more likely. |
 
 ## Pros

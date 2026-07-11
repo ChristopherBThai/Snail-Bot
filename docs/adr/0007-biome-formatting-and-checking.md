@@ -29,7 +29,7 @@ Snail will use Biome for formatting and lint checking.
 ## Cons
 
 - Adds a development dependency.
-- Some formatter decisions may require small code rewrites instead of local style overrides.
+- Some formatter decisions may require small code changes instead of local style overrides.
 
 ## Consequences
 
@@ -39,4 +39,4 @@ Snail will use Biome for formatting and lint checking.
 
 ## Links
 
-- Related docs: [Code standards](../code-standards.md), [Development expectations](../development-workflow.md)
+- Related docs: [Code standards](../code-standards.md)
