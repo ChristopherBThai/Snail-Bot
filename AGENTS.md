@@ -2,7 +2,7 @@
 
 This file is for AI agents working on Snail Bot. Read it before making non-trivial changes, then read the closest project doc or local feature README for the area you touch.
 
-Snail is an interaction-first Discord utility bot built from feature packages and concrete runtime infrastructure.
+Snail is an interaction-first Discord utility bot built from registered package contributions and concrete runtime infrastructure.
 
 The canonical detailed coding and review standard is [`docs/code-standards.md`](docs/code-standards.md). Keep this file as the short agent entrypoint; add detailed examples, review rubrics, and project-wide coding rules to the standards doc instead of duplicating them here.
 
@@ -15,14 +15,14 @@ The canonical detailed coding and review standard is [`docs/code-standards.md`](
 5. **Prefer interaction-first Discord UX.** Application commands, components, and modals are the primary UI. Prefix commands are not part of Snail.
 6. **Preserve user work.** Inspect diffs before editing, keep changes scoped, and do not overwrite unrelated changes.
 7. **Be production-conservative.** Discord actions, database mutations, gateway events, auth changes, command sync, and secrets handling are production-sensitive unless explicitly scoped to local development.
-8. **Avoid speculative architecture.** Add folders, services, fields, config, extension points, and docs for current features or clearly identified planned features. Do not add generic buckets for unspecified future work.
+8. **Avoid speculative architecture.** Add folders, services, fields, config, extension points, and docs for current features or concrete planned features already described by project docs. Do not add generic buckets for unspecified future work.
 
 ## Source Map
 
 ```text
 src/
   index.js                  Runtime entry point
-  runtime/                  Runtime composition, feature setup, registries, startup ordering
+  runtime/                  Runtime composition, package registry, startup ordering
   discord/                  REST, gateway, routing, command sync, component helpers
   config/                   Runtime config loading and config catalog
   logging/                  Logger creation, log levels, log export support
@@ -88,6 +88,7 @@ Use the smallest check that gives meaningful confidence.
 
 - Docs-only changes: proofread, check paths/links, and make sure examples match the source map.
 - JavaScript changes: run the configured checker or the closest available focused check.
+- Contribution additions or feature metadata changes: run the tests that cover `src/runtime/registry.js` so registered-contribution and route expectations still hold.
 - Tested behavior or shared runtime changes: run focused tests, and run `npm test` when appropriate.
 - Startup, Discord, database, gateway, or auth changes: verify as much as possible without touching production services unless explicitly approved.
 

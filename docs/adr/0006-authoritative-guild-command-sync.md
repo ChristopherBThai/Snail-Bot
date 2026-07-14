@@ -1,4 +1,4 @@
-# ADR 6: Authoritative Guild Command Sync
+# ADR 6: Authoritative Command Sync
 
 ## Context
 
@@ -8,29 +8,29 @@ Snail should not preserve unknown Discord command state just because it already 
 
 ## Decision
 
-Snail will sync guild application commands on startup using the command list defined by the running code.
+Snail will sync application commands on startup using the guild and global command lists defined by the running code.
 
-The sync is authoritative. If the running code provides an empty guild command list, Snail should sync that empty list and remove registered guild commands for the configured guild.
+The sync is authoritative. If the running code provides an empty command list for a sync target, Snail should sync that empty list and remove registered commands for that target.
 
-Normal commands are guild commands. Global commands must opt in explicitly on the route that owns the command.
+Normal commands are guild commands. Global commands must opt in explicitly with `command.global: true` on the route that owns the command.
 
 ## Alternatives Considered
 
 | Alternative | Summary | Rejected Because |
 | --- | --- | --- |
-| Skip command sync while the list is empty | Avoid deleting existing Discord commands until new commands exist. | This preserves command state that the current code no longer owns and makes Discord diverge from the running source. |
-| Add a generic command scope config | Configure whether command sync is guild or global. | Normal commands are guild commands, and global commands should opt in on the owning command route instead of broad runtime mode switches. |
+| Skip command sync while a list is empty | Avoid deleting existing Discord commands until new commands exist. | This preserves command state that the current code no longer owns and makes Discord diverge from the running source. |
+| Add a generic command target config | Configure whether command sync is guild or global. | Normal commands are guild commands, and global commands should opt in with `command.global: true` on the owning command route instead of broad runtime mode switches. |
 | Manual command sync only | Require a separate command or deployment step to sync definitions. | This makes command state easier to forget and allows Discord to drift from the deployed code. |
 
 ## Pros
 
 - Keeps Discord command state aligned with the running code.
 - Makes stale command removal intentional instead of accidental or manual.
-- Keeps the normal command path guild-scoped while allowing route-owned global command opt-in.
+- Keeps the normal command path guild-targeted while allowing route-owned global command opt-in.
 
 ## Cons
 
-- Startup can remove commands if the command list is empty or wrong.
+- Startup can remove commands if a command list is empty or wrong.
 - Command definition mistakes become visible in Discord during startup.
 - Production startup needs careful review whenever command definitions change.
 
@@ -38,7 +38,7 @@ Normal commands are guild commands. Global commands must opt in explicitly on th
 
 - `discord.applicationId`, `discord.guildId`, and `BOT_TOKEN` are required before command sync can run.
 - The command list must be treated as production-visible behavior.
-- Empty command sync is allowed and meaningful.
+- Empty command sync is allowed and meaningful for every synced target.
 
 ## Links
 

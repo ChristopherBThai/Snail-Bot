@@ -4,11 +4,11 @@ This document describes the runtime shape for Snail.
 
 ## Runtime Model
 
-Snail is an interaction-first Discord app composed from feature packages. A feature is the unit of product ownership: it declares identity, route contributions, lifecycle hooks, admin pages, state export, and health/diagnostic behavior when needed.
+Snail is an interaction-first Discord app composed from registered package contributions. A registered package may contribute routes, services, lifecycle hooks, admin pages, state export, or feature metadata. A feature is the product/admin-visible subset of those contributions, not every command or shared service.
 
 The primary source folders are:
 
-- `runtime/`: runtime composition, feature setup, registries, command sync planning, and startup ordering.
+- `runtime/`: runtime composition, package registry setup, route indexes, command sync planning, and startup ordering.
 - `discord/`: Discord REST, gateway setup, interaction routing, command sync, component builders, and Discord payload normalization.
 - `config/`: runtime config loading and config catalog.
 - `logging/`: logger creation, log levels, and log export support.
@@ -16,9 +16,9 @@ The primary source folders are:
 - `features/`: user-facing, staff-facing, and admin feature packages such as Quest List, Ticket Market, Tags, Message Builder, Logs, the shared admin UI, Echo, Edit, Nick, and Snail.
 - `util/`: small general utilities that do not deserve a runtime service or feature-local home.
 
-Features may be tiny. A single-command feature still uses the feature contribution model; it just contributes fewer things.
+Small commands may be route-only contributions. They do not need fake feature identity unless they own product/admin-visible behavior.
 
-Only add source folders and shared service categories for current features or clearly identified planned features. Do not keep generic buckets for unspecified future work.
+Only add source folders and shared service categories for current features or concrete planned features. Concrete planned features are named product behavior, route kinds, databases, admin surfaces, or runtime capabilities already described by project docs. Do not keep generic buckets for unspecified future work.
 
 ## Runtime Flow
 
@@ -27,83 +27,112 @@ Only add source folders and shared service categories for current features or cl
 1. Load configuration.
 2. Create runtime logging.
 3. Connect required databases and external services.
-4. Create runtime services such as Discord REST, route registry, logger registry, and feature state storage.
-5. Load feature definitions.
-6. Set up features with an app context.
+4. Create runtime services such as Discord REST, the contribution registry, logger registry, and feature state storage.
+5. Load registered packages.
+6. Set up registered packages that need an app context.
 7. Load saved feature runtime state such as enablement and log levels.
 8. Enable features that should run on startup.
-9. Collect feature route contributions.
+9. Collect route contributions.
 10. Sync application commands.
 11. Start the Discord gateway.
 
 Startup should make runtime failures observable. The bot has known runtime infrastructure and composes it directly. If required config, databases, or services are unavailable, startup should fail before command sync or gateway start.
 
-## Feature Definitions
+## Registered Package Contributions
 
-Feature packages export a definition through a small helper such as `defineFeature(...)`. The helper should validate shape and preserve plain JavaScript ergonomics; it should not create a deep class hierarchy.
+Packages export plain source-authored contribution objects. If a package needs runtime context, it exports a setup function directly and returns the contribution object. The package registry is static source, so tests verify contribution shape, feature metadata when present, route identity, and routing conflicts. Runtime code trusts registered contributions after that test-time contract.
 
-Example feature definition:
+Example route-only contribution:
 
 ```js
-export default defineFeature({
-    id: 'ticket_market',
-    name: 'Ticket Market',
-    description: 'Manages Ticket Market access, seller ads, and trading availability.',
-    toggleable: true,
-    setup(context) {
-        const service = createTicketMarketService(context);
-
-        return {
-            routes: [
-                ...ticketMarketCommandRoutes(service),
-                ...ticketMarketComponentRoutes(service),
-                ...ticketMarketModalRoutes(service)
-            ],
-            events: ticketMarketEvents(service),
-            admin: ticketMarketAdmin(service),
-            state: () => service.exportState(),
-            health: () => service.health()
-        };
-    }
-});
+export default {
+    routes: [
+        {
+            kind: 'command',
+            id: 'snail:command',
+            command: {
+                type: ApplicationCommandType.ChatInput,
+                name: 'snail',
+                description: '🐌'
+            },
+            handle(context) {
+                return context.respond('🐌');
+            }
+        }
+    ]
+};
 ```
 
-The contribution returned by `setup()` may include:
+Example admin-visible feature contribution that needs runtime context:
 
-- `routes`: application command, context command, autocomplete, component, and modal routes.
+```js
+export default function setupTicketMarket(context) {
+    const service = createTicketMarketService(context);
+
+    return {
+        feature: {
+            id: 'ticket_market',
+            name: 'Ticket Market',
+            description: 'Manages Ticket Market access, seller ads, and trading availability.',
+            toggleable: true
+        },
+        routes: [
+            ...ticketMarketCommandRoutes(service),
+            ...ticketMarketComponentRoutes(service),
+            ...ticketMarketModalRoutes(service)
+        ],
+        events: ticketMarketEvents(service),
+        admin: ticketMarketAdmin(service),
+        state: () => service.exportState()
+    };
+}
+```
+
+A registered package contribution may include:
+
+- `routes`: package-owned inbound Discord handlers. The current runtime starts with application command routes; concrete planned route kinds may be documented before they are implemented, but runtime support should only be added when registry indexing, command sync when needed, gateway dispatch, tests, and docs all support that kind.
+- `feature`: optional product/admin-visible metadata.
 - `events`: gateway event handlers.
 - `admin`: optional Admin Console panel contribution.
 - `state`: optional structured state export.
-- `health`: optional operational health summary.
 - `services`: named services for other features to consume, such as Message Builder.
 - `lifecycle`: optional hooks such as `onEnable`, `onDisable`, `onReady`, and `onShutdown`.
 
-Feature IDs should be stable, lowercase, and use underscores when multiple words are needed. Route IDs should include the owning feature prefix, such as `ticket_market:set_control_channel`.
+Feature IDs should be stable, lowercase, and use underscores when multiple words are needed. Route IDs should include a stable owner prefix, such as `ticket_market:set_control_channel` or `snail:command`.
 
-## Feature Registry
+## Contribution Registry
 
-The feature registry is the source of truth for installed features and their contributions. It should:
+The contribution registry is the source of truth for registered packages, their contributions, admin-visible features, services, and the route indexes built from those contributions. It should:
 
-- reject duplicate feature IDs
+- own the package registry
 - expose sorted feature lists for admin UI and diagnostics
-- expose route contributions for the route registry
+- expose route contributions and route lookup indexes
 - expose admin-capable features to the Admin Console
-- expose state, health, logger source, and enablement metadata
+- expose state, logger source, and enablement metadata
 - provide feature lookup by ID
 
-The registry should not know feature-specific settings or rules. It stores contracts and delegates behavior to the owning feature contribution.
+Creating a package under `src/features/` does not register it by itself. Snail does not scan feature directories or load packages by naming convention. To register a contribution, import it in `src/runtime/registry.js` and add it to `PACKAGE_REGISTRY`. Packages are registered and set up in the order they appear in `PACKAGE_REGISTRY`; services exposed by earlier packages are available to later setup functions. The package registry is intentionally explicit so startup composition, tests, command sync, routing, and admin discovery all agree on the same source of truth. Registry tests verify feature metadata when present, duplicate feature IDs, registered route shape, supported route kinds, duplicate route IDs, and duplicate command names.
 
-## Route Registry
+The registry should not know feature-specific settings or rules. It stores contracts, builds lookup indexes, and delegates behavior to the owning contribution.
 
-Discord routing should be unified. The router should not have separate paths for module routes, command routes, and system routes.
+## Routes
+
+Discord routing should be unified. A route is a package-owned handler for an inbound Discord surface: "when this inbound thing arrives, call this owning handler." The runtime should not have separate paths for module routes, command routes, and system routes.
+
+Route IDs are Snail's stable internal route identity for logs, diagnostics, tests, admin references, and future state keys. Discord matching uses kind-specific fields such as `command.name`, `customId`, `customIdPrefix`, or gateway event names. Do not use the route ID as the Discord matching key unless the owning route deliberately makes those values the same.
+
+Application commands share `kind: 'command'`. Slash commands, user context commands, and message context commands should be distinguished by the Discord command definition, such as `command.type`, not by separate route kinds.
 
 Every route contribution should carry enough metadata for generic routing:
 
 ```js
 {
-    owner: 'quest_list',
-    kind: 'component',
-    id: 'quest_list:add_quests',
+    kind: 'command',
+    id: 'ticket_market:command',
+    command: {
+        name: 'ticket-market',
+        description: 'Open Ticket Market.'
+    },
     auth,
     cooldown,
     allowWhenDisabled,
@@ -111,7 +140,7 @@ Every route contribution should carry enough metadata for generic routing:
 }
 ```
 
-The router owns:
+As each route kind is implemented, the router owns the relevant generic routing work:
 
 - command lookup
 - custom ID exact and prefix lookup
@@ -122,11 +151,13 @@ The router owns:
 - interaction context creation
 - generic error responses and logging
 
+Do not add runtime support for a route kind until the full path exists for that kind: registry indexing, Discord sync when applicable, gateway dispatch, focused tests, and docs.
+
 The owning feature owns product decisions and user-facing workflow behavior.
 
 ## Shared Admin UI
 
-The shared admin UI reads admin contributions from the feature registry. The current command is `/module`, but that name still reflects the old module model; a clearer command name should be chosen when this feature is implemented.
+The shared admin UI reads admin-visible feature contributions from the contribution registry. The current command is `/module`, but that name still reflects the old module model; a clearer command name should be chosen when this feature is implemented.
 
 The shared `/module` layout owns:
 
@@ -136,7 +167,7 @@ The shared `/module` layout owns:
 - log level controls
 - log export
 - state export
-- health and runtime status display
+- runtime status display
 - page navigation
 
 Features optionally contribute feature-specific admin pages:
@@ -170,7 +201,7 @@ Substantial feature packages should use a consistent local shape when it helps c
 
 ```text
 src/features/<feature-id>/
-  index.js          feature definition and composition
+  index.js          contribution and composition
   service.js        workflows, state owner, lifecycle behavior
   routes.js         Discord route adapters
   admin.js          Admin Console page contribution
@@ -195,7 +226,7 @@ Runtime infrastructure areas include:
 - `data/owo/`: OwO Mongo, Redis, MySQL clients, and named OwO write services.
 - runtime auth helpers for owner, manager, helper, staff, and guild-user checks.
 
-Message Builder is a feature that also exposes a service for other features.
+Message Builder is a registered package contribution that exposes a service and Discord routes for other features to use.
 
 ## Database Code
 
@@ -218,7 +249,7 @@ Prefix commands and new message-content-dependent features are not part of the d
 
 Command sync happens on production startup. Treat command definition changes as production-visible behavior.
 
-Guild command sync is authoritative: Snail should sync the guild command list that the current code defines. Syncing an empty guild command list is valid and intentionally removes registered guild commands for the configured guild. Command scope should be declared by the route that owns the command. Guild scope is the default; global commands must opt in explicitly.
+Command sync is authoritative: Snail should sync the guild and global command lists that the current code defines. Syncing an empty command list is valid and intentionally removes registered commands for that sync target. Command routes are guild commands by default. Global commands must opt in with `command.global: true` on the route that owns the command.
 
 Interaction create events do not require gateway intents. Do not add gateway intents for interaction routing unless another current gateway event requires them.
 

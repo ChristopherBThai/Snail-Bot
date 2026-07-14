@@ -4,14 +4,14 @@ Snail Bot helps run and support the OwO Bot Support server. It handles utility, 
 
 ## Project Shape
 
-Snail is an interaction-first Discord app built from feature packages.
+Snail is an interaction-first Discord app built from small, focused feature packages.
 
 The source shape is:
 
 ```text
 src/
   index.js          runtime entry point
-  runtime/          composition, feature setup, registries, startup ordering
+  runtime/          composition, package registry, route indexes, startup ordering
   discord/          REST, gateway, routing, command sync, component helpers
   config/           runtime config loading and config catalog
   logging/          logger creation, log levels, log export support
@@ -49,7 +49,7 @@ npm run format:fix
 ## Documentation
 
 - [Agent guide](AGENTS.md): repo-wide operating rules for AI agents
-- [Architecture](docs/architecture.md): feature runtime, source layout, startup flow, and route/admin contribution model
+- [Architecture](docs/architecture.md): package registry, feature runtime, source layout, startup flow, and route/admin contribution model
 - [Code standards](docs/code-standards.md): coding conventions and review rubric
 - [Configuration](docs/configuration.md): runtime config files, environment values, and config shape tests
 - [Database](docs/database.md): Snail/OwO databases, saved records, and ownership rules
@@ -63,7 +63,7 @@ Local folder docs may live under `src/features/**/README.md` and should be read 
 - Interaction-first UI: application commands, context commands, components, and modals instead of prefix commands.
 - No new privileged-message-content features unless explicitly approved.
 - Components V2 by default for bot-authored Discord messages.
-- Features own product behavior, user workflows, staff/admin pages, route contributions, state, and feature policy.
+- Registered packages contribute routes, services, and feature metadata; features own product behavior, user workflows, staff/admin pages, state, and feature policy.
 - Runtime, Discord, config, logging, and data folders own reusable infrastructure.
 - `data/` contains database code, saved Snail records, and OwO database clients.
 - Snail must not change OwO data except through named services.

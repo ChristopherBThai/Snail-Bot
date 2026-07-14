@@ -12,7 +12,7 @@ Runtime config is loaded once during startup and passed through the app context 
 
 Snail uses two categories of config:
 
-- Source-controlled config files for non-secret, environment-specific defaults such as guild IDs, role IDs, user IDs, colors, and feature defaults.
+- Source-controlled config files for non-secret, environment-specific values that the current runtime or features consume.
 - Local environment values for secrets and connection strings, loaded from `.env` during local development.
 
 Do not commit real tokens, database credentials, socket tokens, or production-only private config.
@@ -42,36 +42,25 @@ export default {
     discord: {
         applicationId: '...',
         guildId: '...'
-    },
-    roles: {
-        manager: [],
-        helper: []
-    },
-    users: {
-        owner: '...'
-    },
-    colors: {
-        primary: 0x5865f2
-    },
-    features: {
-        defaultLogsLimit: 50000
     }
 };
 ```
 
-Debug/local variants may exist, but the active selection must be obvious during startup. Avoid broad runtime mode switches that hide production behavior.
+Do not add config groups before the code needs them. Add role IDs, user IDs, colors, feature defaults, and similar groups with the runtime service or feature that consumes them.
+
+Debug/local variants may exist outside version control, but the active selection must be obvious during startup. Committed tests should not depend on private local config contents. Avoid broad runtime mode switches that hide production behavior.
 
 ## Config Shape Tests
 
-Static config should have focused tests that assert required groups and values exist.
+Static config should have focused tests that assert required groups and values exist. Do not mirror every literal from a source config file into a test. Assert the contract Snail depends on, such as presence, value shape, and normalization behavior.
 
 Config tests should cover:
 
-- required Discord IDs and token mapping
-- required database connection values
-- required auth roles and owner IDs
-- required color and feature-default groups
-- expected value types for numbers, booleans, arrays, and IDs
+- required Discord IDs as valid Discord ID strings
+- required environment value mapping by destination config group
+- required source config groups consumed by implemented runtime services or features
+- expected value types for numbers, booleans, arrays, and IDs that are currently part of the config shape
+- normalization behavior for values Snail accepts in more than one form, such as `BOT_TOKEN`
 
 These tests catch accidental removal, renaming, or blanking of required config without adding runtime ceremony.
 
@@ -81,13 +70,7 @@ Feature settings that staff change at runtime should be saved as Snail data, not
 
 `discord.applicationId`, `discord.guildId`, and `BOT_TOKEN` are required before command sync can run.
 
-Guild command sync is authoritative. If the running code provides an empty guild command list, Snail should sync that empty list and remove registered guild commands for the configured guild.
-
-## Auth Config
-
-Role and owner config supports runtime authorization helpers. Discord-side command visibility is not a substitute for runtime authorization checks.
-
-Feature routes that require staff access should use shared runtime auth helpers and should re-check authorization on every interaction.
+Command sync is authoritative. If the running code provides an empty guild or global command list, Snail should sync that empty list and remove registered commands for that sync target.
 
 ## Feature Runtime Config
 

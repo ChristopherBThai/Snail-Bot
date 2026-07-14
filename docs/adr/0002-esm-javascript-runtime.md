@@ -2,7 +2,7 @@
 
 ## Context
 
-Snail needs one JavaScript module system for runtime code, tests, and tooling. The reference implementation already used native ESM with `"type": "module"` and imported Discordeno standalone packages with ESM syntax.
+Snail needs one JavaScript module system for runtime code, tests, and tooling. Native ESM works with the current Node runtime, package tooling, and Discord runtime packages.
 
 Snail should preserve that baseline unless there is a strong reason to change it. Switching module systems would add churn without solving a current problem.
 
@@ -16,7 +16,7 @@ Snail will not adopt TypeScript at this time. TypeScript would add a larger deve
 
 | Alternative | Summary | Rejected Because |
 | --- | --- | --- |
-| CommonJS | Use `require` and `module.exports`. | The reference implementation already moved to ESM and imported Discordeno standalone packages with ESM syntax. Returning to CommonJS would add compatibility churn around the Discord library direction and the existing reference code. |
+| CommonJS | Use `require` and `module.exports`. | CommonJS would add compatibility churn around the current Node and Discord package direction without solving a current problem. |
 | TypeScript | Add a compile/typecheck step and write source in TypeScript. | This is too large a developer, build, and production setup change. There is no current need strong enough to justify adding a compile step and changing how Snail is built or deployed. |
 
 ## Pros
@@ -24,7 +24,7 @@ Snail will not adopt TypeScript at this time. TypeScript would add a larger deve
 - Uses the current Node module standard.
 - Keeps the project free of a build step.
 - Lets source, tests, and tooling run directly under Node.
-- Matches the module style already used by the reference implementation.
+- Matches the module style used by the current runtime packages.
 
 ## Cons
 

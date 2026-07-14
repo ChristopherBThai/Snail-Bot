@@ -27,14 +27,14 @@ Delegate to:
 
 - Workflow name: describe the normal user or staff flow and the expected result.
 
-## Routes And Events
+## Routes
 
-List routes and gateway events contributed by this feature. Routes include commands, context commands, autocomplete handlers, components, and modals.
+List inbound Discord handlers contributed by this feature. Include only route kinds supported by the current runtime. Routes include stable Snail route IDs and the Discord matching fields they use, such as command names.
 
-| Route/Event | Audience | Purpose | Notes |
-| --- | --- | --- | --- |
-| `/example` | users | ... | ... |
-| `feature_id:action` | staff | ... | ... |
+| Route | Discord Match | Audience | Purpose | Notes |
+| --- | --- | --- | --- | --- |
+| `feature_id:command` | `/example` | users | ... | ... |
+| `feature_id:action` | `custom_id` when supported | staff | ... | ... |
 
 Long-running interactions that read OwO data, save records, or call Discord should use the appropriate defer/edit flow. Fast validation failures may respond immediately.
 
@@ -43,7 +43,7 @@ Long-running interactions that read OwO data, save records, or call Discord shou
 Describe any Admin Console contribution. If the feature has no admin surface, say so.
 
 - Summary: what appears on the feature overview.
-- Runtime page: shared enable/disable, logs, state, and health controls are owned by Admin Console.
+- Runtime page: shared enable/disable, logs, and state controls are owned by Admin Console.
 - Feature pages:
   - Overview: ...
   - Settings: ...
@@ -109,4 +109,4 @@ Verification commands:
 
 ## ADR Links
 
-- Add relevant ADR links using paths relative to the feature README. Include Feature-Based Runtime Architecture when useful.
+- Add relevant ADR links using paths relative to the feature README. Include Registered Package Contribution Runtime Architecture when useful.
