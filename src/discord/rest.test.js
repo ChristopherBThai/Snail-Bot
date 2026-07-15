@@ -5,6 +5,7 @@ import { createDiscordRest } from './rest.js';
 const discordenoRest = vi.hoisted(() => ({
     put: vi.fn(),
     post: vi.fn(),
+    patch: vi.fn(),
     routes: {
         interactions: {
             commands: {
@@ -15,6 +16,11 @@ const discordenoRest = vi.hoisted(() => ({
             },
             responses: {
                 callback: vi.fn(() => 'interaction-callback-route')
+            }
+        },
+        guilds: {
+            members: {
+                bot: vi.fn(() => 'bot-member-route')
             }
         }
     }
@@ -102,6 +108,35 @@ describe('createDiscordRest', () => {
         });
     });
 
+    test('responds with ephemeral string messages as Components V2 text displays', async () => {
+        discordenoRest.post.mockResolvedValueOnce(undefined);
+
+        const rest = createDiscordRest(config, { logger });
+        const interaction = {
+            id: 'interaction-id',
+            token: 'interaction-token'
+        };
+
+        await rest.respond(interaction, 'Private response.', { ephemeral: true });
+
+        expect(discordenoRest.post).toHaveBeenCalledWith('interaction-callback-route', {
+            body: {
+                type: InteractionResponseType.ChannelMessageWithSource,
+                data: {
+                    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+                    components: [
+                        {
+                            type: ComponentType.TextDisplay,
+                            content: 'Private response.'
+                        }
+                    ]
+                }
+            },
+            runThroughQueue: false,
+            unauthorized: true
+        });
+    });
+
     test('responds with explicit message payloads unchanged', async () => {
         discordenoRest.post.mockResolvedValueOnce(undefined);
 
@@ -132,6 +167,54 @@ describe('createDiscordRest', () => {
         });
     });
 
+    test('adds ephemeral response options to explicit message payloads', async () => {
+        discordenoRest.post.mockResolvedValueOnce(undefined);
+
+        const rest = createDiscordRest(config, { logger });
+        const interaction = {
+            id: 'interaction-id',
+            token: 'interaction-token'
+        };
+        const message = {
+            flags: MessageFlags.IsComponentsV2,
+            components: [
+                {
+                    type: ComponentType.TextDisplay,
+                    content: 'Explicit response payload.'
+                }
+            ]
+        };
+
+        await rest.respond(interaction, message, { ephemeral: true });
+
+        expect(discordenoRest.post).toHaveBeenCalledWith('interaction-callback-route', {
+            body: {
+                type: InteractionResponseType.ChannelMessageWithSource,
+                data: {
+                    ...message,
+                    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral
+                }
+            },
+            runThroughQueue: false,
+            unauthorized: true
+        });
+    });
+
+    test('updates the bot nickname through the current bot member route', async () => {
+        discordenoRest.patch.mockResolvedValueOnce(undefined);
+
+        const rest = createDiscordRest(config, { logger });
+
+        await rest.editBotNickname('guild-id', 'Snail Jr');
+
+        expect(discordenoRest.routes.guilds.members.bot).toHaveBeenCalledWith('guild-id');
+        expect(discordenoRest.patch).toHaveBeenCalledWith('bot-member-route', {
+            body: {
+                nick: 'Snail Jr'
+            }
+        });
+    });
+
     test.each([
         {
             name: 'global command sync',
@@ -157,6 +240,16 @@ describe('createDiscordRest', () => {
                     },
                     '🐌'
                 );
+            }
+        },
+        {
+            name: 'bot nickname update',
+            event: 'bot_nickname_update.failed',
+            fail(error) {
+                discordenoRest.patch.mockRejectedValueOnce(error);
+            },
+            run(rest) {
+                return rest.editBotNickname('guild-id', 'Snail Jr');
             }
         }
     ])('logs and rethrows $name failures', async ({ event, fail, run }) => {

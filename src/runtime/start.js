@@ -3,6 +3,7 @@ import { connectDatabases } from '../data/index.js';
 import { startGateway } from '../discord/gateway.js';
 import { createDiscordRest } from '../discord/rest.js';
 import { createLogger } from '../logging/index.js';
+import { getCommandSyncDefinition } from './command-sync.js';
 import { createRegistry } from './registry.js';
 
 export async function start() {
@@ -22,9 +23,9 @@ export async function start() {
     const globalCommands = [];
 
     for (const route of registry.routes.commandRoutes()) {
-        const { global, ...command } = route.command;
+        const command = getCommandSyncDefinition(route);
 
-        if (global === true) {
+        if (route.command.global === true) {
             globalCommands.push(command);
         } else {
             guildCommands.push(command);

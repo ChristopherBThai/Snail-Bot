@@ -9,7 +9,7 @@ Snail is an interaction-first Discord app composed from registered package contr
 The primary source folders are:
 
 - `runtime/`: runtime composition, package registry setup, route indexes, command sync planning, and startup ordering.
-- `discord/`: Discord REST, gateway setup, interaction routing, command sync, component builders, and Discord payload normalization.
+- `discord/`: Discord REST, gateway setup, interaction routing, route authorization, command sync, component builders, and Discord payload normalization.
 - `config/`: runtime config loading and config catalog.
 - `logging/`: logger creation, log levels, and log export support.
 - `data/`: database code, saved Snail records, and OwO database clients.
@@ -111,7 +111,7 @@ The contribution registry is the source of truth for registered packages, their 
 - expose state, logger source, and enablement metadata
 - provide feature lookup by ID
 
-Creating a package under `src/features/` does not register it by itself. Snail does not scan feature directories or load packages by naming convention. To register a contribution, import it in `src/runtime/registry.js` and add it to `PACKAGE_REGISTRY`. Packages are registered and set up in the order they appear in `PACKAGE_REGISTRY`; services exposed by earlier packages are available to later setup functions. The package registry is intentionally explicit so startup composition, tests, command sync, routing, and admin discovery all agree on the same source of truth. Registry tests verify feature metadata when present, duplicate feature IDs, registered route shape, supported route kinds, duplicate route IDs, and duplicate command names.
+Creating a package under `src/features/` does not register it by itself. Snail does not scan feature directories or load packages by naming convention. To register a contribution, import it in `src/runtime/registry.js` and add it to `PACKAGE_REGISTRY`. Packages are registered and set up in the order they appear in `PACKAGE_REGISTRY`; services exposed by earlier packages are available to later setup functions. The package registry is intentionally explicit so startup composition, tests, command sync, routing, and admin discovery all agree on the same source of truth. Registry tests verify feature metadata when present, duplicate feature IDs, registered route shape, implemented route contracts, duplicate route IDs, and duplicate command names.
 
 The registry should not know feature-specific settings or rules. It stores contracts, builds lookup indexes, and delegates behavior to the owning contribution.
 
@@ -131,9 +131,10 @@ Every route contribution should carry enough metadata for generic routing:
     id: 'ticket_market:command',
     command: {
         name: 'ticket-market',
-        description: 'Open Ticket Market.'
+        description: 'Open Ticket Market.',
+        staff: true
     },
-    auth,
+    authorize: hasManagerAccess,
     cooldown,
     allowWhenDisabled,
     handle
@@ -145,7 +146,7 @@ As each route kind is implemented, the router owns the relevant generic routing 
 - command lookup
 - custom ID exact and prefix lookup
 - autocomplete dispatch
-- auth checks
+- route authorization through `authorize(context)`
 - cooldown checks
 - disabled-feature rejection
 - interaction context creation
@@ -184,7 +185,7 @@ admin: {
         {
             id: 'channels',
             label: 'Channels',
-            auth: auth.manager,
+            authorize: hasManagerAccess,
             render: (context) => renderTicketMarketChannels(context, service)
         }
     ]
@@ -219,12 +220,12 @@ Runtime infrastructure is how Snail talks to Discord, config, logs, databases, a
 
 Runtime infrastructure areas include:
 
-- `discord/`: REST wrapper, gateway setup, interaction router, command sync, component builders, Discord payload normalization.
+- `discord/`: REST wrapper, gateway setup, interaction router, route authorization, command sync, component builders, Discord payload normalization.
 - `config/`: runtime config loading and config catalog.
 - `logging/`: logger creation, log level storage, log export behavior.
 - `data/snail/`: Snail database connections, shared models, and saved records.
 - `data/owo/`: OwO Mongo, Redis, MySQL clients, and named OwO write services.
-- runtime auth helpers for owner, manager, helper, staff, and guild-user checks.
+- Discord route authorization helpers such as `hasManagerAccess`.
 
 Message Builder is a registered package contribution that exposes a service and Discord routes for other features to use.
 
@@ -250,6 +251,8 @@ Prefix commands and new message-content-dependent features are not part of the d
 Command sync happens on production startup. Treat command definition changes as production-visible behavior.
 
 Command sync is authoritative: Snail should sync the guild and global command lists that the current code defines. Syncing an empty command list is valid and intentionally removes registered commands for that sync target. Command routes are guild commands by default. Global commands must opt in with `command.global: true` on the route that owns the command.
+
+Staff commands should set `command.staff: true`. During command sync, Snail adds Discord's `Bypass Slowmode` default member permission so users without that permission do not see the command. This only controls Discord-side command visibility; runtime `authorize` checks remain the source of truth for access.
 
 Interaction create events do not require gateway intents. Do not add gateway intents for interaction routing unless another current gateway event requires them.
 

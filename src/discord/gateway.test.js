@@ -1,5 +1,5 @@
 import { createGatewayManager } from '@discordeno/gateway';
-import { ComponentType, GatewayDispatchEvents, InteractionType, MessageFlags } from 'discord-api-types/v10';
+import { GatewayDispatchEvents, InteractionType } from 'discord-api-types/v10';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { startGateway } from './gateway.js';
 
@@ -67,12 +67,71 @@ describe('startGateway', () => {
                 commandName: 'snail',
                 channelId: 'channel-id',
                 guildId: 'guild-id',
+                memberRoles: [],
                 userId: 'user-id',
+                config: expect.objectContaining({
+                    discord: expect.objectContaining({
+                        token: 'token'
+                    })
+                }),
                 data: payload.d.data,
                 interaction: payload.d,
+                editBotNickname: expect.any(Function),
                 respond: expect.any(Function)
             })
         );
+    });
+
+    test('rejects unauthorized routes before calling the handler', async () => {
+        const handle = vi.fn();
+        const authorize = vi.fn(() => false);
+        const { emitGatewayMessage, logger, rest } = await startGatewayForTest({
+            routes: {
+                getCommand() {
+                    return {
+                        id: 'nick:command',
+                        authorize,
+                        handle
+                    };
+                }
+            }
+        });
+        const interaction = {
+            id: 'interaction-id',
+            type: InteractionType.ApplicationCommand,
+            member: {
+                user: {
+                    id: 'user-id'
+                },
+                roles: []
+            },
+            data: {
+                name: 'nick'
+            }
+        };
+
+        await emitGatewayMessage({
+            t: GatewayDispatchEvents.InteractionCreate,
+            d: interaction
+        });
+
+        expect(authorize).toHaveBeenCalledWith(
+            expect.objectContaining({
+                commandName: 'nick',
+                userId: 'user-id',
+                memberRoles: []
+            })
+        );
+        expect(handle).not.toHaveBeenCalled();
+        expect(logger.warn).toHaveBeenCalledWith('interaction_route.unauthorized', {
+            interactionId: 'interaction-id',
+            commandName: 'nick',
+            routeId: 'nick:command',
+            userId: 'user-id'
+        });
+        expect(rest.respond).toHaveBeenCalledWith(interaction, 'You do not have permission to use that command.', {
+            ephemeral: true
+        });
     });
 
     test('logs ready payloads without requiring event routes', async () => {
@@ -115,14 +174,8 @@ describe('startGateway', () => {
             interactionType: InteractionType.ApplicationCommand,
             commandName: 'missing'
         });
-        expect(rest.respond).toHaveBeenCalledWith(payload.d, {
-            flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
-            components: [
-                {
-                    type: ComponentType.TextDisplay,
-                    content: 'That interaction is no longer available.'
-                }
-            ]
+        expect(rest.respond).toHaveBeenCalledWith(payload.d, 'That interaction is no longer available.', {
+            ephemeral: true
         });
     });
 
@@ -207,15 +260,13 @@ describe('startGateway', () => {
             commandName: 'snail',
             error
         });
-        expect(rest.respond).toHaveBeenCalledWith(interaction, {
-            flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
-            components: [
-                {
-                    type: ComponentType.TextDisplay,
-                    content: 'Something went wrong while handling that interaction.'
-                }
-            ]
-        });
+        expect(rest.respond).toHaveBeenCalledWith(
+            interaction,
+            'Something went wrong while handling that interaction.',
+            {
+                ephemeral: true
+            }
+        );
     });
 
     test('logs handler failures when the route response fails', async () => {
@@ -253,16 +304,15 @@ describe('startGateway', () => {
             commandName: 'snail',
             error: responseError
         });
-        expect(rest.respond).toHaveBeenNthCalledWith(1, interaction, 'explicit');
-        expect(rest.respond).toHaveBeenNthCalledWith(2, interaction, {
-            flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
-            components: [
-                {
-                    type: ComponentType.TextDisplay,
-                    content: 'Something went wrong while handling that interaction.'
-                }
-            ]
-        });
+        expect(rest.respond).toHaveBeenNthCalledWith(1, interaction, 'explicit', undefined);
+        expect(rest.respond).toHaveBeenNthCalledWith(
+            2,
+            interaction,
+            'Something went wrong while handling that interaction.',
+            {
+                ephemeral: true
+            }
+        );
     });
 });
 
@@ -305,6 +355,7 @@ function createRoutesStub() {
 
 function createRestStub() {
     return {
+        editBotNickname: vi.fn(),
         respond: vi.fn()
     };
 }

@@ -74,6 +74,7 @@ describe('createRegistry', () => {
                 });
                 expect(route.command.name.trim()).not.toBe('');
                 expect(route.command.global === undefined || typeof route.command.global === 'boolean').toBe(true);
+                expect(route.command.staff === undefined || typeof route.command.staff === 'boolean').toBe(true);
 
                 if (route.command.type === ApplicationCommandType.ChatInput) {
                     expect(route.command.description).toEqual(expect.any(String));

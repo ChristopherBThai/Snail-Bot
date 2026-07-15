@@ -20,6 +20,18 @@ describe('loadConfig', () => {
         expect(config.discord.guildId).toMatch(discordIdPattern);
     });
 
+    test('keeps staff auth ids in source config', async () => {
+        const config = await loadConfig();
+
+        expect(config.users.owner).toMatch(discordIdPattern);
+        expect(config.roles.admin.length).toBeGreaterThan(0);
+        expect(config.roles.manager.length).toBeGreaterThan(0);
+
+        for (const roleId of [...config.roles.admin, ...config.roles.manager]) {
+            expect(roleId).toMatch(discordIdPattern);
+        }
+    });
+
     test.each([
         ['missing token', undefined, null],
         ['blank token', '   ', null],

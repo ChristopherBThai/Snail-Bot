@@ -1,5 +1,5 @@
 import { createRestManager } from '@discordeno/rest';
-import { InteractionResponseType } from 'discord-api-types/v10';
+import { InteractionResponseType, MessageFlags } from 'discord-api-types/v10';
 import { componentsMessage, textDisplay } from './components.js';
 
 export function createDiscordRest(config, { logger }) {
@@ -23,15 +23,24 @@ export function createDiscordRest(config, { logger }) {
                 })
             );
         },
-        respond(interaction, message) {
+        respond(interaction, message, options) {
             return request('interaction_response.failed', () =>
                 rest.post(rest.routes.interactions.responses.callback(interaction.id, interaction.token), {
                     body: {
                         type: InteractionResponseType.ChannelMessageWithSource,
-                        data: normalizeMessage(message)
+                        data: normalizeMessage(message, options)
                     },
                     runThroughQueue: false,
                     unauthorized: true
+                })
+            );
+        },
+        editBotNickname(guildId, nickname) {
+            return request('bot_nickname_update.failed', () =>
+                rest.patch(rest.routes.guilds.members.bot(guildId), {
+                    body: {
+                        nick: nickname
+                    }
                 })
             );
         }
@@ -52,9 +61,16 @@ export function createDiscordRest(config, { logger }) {
     }
 }
 
-function normalizeMessage(message) {
+function normalizeMessage(message, options) {
     if (typeof message === 'string') {
-        return componentsMessage([textDisplay(message)]);
+        return componentsMessage([textDisplay(message)], options);
+    }
+
+    if (options?.ephemeral) {
+        return {
+            ...message,
+            flags: (message.flags ?? 0) | MessageFlags.Ephemeral
+        };
     }
 
     return message;

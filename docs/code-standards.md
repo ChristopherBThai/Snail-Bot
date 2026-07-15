@@ -185,7 +185,7 @@ Use registry tests for source-owned composition conflicts that would overwrite o
 expect(new Set(commandNames).size).toBe(commandNames.length);
 ```
 
-Avoid registry checks that only re-prove source-authored contribution objects. Test the registered feature and route lists directly for source-owned feature metadata, route identity, supported route kinds, and command name uniqueness.
+Avoid registry checks that only re-prove source-authored contribution objects. Test the registered feature and route lists directly for source-owned feature metadata, route identity, implemented route contracts, and command name uniqueness.
 
 Registry tests should stay structural unless a specific package is the behavior under test. Do not assert that `/snail`, `snail:command`, or another concrete package route exists just to prove the registry works; iterate over registered routes and features instead.
 
@@ -262,6 +262,7 @@ Important standards should become focused tests or helper validation when the re
 - Registered route tests should reject duplicate route IDs.
 - Registered route tests should reject duplicate Discord command names across registered command routes.
 - Command sync should treat guild commands as the default and require global commands to opt in with `command.global: true` on the owning command route.
+- Staff command visibility should use `command.staff: true`; runtime `authorize` remains the access check.
 - Component and modal helpers should make invalid Discord payloads hard to construct.
 - Render tests should count complete Discord payloads for component-heavy messages that can approach Discord limits.
 - Render tests should assert rendered `custom_id` values are unique per message.

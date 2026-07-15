@@ -1,6 +1,5 @@
 import { createGatewayManager } from '@discordeno/gateway';
 import { GatewayDispatchEvents, InteractionType } from 'discord-api-types/v10';
-import { componentsMessage, textDisplay } from './components.js';
 
 export async function startGateway({ config, logger, routes, rest }) {
     const gateway = createGatewayManager({
@@ -42,8 +41,26 @@ export async function startGateway({ config, logger, routes, rest }) {
                     return;
                 }
 
+                const context = createInteractionContext({ config, interaction, rest });
+
                 try {
-                    await route.handle(createInteractionContext({ interaction, rest }));
+                    if (route.authorize && !(await route.authorize(context))) {
+                        logger.warn('interaction_route.unauthorized', {
+                            interactionId: interaction.id,
+                            commandName: interaction.data?.name,
+                            routeId: route.id,
+                            userId: context.userId
+                        });
+                        await respondWithErrorMessage({
+                            interaction,
+                            logger,
+                            rest,
+                            content: 'You do not have permission to use that command.'
+                        });
+                        return;
+                    }
+
+                    await route.handle(context);
                 } catch (error) {
                     logger.error('interaction_handler.failed', {
                         commandName: interaction.data?.name,
@@ -67,12 +84,7 @@ export async function startGateway({ config, logger, routes, rest }) {
 
 async function respondWithErrorMessage({ interaction, logger, rest, content }) {
     try {
-        await rest.respond(
-            interaction,
-            componentsMessage([textDisplay(content)], {
-                ephemeral: true
-            })
-        );
+        await rest.respond(interaction, content, { ephemeral: true });
     } catch (error) {
         logger.error('interaction_error_response.failed', {
             commandName: interaction.data?.name,
@@ -81,18 +93,23 @@ async function respondWithErrorMessage({ interaction, logger, rest, content }) {
     }
 }
 
-function createInteractionContext({ interaction, rest }) {
+function createInteractionContext({ config, interaction, rest }) {
     const data = interaction.data ?? {};
 
     return Object.freeze({
+        config,
         data,
         interaction,
         commandName: data.name,
         channelId: interaction.channel_id,
         guildId: interaction.guild_id,
+        memberRoles: interaction.member?.roles ?? [],
         userId: interaction.member?.user?.id ?? interaction.user?.id,
-        respond(message) {
-            return rest.respond(interaction, message);
+        editBotNickname(guildId, nickname) {
+            return rest.editBotNickname(guildId, nickname);
+        },
+        respond(message, options) {
+            return rest.respond(interaction, message, options);
         }
     });
 }

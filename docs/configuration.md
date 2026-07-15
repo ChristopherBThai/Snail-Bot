@@ -42,6 +42,13 @@ export default {
     discord: {
         applicationId: '...',
         guildId: '...'
+    },
+    roles: {
+        manager: ['...'],
+        admin: ['...']
+    },
+    users: {
+        owner: '...'
     }
 };
 ```
@@ -71,6 +78,10 @@ Feature settings that staff change at runtime should be saved as Snail data, not
 `discord.applicationId`, `discord.guildId`, and `BOT_TOKEN` are required before command sync can run.
 
 Command sync is authoritative. If the running code provides an empty guild or global command list, Snail should sync that empty list and remove registered commands for that sync target.
+
+## Staff Auth Config
+
+`users.owner`, `roles.admin`, and `roles.manager` are source-controlled Discord IDs used by staff-only route authorization. Routes that need manager access should use `hasManagerAccess` as their `authorize` function.
 
 ## Feature Runtime Config
 
