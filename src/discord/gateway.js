@@ -108,6 +108,12 @@ function createInteractionContext({ config, interaction, rest }) {
         editBotNickname(guildId, nickname) {
             return rest.editBotNickname(guildId, nickname);
         },
+        addMemberRole(guildId, userId, roleId, reason) {
+            return rest.addMemberRole(guildId, userId, roleId, reason);
+        },
+        removeMemberRole(guildId, userId, roleId, reason) {
+            return rest.removeMemberRole(guildId, userId, roleId, reason);
+        },
         respond(message, options) {
             return rest.respond(interaction, message, options);
         }

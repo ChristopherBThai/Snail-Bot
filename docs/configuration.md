@@ -44,8 +44,18 @@ export default {
         guildId: '...'
     },
     roles: {
-        manager: ['...'],
-        admin: ['...']
+        helper: {
+            permission: '...',
+            display: '...'
+        },
+        manager: {
+            permission: '...',
+            display: '...'
+        },
+        admin: {
+            permission: '...',
+            display: '...'
+        }
     },
     users: {
         owner: '...'
@@ -81,7 +91,7 @@ Command sync is authoritative. If the running code provides an empty guild or gl
 
 ## Staff Auth Config
 
-`users.owner`, `roles.admin`, and `roles.manager` are source-controlled Discord IDs used by staff-only route authorization. Routes that need manager access should use `hasManagerAccess` as their `authorize` function.
+`users.owner`, `roles.admin`, `roles.manager`, and `roles.helper` are source-controlled Discord IDs used by staff-only route authorization. Each staff role group has `permission` for authorization checks and `display` for the AFK member-list role. Authorization helpers follow the owner, admin, manager, helper, and staff hierarchy. Routes that need manager access should use `hasManagerAccess` as their `authorize` function.
 
 ## Feature Runtime Config
 

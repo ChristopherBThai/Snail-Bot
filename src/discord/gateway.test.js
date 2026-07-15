@@ -76,7 +76,9 @@ describe('startGateway', () => {
                 }),
                 data: payload.d.data,
                 interaction: payload.d,
+                addMemberRole: expect.any(Function),
                 editBotNickname: expect.any(Function),
+                removeMemberRole: expect.any(Function),
                 respond: expect.any(Function)
             })
         );
@@ -355,7 +357,9 @@ function createRoutesStub() {
 
 function createRestStub() {
     return {
+        addMemberRole: vi.fn(),
         editBotNickname: vi.fn(),
+        removeMemberRole: vi.fn(),
         respond: vi.fn()
     };
 }

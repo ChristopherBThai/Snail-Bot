@@ -43,6 +43,20 @@ export function createDiscordRest(config, { logger }) {
                     }
                 })
             );
+        },
+        addMemberRole(guildId, userId, roleId, reason) {
+            return request('member_role_add.failed', () =>
+                rest.put(rest.routes.guilds.roles.member(guildId, userId, roleId), {
+                    reason
+                })
+            );
+        },
+        removeMemberRole(guildId, userId, roleId, reason) {
+            return request('member_role_remove.failed', () =>
+                rest.delete(rest.routes.guilds.roles.member(guildId, userId, roleId), {
+                    reason
+                })
+            );
         }
     });
 

@@ -225,7 +225,7 @@ Runtime infrastructure areas include:
 - `logging/`: logger creation, log level storage, log export behavior.
 - `data/snail/`: Snail database connections, shared models, and saved records.
 - `data/owo/`: OwO Mongo, Redis, MySQL clients, and named OwO write services.
-- Discord route authorization helpers such as `hasManagerAccess`.
+- Discord route authorization helpers such as `hasManagerAccess`, with owner, admin, manager, helper, and staff hierarchy helpers.
 
 Message Builder is a registered package contribution that exposes a service and Discord routes for other features to use.
 

@@ -24,10 +24,15 @@ describe('loadConfig', () => {
         const config = await loadConfig();
 
         expect(config.users.owner).toMatch(discordIdPattern);
-        expect(config.roles.admin.length).toBeGreaterThan(0);
-        expect(config.roles.manager.length).toBeGreaterThan(0);
 
-        for (const roleId of [...config.roles.admin, ...config.roles.manager]) {
+        for (const roleId of [
+            config.roles.helper.permission,
+            config.roles.helper.display,
+            config.roles.manager.permission,
+            config.roles.manager.display,
+            config.roles.admin.permission,
+            config.roles.admin.display
+        ]) {
             expect(roleId).toMatch(discordIdPattern);
         }
     });

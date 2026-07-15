@@ -75,8 +75,15 @@ describe('nick command route', () => {
 function createContext({
     config = {
         roles: {
-            admin: ['admin-role'],
-            manager: ['manager-role']
+            helper: {
+                permission: 'helper-role'
+            },
+            manager: {
+                permission: 'manager-role'
+            },
+            admin: {
+                permission: 'admin-role'
+            }
         },
         users: {
             owner: 'owner-id'

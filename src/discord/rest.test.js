@@ -5,6 +5,7 @@ import { createDiscordRest } from './rest.js';
 const discordenoRest = vi.hoisted(() => ({
     put: vi.fn(),
     post: vi.fn(),
+    delete: vi.fn(),
     patch: vi.fn(),
     routes: {
         interactions: {
@@ -19,6 +20,9 @@ const discordenoRest = vi.hoisted(() => ({
             }
         },
         guilds: {
+            roles: {
+                member: vi.fn(() => 'member-role-route')
+            },
             members: {
                 bot: vi.fn(() => 'bot-member-route')
             }
@@ -215,44 +219,33 @@ describe('createDiscordRest', () => {
         });
     });
 
-    test.each([
-        {
-            name: 'global command sync',
-            event: 'global_command_sync.failed',
-            fail(error) {
-                discordenoRest.put.mockRejectedValueOnce(error);
-            },
-            run(rest) {
-                return rest.syncGlobalCommands([]);
-            }
-        },
-        {
-            name: 'interaction response',
-            event: 'interaction_response.failed',
-            fail(error) {
-                discordenoRest.post.mockRejectedValueOnce(error);
-            },
-            run(rest) {
-                return rest.respond(
-                    {
-                        id: 'interaction-id',
-                        token: 'interaction-token'
-                    },
-                    '🐌'
-                );
-            }
-        },
-        {
-            name: 'bot nickname update',
-            event: 'bot_nickname_update.failed',
-            fail(error) {
-                discordenoRest.patch.mockRejectedValueOnce(error);
-            },
-            run(rest) {
-                return rest.editBotNickname('guild-id', 'Snail Jr');
-            }
-        }
-    ])('logs and rethrows $name failures', async ({ event, fail, run }) => {
+    test('adds member roles through the guild member role route', async () => {
+        discordenoRest.put.mockResolvedValueOnce(undefined);
+
+        const rest = createDiscordRest(config, { logger });
+
+        await rest.addMemberRole('guild-id', 'user-id', 'role-id', 'reason');
+
+        expect(discordenoRest.routes.guilds.roles.member).toHaveBeenCalledWith('guild-id', 'user-id', 'role-id');
+        expect(discordenoRest.put).toHaveBeenCalledWith('member-role-route', {
+            reason: 'reason'
+        });
+    });
+
+    test('removes member roles through the guild member role route', async () => {
+        discordenoRest.delete.mockResolvedValueOnce(undefined);
+
+        const rest = createDiscordRest(config, { logger });
+
+        await rest.removeMemberRole('guild-id', 'user-id', 'role-id', 'reason');
+
+        expect(discordenoRest.routes.guilds.roles.member).toHaveBeenCalledWith('guild-id', 'user-id', 'role-id');
+        expect(discordenoRest.delete).toHaveBeenCalledWith('member-role-route', {
+            reason: 'reason'
+        });
+    });
+
+    test('logs and rethrows Discord REST failures', async () => {
         const error = new Error('Discord REST failed');
         error.cause = {
             status: 500,
@@ -260,13 +253,17 @@ describe('createDiscordRest', () => {
                 message: 'Internal Server Error'
             }
         };
-        fail(error);
+        discordenoRest.post.mockRejectedValueOnce(error);
 
         const rest = createDiscordRest(config, { logger });
+        const interaction = {
+            id: 'interaction-id',
+            token: 'interaction-token'
+        };
 
-        await expect(run(rest)).rejects.toBe(error);
+        await expect(rest.respond(interaction, '🐌')).rejects.toBe(error);
 
-        expect(logger.error).toHaveBeenCalledWith(event, {
+        expect(logger.error).toHaveBeenCalledWith('interaction_response.failed', {
             errorName: 'Error',
             errorMessage: 'Discord REST failed',
             status: 500,

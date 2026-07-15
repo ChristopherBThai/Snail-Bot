@@ -1,7 +1,8 @@
+import afk from '../features/afk/index.js';
 import nick from '../features/nick/index.js';
 import snail from '../features/snail/index.js';
 
-export const PACKAGE_REGISTRY = Object.freeze([snail, nick]);
+export const PACKAGE_REGISTRY = Object.freeze([snail, nick, afk]);
 
 export function createRegistry(context) {
     const services = {};
