@@ -349,15 +349,20 @@ module.exports = class KnowledgeBase extends require('./Module') {
         this.syncing = true;
         const log = (msg) => console.log(`[KB] sync${dryRun ? ' (dry)' : ''}: ${msg}`);
         try {
-            const docs = await this.Knowledge.find().lean();
-            log(`loaded ${docs.length} entries from Mongo`);
+            const tags = await this.Tag.find();
+            log(`loaded ${tags.length} tags from Mongo`);
 
-            const desired = buildDesiredPoints(docs, this.namespace);
-            const qCount = countByKind(desired, 'q');
-            const aCount = countByKind(desired, 'a');
-            log(`built ${qCount} q points + ${aCount} a points = ${desired.size} total`);
+            const desired = new Map();
+            for (const tag of tags) {
+                if (!dryRun) await this.ensureTagKbCache(tag);
+                for (const [pointId, point] of this.buildDesiredTagPoints(tag)) desired.set(pointId, point);
+            }
 
-            const existing = await this.qdrant.scrollAll(this.collection, ['q_hash', 'meta_hash', 'entry_id']);
+            const questionCount = countByKind(desired, 'tag_question');
+            const answerCount = countByKind(desired, 'tag_answer');
+            log(`built ${answerCount} tag_answer points + ${questionCount} tag_question points = ${desired.size} total`);
+
+            const existing = await this.qdrant.scrollAll(this.collection, tagPayloadFields());
             log(`scrolled ${existing.length} existing points in '${this.collection}'`);
 
             const diff = computeDiff(desired, existing);
@@ -367,10 +372,10 @@ module.exports = class KnowledgeBase extends require('./Module') {
                 metaUpdated: diff.toUpdateMeta.length,
                 deleted: diff.toDelete.length,
                 unchanged: desired.size - diff.toEmbed.length - diff.toUpdateMeta.length,
-                totalVariants: qCount,
-                totalAnswers: aCount,
+                totalQuestions: questionCount,
+                totalAnswers: answerCount,
                 totalPoints: desired.size,
-                totalEntries: docs.length,
+                totalTags: tags.length,
                 dryRun,
             };
             log(
@@ -441,6 +446,42 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
     tagFilter(tagId) {
         return tagFilter(tagId);
+    }
+
+    async syncTagById(tagId) {
+        if (!this.qdrant) await this.initQdrant();
+
+        const normalizedTagId = String(tagId);
+        const tag = await this.Tag.findById(normalizedTagId);
+        if (!tag) {
+            await this.deleteTagById(normalizedTagId);
+            return { deleted: true, tagId: normalizedTagId };
+        }
+        if (!this.openrouterApiKey) throw new Error('Missing OPENROUTER_API_KEY');
+
+        await this.ensureTagKbCache(tag);
+        const desired = this.buildDesiredTagPoints(tag);
+        const existing = await this.qdrant.scrollAll(this.collection, tagPayloadFields(), tagFilter(normalizedTagId));
+        const diff = computeDiff(desired, existing);
+        await this.applyDiff(diff, () => {});
+
+        return {
+            tagId: normalizedTagId,
+            added: diff.toEmbed.filter((x) => x.op === 'add').length,
+            vectorUpdated: diff.toEmbed.filter((x) => x.op === 'vector').length,
+            metaUpdated: diff.toUpdateMeta.length,
+            deleted: diff.toDelete.length,
+            unchanged: desired.size - diff.toEmbed.length - diff.toUpdateMeta.length,
+            totalQuestions: countByKind(desired, 'tag_question'),
+            totalAnswers: countByKind(desired, 'tag_answer'),
+            totalPoints: desired.size,
+            totalTags: 1,
+        };
+    }
+
+    async deleteTagById(tagId) {
+        if (!this.qdrant) await this.initQdrant();
+        await this.qdrant.deleteByFilter(this.collection, tagFilter(tagId));
     }
 
     // Sync a single entry. Cheap path used after CRUD mutations.
@@ -519,6 +560,10 @@ function entryFilter(entryId) {
 
 function tagFilter(tagId) {
     return { must: [{ key: 'tag_id', match: { value: String(tagId) } }] };
+}
+
+function tagPayloadFields() {
+    return ['tag_id', 'kind', 'data_hash', 'question_hash', 'question'];
 }
 
 function toPointId(namespace, key) {
@@ -715,6 +760,14 @@ function computeDiff(desired, existingPoints) {
         const prev = existingById.get(String(pointId));
         if (!prev) {
             toEmbed.push({ ...desc, op: 'add' });
+        } else if (isTagPoint(desc)) {
+            const previousPayload = prev.payload || {};
+            const desiredPayload = buildPayload(desc);
+            if (previousPayload.kind !== desc.kind || previousPayload.tag_id !== desc.tagId) {
+                toEmbed.push({ ...desc, op: 'vector' });
+            } else if (!payloadMatches(previousPayload, desiredPayload)) {
+                toUpdateMeta.push(desc);
+            }
         } else if (desc.kind === 'q' && prev.payload?.q_hash !== desc.qHash) {
             // Defensive: Q point IDs derive from q_hash so this shouldn't fire
             toEmbed.push({ ...desc, op: 'vector' });
@@ -730,6 +783,17 @@ function computeDiff(desired, existingPoints) {
     }
 
     return { toEmbed, toUpdateMeta, toDelete };
+}
+
+function isTagPoint(desc) {
+    return desc.kind === 'tag_answer' || desc.kind === 'tag_question';
+}
+
+function payloadMatches(previousPayload, desiredPayload) {
+    for (const [key, value] of Object.entries(desiredPayload)) {
+        if (previousPayload[key] !== value) return false;
+    }
+    return true;
 }
 
 function buildPayload(item) {

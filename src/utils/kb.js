@@ -26,7 +26,7 @@ class Qdrant {
         }
 
         // Payload indexes — safe to retry; Qdrant errors on duplicate which we ignore
-        for (const field of ['category']) {
+        for (const field of ['category', 'entry_id', 'tag_id', 'kind']) {
             try {
                 await this.client.put(`/collections/${name}/index`, {
                     field_name: field,
@@ -69,7 +69,7 @@ class Qdrant {
         });
     }
 
-    async scrollAll(name, payloadFields) {
+    async scrollAll(name, payloadFields, filter) {
         const results = [];
         let offset = undefined;
         let done = false;
@@ -80,6 +80,7 @@ class Qdrant {
                 with_vector: false,
             };
             if (offset != null) body.offset = offset;
+            if (filter) body.filter = filter;
 
             const res = await this.client.post(`/collections/${name}/points/scroll`, body);
             const data = res.data.result;
@@ -88,6 +89,10 @@ class Qdrant {
             if (offset == null) done = true;
         }
         return results;
+    }
+
+    async deleteByFilter(name, filter) {
+        await this.client.post(`/collections/${name}/points/delete?wait=true`, { filter });
     }
 
     async count(name) {
