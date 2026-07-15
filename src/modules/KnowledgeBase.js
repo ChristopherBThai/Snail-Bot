@@ -1,11 +1,7 @@
-const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
 const { v5: uuidv5 } = require('uuid');
 
 const { Qdrant, embed, chat } = require('../utils/kb.js');
-
-const KB_FILE = path.join(__dirname, '..', 'data', 'kb.json');
 
 const SYSTEM_PROMPT =
     'You are Snail, a helpful assistant in the OwO Discord bot support server. ' +
@@ -13,6 +9,9 @@ const SYSTEM_PROMPT =
     "If the entries do not contain the answer, say you don't know and suggest asking a helper. " +
     'Be concise and friendly. Do not invent commands, items, or behavior that is not in the entries. ' +
     'Do not include source links in your answer text — they will be appended separately.';
+
+const EMBED_BATCH = 64;
+const META_LOG_EVERY = 50;
 
 module.exports = class KnowledgeBase extends require('./Module') {
     constructor(bot) {
@@ -41,6 +40,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
             'Given a user question about the OwO Discord bot, retrieve a matching knowledge base entry that answers it.';
         this.topK = kbConfig.topK ?? 6;
         this.scoreThreshold = kbConfig.scoreThreshold ?? 0.3;
+        this.dupeThreshold = kbConfig.dupeThreshold ?? 0.75;
         this.maxTokens = kbConfig.maxTokens ?? 500;
         this.temperature = kbConfig.temperature ?? 0.2;
 
@@ -50,6 +50,10 @@ module.exports = class KnowledgeBase extends require('./Module') {
         this.lastSyncSummary = null;
 
         this.addEvent('messageCreate', this.onMessage);
+    }
+
+    get Knowledge() {
+        return this.bot.snail_db.Knowledge;
     }
 
     async onceReady() {
@@ -82,6 +86,8 @@ module.exports = class KnowledgeBase extends require('./Module') {
         this.qdrant = new Qdrant({ url: this.qdrantUrl, apiKey: this.qdrantApiKey });
         await this.qdrant.ensureCollection(this.collection, this.embeddingSize);
     }
+
+    // ─── Message handling ────────────────────────────────────────────────
 
     async onMessage(message) {
         if (message.author?.bot) return;
@@ -131,25 +137,26 @@ module.exports = class KnowledgeBase extends require('./Module') {
         });
     }
 
+    // ─── Retrieval ──────────────────────────────────────────────────────
+
     formatQuery(question) {
         return `Instruct: ${this.queryInstruction}\nQuery: ${question}`;
     }
 
-    async ask(question) {
-        if (!this.qdrant) {
-            await this.initQdrant();
-        }
-        if (!this.openrouterApiKey) {
-            throw new Error('Missing OPENROUTER_API_KEY');
-        }
-
+    async embedQuery(question) {
+        if (!this.openrouterApiKey) throw new Error('Missing OPENROUTER_API_KEY');
         const [vector] = await embed({
             apiKey: this.openrouterApiKey,
             model: this.embeddingModel,
             inputs: [this.formatQuery(question)],
         });
+        return vector;
+    }
 
-        // Fetch more than topK so dedupe by entry still leaves us enough unique entries
+    async ask(question) {
+        if (!this.qdrant) await this.initQdrant();
+
+        const vector = await this.embedQuery(question);
         const rawHits = await this.qdrant.search(this.collection, {
             vector,
             limit: this.topK * 3,
@@ -182,22 +189,13 @@ module.exports = class KnowledgeBase extends require('./Module') {
         });
 
         const sources = [...new Set(hits.map((h) => h.payload?.source).filter(Boolean))];
-
         return { answer: content, sources, hits };
     }
 
     async debugSearch(question, { limit, includeBelowThreshold = true } = {}) {
         if (!this.qdrant) await this.initQdrant();
-        if (!this.openrouterApiKey) throw new Error('Missing OPENROUTER_API_KEY');
+        const vector = await this.embedQuery(question);
 
-        const [vector] = await embed({
-            apiKey: this.openrouterApiKey,
-            model: this.embeddingModel,
-            inputs: [this.formatQuery(question)],
-        });
-
-        // Fetch wider than the requested entry-limit so we can group multiple variants
-        // of the same entry together and still surface enough unique entries.
         const wantEntries = limit ?? this.topK;
         const hits = await this.qdrant.search(this.collection, {
             vector,
@@ -208,6 +206,132 @@ module.exports = class KnowledgeBase extends require('./Module') {
         return { hits, threshold: this.scoreThreshold };
     }
 
+    // Find entries semantically similar to a question. Used by the moderator
+    // "find" and "add" flows to surface possible duplicates. Returns dedup'd
+    // hits grouped by entry, with each entry's Mongo doc materialized.
+    async findSimilar(question, { limit = 5 } = {}) {
+        if (!this.qdrant) await this.initQdrant();
+        const vector = await this.embedQuery(question);
+
+        const rawHits = await this.qdrant.search(this.collection, {
+            vector,
+            limit: limit * 5,
+        });
+
+        const groups = groupHitsByEntry(rawHits).slice(0, limit);
+
+        // Resolve each group's Mongo doc. Points indexed before entry_id was
+        // added to payloads have entryId=null; fall back to matching by aHash.
+        const idSet = new Set(groups.map((g) => g.entryId).filter(Boolean));
+        const aHashSet = new Set(
+            groups
+                .filter((g) => !g.entryId)
+                .map((g) => g.aHash)
+                .filter(Boolean)
+        );
+
+        const orClauses = [];
+        if (idSet.size) orClauses.push({ _id: { $in: [...idSet] } });
+        if (aHashSet.size) orClauses.push({ aHash: { $in: [...aHashSet] } });
+
+        const docs = orClauses.length ? await this.Knowledge.find({ $or: orClauses }).lean() : [];
+        const docById = new Map(docs.map((d) => [String(d._id), d]));
+        const docByAHash = new Map(docs.map((d) => [d.aHash, d]));
+
+        return groups
+            .map((g) => {
+                const doc = (g.entryId && docById.get(g.entryId)) || (g.aHash && docByAHash.get(g.aHash)) || null;
+                return { ...g, doc, entryId: doc ? String(doc._id) : g.entryId };
+            })
+            .filter((g) => g.doc);
+    }
+
+    // ─── CRUD ───────────────────────────────────────────────────────────
+
+    async getEntry(id) {
+        return this.Knowledge.findById(id);
+    }
+
+    // Throws if any q variant in `variants` collides with an existing entry's
+    // q (case-insensitive). Pass `exceptId` to ignore that entry's own variants.
+    async assertNoVariantCollision(variants, exceptId = null) {
+        const norm = variants.map((v) => v.trim().toLowerCase());
+        const query = { q: { $in: variants } };
+        if (exceptId) query._id = { $ne: exceptId };
+        const candidates = await this.Knowledge.find(query, { q: 1 }).lean();
+
+        for (const cand of candidates) {
+            for (const v of cand.q) {
+                if (norm.includes(v.trim().toLowerCase())) {
+                    throw new Error(`question variant "${v}" already exists on another entry`);
+                }
+            }
+        }
+    }
+
+    async createEntry({ q, a, category = [], source = null, userId = null }) {
+        const variants = normalizeVariants(q);
+        if (!variants.length) throw new Error('at least one q variant is required');
+        if (typeof a !== 'string' || !a.trim()) throw new Error('answer is required');
+
+        await this.assertNoVariantCollision(variants);
+
+        const doc = await this.Knowledge.create({
+            q: variants,
+            a: a.trim(),
+            category: normalizeCategory(category),
+            source: source || null,
+            createdBy: userId,
+            updatedBy: userId,
+        });
+        this.applyHashes(doc);
+        await doc.save();
+        await this.syncEntry(doc);
+        return doc;
+    }
+
+    async updateEntry(id, patch, userId = null) {
+        const doc = await this.Knowledge.findById(id);
+        if (!doc) throw new Error(`entry ${id} not found`);
+
+        if (patch.q !== undefined) {
+            const variants = normalizeVariants(patch.q);
+            if (!variants.length) throw new Error('at least one q variant is required');
+            await this.assertNoVariantCollision(variants, doc._id);
+            doc.q = variants;
+        }
+        if (patch.a !== undefined) {
+            if (typeof patch.a !== 'string' || !patch.a.trim()) throw new Error('answer is required');
+            doc.a = patch.a.trim();
+        }
+        if (patch.category !== undefined) doc.category = normalizeCategory(patch.category);
+        if (patch.source !== undefined) doc.source = patch.source || null;
+        if (userId) doc.updatedBy = userId;
+
+        this.applyHashes(doc);
+        await doc.save();
+        await this.syncEntry(doc);
+        return doc;
+    }
+
+    async deleteEntry(id) {
+        const doc = await this.Knowledge.findById(id);
+        if (!doc) return null;
+
+        if (!this.qdrant) await this.initQdrant();
+        await this.qdrant.deleteByFilter(this.collection, entryFilter(String(doc._id)));
+        await doc.deleteOne();
+        return doc;
+    }
+
+    applyHashes(doc) {
+        doc.qHashes = doc.q.map(sha1);
+        doc.aHash = sha1(doc.a);
+        doc.metaHash = sha1(stableStringify(metaOf(doc)));
+    }
+
+    // ─── Sync ───────────────────────────────────────────────────────────
+
     async sync({ dryRun = false } = {}) {
         if (this.syncing) throw new Error('A sync is already in progress');
         if (!this.qdrant) await this.initQdrant();
@@ -216,81 +340,28 @@ module.exports = class KnowledgeBase extends require('./Module') {
         this.syncing = true;
         const log = (msg) => console.log(`[KB] sync${dryRun ? ' (dry)' : ''}: ${msg}`);
         try {
-            const entries = loadAndValidate(KB_FILE);
+            const docs = await this.Knowledge.find().lean();
+            log(`loaded ${docs.length} entries from Mongo`);
 
-            // Flatten entries into points:
-            //  - one Q point per variant (kind='q'), text = variant
-            //  - one A point per entry   (kind='a'), text = answer
-            const desired = new Map();
-            let qCount = 0;
-            let aCount = 0;
-            for (const entry of entries) {
-                const metaHash = sha1(stableStringify(metaOf(entry)));
-                const aHash = sha1(entry.a);
+            const desired = buildDesiredPoints(docs, this.namespace);
+            const qCount = countByKind(desired, 'q');
+            const aCount = countByKind(desired, 'a');
+            log(`built ${qCount} q points + ${aCount} a points = ${desired.size} total`);
 
-                for (const qVariant of entry.q) {
-                    const qHash = sha1(qVariant);
-                    const pointId = toPointId(this.namespace, qHash);
-                    desired.set(pointId, {
-                        pointId,
-                        kind: 'q',
-                        text: qVariant,
-                        entry,
-                        qHash,
-                        aHash,
-                        metaHash,
-                    });
-                    qCount++;
-                }
-
-                const aPointId = toPointId(this.namespace, `a:${aHash}`);
-                desired.set(aPointId, {
-                    pointId: aPointId,
-                    kind: 'a',
-                    text: entry.a,
-                    entry,
-                    qHash: null,
-                    aHash,
-                    metaHash,
-                });
-                aCount++;
-            }
-            log(`loaded ${entries.length} entries → ${qCount} q points + ${aCount} a points = ${desired.size} total`);
-
-            const existing = await this.qdrant.scrollAll(this.collection, ['q_hash', 'meta_hash']);
-            const existingById = new Map(existing.map((p) => [String(p.id), p]));
+            const existing = await this.qdrant.scrollAll(this.collection, ['q_hash', 'meta_hash', 'entry_id']);
             log(`scrolled ${existing.length} existing points in '${this.collection}'`);
 
-            const toEmbed = [];
-            const toUpdateMeta = [];
-            const toDelete = [];
-
-            for (const [pointId, desc] of desired) {
-                const prev = existingById.get(String(pointId));
-                if (!prev) {
-                    toEmbed.push({ ...desc, op: 'add' });
-                } else if (desc.kind === 'q' && prev.payload?.q_hash !== desc.qHash) {
-                    // Defensive: Q point IDs are derived from q_hash, so this shouldn't trigger
-                    toEmbed.push({ ...desc, op: 'vector' });
-                } else if (prev.payload?.meta_hash !== desc.metaHash) {
-                    toUpdateMeta.push(desc);
-                }
-            }
-
-            for (const pointId of existingById.keys()) {
-                if (!desired.has(pointId)) toDelete.push(pointId);
-            }
-
+            const diff = computeDiff(desired, existing);
             const summary = {
-                added: toEmbed.filter((x) => x.op === 'add').length,
-                vectorUpdated: toEmbed.filter((x) => x.op === 'vector').length,
-                metaUpdated: toUpdateMeta.length,
-                deleted: toDelete.length,
-                unchanged: desired.size - toEmbed.length - toUpdateMeta.length,
+                added: diff.toEmbed.filter((x) => x.op === 'add').length,
+                vectorUpdated: diff.toEmbed.filter((x) => x.op === 'vector').length,
+                metaUpdated: diff.toUpdateMeta.length,
+                deleted: diff.toDelete.length,
+                unchanged: desired.size - diff.toEmbed.length - diff.toUpdateMeta.length,
                 totalVariants: qCount,
                 totalAnswers: aCount,
                 totalPoints: desired.size,
-                totalEntries: entries.length,
+                totalEntries: docs.length,
                 dryRun,
             };
             log(
@@ -300,37 +371,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
             if (dryRun) return summary;
 
-            if (toDelete.length) {
-                await this.qdrant.deletePoints(this.collection, toDelete);
-                log(`deleted ${toDelete.length}`);
-            }
-
-            if (toEmbed.length) {
-                const batchSize = 64;
-                for (let i = 0; i < toEmbed.length; i += batchSize) {
-                    const batch = toEmbed.slice(i, i + batchSize);
-                    const vectors = await embed({
-                        apiKey: this.openrouterApiKey,
-                        model: this.embeddingModel,
-                        inputs: batch.map((x) => x.text),
-                    });
-                    const points = batch.map((x, j) => ({
-                        id: x.pointId,
-                        vector: vectors[j],
-                        payload: buildPayload(x),
-                    }));
-                    await this.qdrant.upsert(this.collection, points);
-                    log(`embedded ${Math.min(i + batchSize, toEmbed.length)}/${toEmbed.length}`);
-                }
-            }
-
-            for (let i = 0; i < toUpdateMeta.length; i++) {
-                const x = toUpdateMeta[i];
-                await this.qdrant.setPayload(this.collection, x.pointId, buildPayload(x));
-                if ((i + 1) % 50 === 0 || i + 1 === toUpdateMeta.length) {
-                    log(`payload updated ${i + 1}/${toUpdateMeta.length}`);
-                }
-            }
+            await this.applyDiff(diff, log);
 
             this.lastSync = new Date();
             this.lastSyncSummary = summary;
@@ -344,12 +385,68 @@ module.exports = class KnowledgeBase extends require('./Module') {
         }
     }
 
+    buildDesiredTagPoints(tag) {
+        return buildDesiredTagPoints(tag.toObject ? tag.toObject() : tag, this.namespace);
+    }
+
+    tagFilter(tagId) {
+        return tagFilter(tagId);
+    }
+
+    // Sync a single entry. Cheap path used after CRUD mutations.
+    async syncEntry(doc) {
+        if (!this.qdrant) await this.initQdrant();
+        if (!this.openrouterApiKey) throw new Error('Missing OPENROUTER_API_KEY');
+
+        const desired = buildDesiredPoints([doc.toObject ? doc.toObject() : doc], this.namespace);
+        const existing = await this.qdrant.scrollAll(
+            this.collection,
+            ['q_hash', 'meta_hash', 'entry_id'],
+            entryFilter(String(doc._id))
+        );
+
+        const diff = computeDiff(desired, existing);
+        await this.applyDiff(diff, () => {});
+    }
+
+    async applyDiff({ toEmbed, toUpdateMeta, toDelete }, log) {
+        if (toDelete.length) {
+            await this.qdrant.deletePoints(this.collection, toDelete);
+            log(`deleted ${toDelete.length}`);
+        }
+
+        for (let i = 0; i < toEmbed.length; i += EMBED_BATCH) {
+            const batch = toEmbed.slice(i, i + EMBED_BATCH);
+            const vectors = await embed({
+                apiKey: this.openrouterApiKey,
+                model: this.embeddingModel,
+                inputs: batch.map((x) => x.text),
+            });
+            const points = batch.map((x, j) => ({
+                id: x.pointId,
+                vector: vectors[j],
+                payload: buildPayload(x),
+            }));
+            await this.qdrant.upsert(this.collection, points);
+            log(`embedded ${Math.min(i + EMBED_BATCH, toEmbed.length)}/${toEmbed.length}`);
+        }
+
+        for (let i = 0; i < toUpdateMeta.length; i++) {
+            const x = toUpdateMeta[i];
+            await this.qdrant.setPayload(this.collection, x.pointId, buildPayload(x));
+            if ((i + 1) % META_LOG_EVERY === 0 || i + 1 === toUpdateMeta.length) {
+                log(`payload updated ${i + 1}/${toUpdateMeta.length}`);
+            }
+        }
+    }
+
     async setChatModel(model) {
         this.chatModel = model;
         await this.bot.setConfiguration(`${this.id}_chat_model`, model);
     }
 
     getConfigurationOverview() {
+        const last = this.syncing ? 'in progress' : this.lastSync ? this.lastSync.toISOString() : 'never';
         return (
             `${super.getConfigurationOverview()}\n` +
             `- Qdrant URL: ${this.qdrantUrl}\n` +
@@ -358,10 +455,21 @@ module.exports = class KnowledgeBase extends require('./Module') {
             `- Chat Model: ${this.chatModel}\n` +
             `- Top K: ${this.topK}\n` +
             `- Score Threshold: ${this.scoreThreshold}\n` +
-            `- Last Sync: ${this.syncing ? 'in progress' : this.lastSync ? this.lastSync.toISOString() : 'never'}`
+            `- Dupe Threshold: ${this.dupeThreshold}\n` +
+            `- Last Sync: ${last}`
         );
     }
 };
+
+// ─── Pure helpers ───────────────────────────────────────────────────────
+
+function entryFilter(entryId) {
+    return { must: [{ key: 'entry_id', match: { value: entryId } }] };
+}
+
+function tagFilter(tagId) {
+    return { must: [{ key: 'tag_id', match: { value: String(tagId) } }] };
+}
 
 function toPointId(namespace, key) {
     return uuidv5(String(key), namespace);
@@ -376,19 +484,145 @@ function stableStringify(obj) {
     return JSON.stringify(obj, keys);
 }
 
-function metaOf(entry) {
+function metaOf(doc) {
     return {
-        a: entry.a,
-        source: entry.source ?? null,
-        category: Array.isArray(entry.category) ? [...entry.category].sort() : entry.category ?? null,
+        a: doc.a,
+        source: doc.source ?? null,
+        category: Array.isArray(doc.category) ? [...doc.category].sort() : doc.category ?? null,
     };
 }
 
+function normalizeVariants(q) {
+    if (!Array.isArray(q)) throw new Error('q must be an array');
+    return q.map((v) => String(v).trim()).filter(Boolean);
+}
+
+function normalizeCategory(category) {
+    if (category == null) return [];
+    return Array.isArray(category) ? category.filter(Boolean) : [String(category).trim()].filter(Boolean);
+}
+
+// Flatten docs into the point-descriptor map used for sync diffing.
+// Each entry yields: one point per q variant + one point for the answer text.
+function buildDesiredPoints(docs, namespace) {
+    const desired = new Map();
+    for (const doc of docs) {
+        const entryId = String(doc._id);
+        const metaHash = sha1(stableStringify(metaOf(doc)));
+        const aHash = sha1(doc.a);
+
+        for (const variant of doc.q) {
+            const qHash = sha1(variant);
+            const pointId = toPointId(namespace, qHash);
+            desired.set(pointId, { pointId, kind: 'q', text: variant, doc, entryId, qHash, aHash, metaHash });
+        }
+
+        const aPointId = toPointId(namespace, `a:${aHash}`);
+        desired.set(aPointId, {
+            pointId: aPointId,
+            kind: 'a',
+            text: doc.a,
+            doc,
+            entryId,
+            qHash: null,
+            aHash,
+            metaHash,
+        });
+    }
+    return desired;
+}
+
+function buildDesiredTagPoints(tag, namespace) {
+    const tagId = String(tag._id);
+    const data = String(tag.data ?? '').trim();
+    const dataHash = tag.kb?.dataHash || sha1(data);
+    const questions = Array.isArray(tag.kb?.questions) ? tag.kb.questions : [];
+    const desired = new Map();
+
+    const answerPointId = toPointId(namespace, `tag:${tagId}:tag_answer:${dataHash}`);
+    desired.set(answerPointId, {
+        pointId: answerPointId,
+        kind: 'tag_answer',
+        text: data,
+        tag,
+        tagId,
+        dataHash,
+    });
+
+    for (const question of questions) {
+        const text = String(question.text ?? '').trim();
+        if (!text) continue;
+        const questionHash = question.hash || sha1(text);
+        const pointId = toPointId(namespace, `tag:${tagId}:tag_question:${questionHash}`);
+        desired.set(pointId, {
+            pointId,
+            kind: 'tag_question',
+            text,
+            tag,
+            tagId,
+            dataHash,
+            questionHash,
+        });
+    }
+
+    return desired;
+}
+
+function countByKind(desired, kind) {
+    let n = 0;
+    for (const d of desired.values()) if (d.kind === kind) n++;
+    return n;
+}
+
+// Diff desired against existing Qdrant points. existingPoints is only the
+// set we should consider for deletion — for full syncs it's the whole
+// collection, for syncEntry it's just one entry's points.
+function computeDiff(desired, existingPoints) {
+    const existingById = new Map(existingPoints.map((p) => [String(p.id), p]));
+    const toEmbed = [];
+    const toUpdateMeta = [];
+    const toDelete = [];
+
+    for (const [pointId, desc] of desired) {
+        const prev = existingById.get(String(pointId));
+        if (!prev) {
+            toEmbed.push({ ...desc, op: 'add' });
+        } else if (desc.kind === 'q' && prev.payload?.q_hash !== desc.qHash) {
+            // Defensive: Q point IDs derive from q_hash so this shouldn't fire
+            toEmbed.push({ ...desc, op: 'vector' });
+        } else if (prev.payload?.meta_hash !== desc.metaHash || !prev.payload?.entry_id) {
+            // Force a payload refresh on points missing entry_id (one-time
+            // backfill for points indexed before that field existed).
+            toUpdateMeta.push(desc);
+        }
+    }
+
+    for (const pointId of existingById.keys()) {
+        if (!desired.has(pointId)) toDelete.push(pointId);
+    }
+
+    return { toEmbed, toUpdateMeta, toDelete };
+}
+
 function buildPayload(item) {
-    const { kind, entry, qHash, aHash, metaHash } = item;
+    if (item.kind === 'tag_answer' || item.kind === 'tag_question') {
+        const payload = {
+            tag_id: item.tagId,
+            kind: item.kind,
+            data_hash: item.dataHash,
+        };
+        if (item.kind === 'tag_question') {
+            payload.question = item.text;
+            payload.question_hash = item.questionHash;
+        }
+        return payload;
+    }
+
+    const { kind, doc, entryId, qHash, aHash, metaHash } = item;
     const payload = {
         kind,
-        a: entry.a,
+        entry_id: entryId,
+        a: doc.a,
         a_hash: aHash,
         meta_hash: metaHash,
         updated_at: Math.floor(Date.now() / 1000),
@@ -397,8 +631,10 @@ function buildPayload(item) {
         payload.q = item.text;
         payload.q_hash = qHash;
     }
-    if (entry.source != null) payload.source = entry.source;
-    if (entry.category != null) payload.category = entry.category;
+    if (doc.source != null) payload.source = doc.source;
+    if (doc.category != null && (!Array.isArray(doc.category) || doc.category.length)) {
+        payload.category = doc.category;
+    }
     return payload;
 }
 
@@ -406,12 +642,34 @@ function dedupeByEntry(hits) {
     const seen = new Set();
     const out = [];
     for (const hit of hits) {
-        const key = hit.payload?.a_hash || hit.payload?.a;
+        const key = hit.payload?.entry_id || hit.payload?.a_hash || hit.payload?.a;
         if (!key || seen.has(key)) continue;
         seen.add(key);
         out.push(hit);
     }
     return out;
+}
+
+// Group Qdrant hits by entry_id, preserving Qdrant's score-desc order.
+// Returns [{ entryId, topScore, hits: [...] }] with the top-scoring hit first
+// in each group.
+function groupHitsByEntry(hits) {
+    const groups = new Map();
+    for (const hit of hits) {
+        const key = hit.payload?.entry_id || hit.payload?.a_hash || hit.payload?.a;
+        if (!key) continue;
+        if (!groups.has(key)) {
+            groups.set(key, {
+                entryId: hit.payload?.entry_id || null,
+                aHash: hit.payload?.a_hash || null,
+                topScore: hit.score,
+                hits: [hit],
+            });
+        } else {
+            groups.get(key).hits.push(hit);
+        }
+    }
+    return Array.from(groups.values());
 }
 
 function formatContextEntry(hit, index) {
@@ -431,42 +689,4 @@ function formatSource(source) {
         return `<${source}>`;
     }
     return `\`${source}\``;
-}
-
-function loadAndValidate(file) {
-    const raw = fs.readFileSync(file, 'utf8');
-    const entries = JSON.parse(raw);
-
-    if (!Array.isArray(entries)) {
-        throw new Error('kb.json must be an array');
-    }
-
-    const seenQuestions = new Map();
-    for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i];
-        if (!entry || typeof entry !== 'object') {
-            throw new Error(`Entry #${i} must be an object`);
-        }
-        if (!Array.isArray(entry.q) || entry.q.length === 0) {
-            throw new Error(`Entry #${i} "q" must be a non-empty array of question strings`);
-        }
-        for (const variant of entry.q) {
-            if (typeof variant !== 'string' || !variant.trim()) {
-                throw new Error(`Entry #${i} has an empty or non-string question variant`);
-            }
-            const norm = variant.trim().toLowerCase();
-            if (seenQuestions.has(norm)) {
-                throw new Error(
-                    `Duplicate question variant "${variant}" in entry #${i} ` +
-                        `(also in entry #${seenQuestions.get(norm)})`
-                );
-            }
-            seenQuestions.set(norm, i);
-        }
-        if (typeof entry.a !== 'string' || !entry.a) {
-            throw new Error(`Entry #${i} (first q: "${entry.q[0]}") missing string "a"`);
-        }
-    }
-
-    return entries;
 }
