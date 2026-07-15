@@ -12,6 +12,11 @@ const SYSTEM_PROMPT =
 
 const EMBED_BATCH = 64;
 const META_LOG_EVERY = 50;
+const TAG_QUESTION_PROMPT_VERSION = 'tag-question-v1';
+const TAG_QUESTION_SYSTEM_PROMPT =
+    'You generate retrieval scaffolding questions for OwO Discord bot support tags. ' +
+    'Return only a JSON array of strings. Do not include explanations, markdown, or answer facts.';
+const TAG_QUESTION_PROMPT_SOURCE = `${TAG_QUESTION_PROMPT_VERSION}:${TAG_QUESTION_SYSTEM_PROMPT}`;
 
 module.exports = class KnowledgeBase extends require('./Module') {
     constructor(bot) {
@@ -54,6 +59,10 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
     get Knowledge() {
         return this.bot.snail_db.Knowledge;
+    }
+
+    get Tag() {
+        return this.bot.snail_db.Tag;
     }
 
     async onceReady() {
@@ -389,6 +398,47 @@ module.exports = class KnowledgeBase extends require('./Module') {
         return buildDesiredTagPoints(tag.toObject ? tag.toObject() : tag, this.namespace);
     }
 
+    async ensureTagKbCache(tag) {
+        const dataHash = tagDataHash(tag.data);
+        const generationHash = tagQuestionGenerationHash(tag, dataHash);
+
+        if (isCurrentTagKbCache(tag.kb, dataHash, generationHash)) {
+            return tag.kb;
+        }
+
+        if (!this.openrouterApiKey) throw new Error('Missing OPENROUTER_API_KEY');
+
+        const { content } = await chat({
+            apiKey: this.openrouterApiKey,
+            model: this.chatModel,
+            maxTokens: 500,
+            temperature: 0.2,
+            messages: buildTagQuestionMessages(tag),
+        });
+
+        const questions = normalizeGeneratedQuestions(parseGeneratedQuestionArray(content)).map((text) => ({
+            text,
+            hash: sha1(text),
+        }));
+
+        const kb = {
+            dataHash,
+            promptVersion: TAG_QUESTION_PROMPT_VERSION,
+            generationHash,
+            questions,
+            generatedAt: new Date(),
+        };
+
+        tag.kb = kb;
+        if (typeof tag.set === 'function') tag.set('kb', kb);
+        if (typeof tag.save === 'function') {
+            await tag.save();
+        } else {
+            await this.Tag.updateOne({ _id: String(tag._id) }, { $set: { kb } });
+        }
+        return tag.kb;
+    }
+
     tagFilter(tagId) {
         return tagFilter(tagId);
     }
@@ -482,6 +532,84 @@ function sha1(text) {
 function stableStringify(obj) {
     const keys = Object.keys(obj).sort();
     return JSON.stringify(obj, keys);
+}
+
+function tagDataHash(data) {
+    return sha1(String(data ?? '').trim());
+}
+
+function tagQuestionGenerationHash(tag, dataHash = tagDataHash(tag.data)) {
+    return sha1(
+        stableStringify({
+            tagId: String(tag._id),
+            dataHash,
+            promptVersion: TAG_QUESTION_PROMPT_VERSION,
+            promptSource: TAG_QUESTION_PROMPT_SOURCE,
+        })
+    );
+}
+
+function isCurrentTagKbCache(kb, dataHash, generationHash) {
+    return (
+        kb?.dataHash === dataHash &&
+        kb?.promptVersion === TAG_QUESTION_PROMPT_VERSION &&
+        kb?.generationHash === generationHash &&
+        hasValidGeneratedQuestionCache(kb.questions)
+    );
+}
+
+function hasValidGeneratedQuestionCache(questions) {
+    if (!Array.isArray(questions) || questions.length < 5 || questions.length > 8) return false;
+    return questions.every((question) => {
+        if (typeof question?.text !== 'string' || typeof question?.hash !== 'string') return false;
+        const text = question.text.replace(/\s+/g, ' ').trim();
+        return Boolean(text) && question.text === text && question.hash === sha1(text);
+    });
+}
+
+function buildTagQuestionMessages(tag) {
+    const tagId = String(tag._id);
+    const data = String(tag.data ?? '').trim();
+    return [
+        { role: 'system', content: TAG_QUESTION_SYSTEM_PROMPT },
+        {
+            role: 'user',
+            content:
+                'Generate 5 to 8 concise user questions that this support tag would help retrieve.\n' +
+                'The questions are retrieval scaffolding only and must not add facts beyond the tag data.\n' +
+                `Tag id: ${tagId}\n` +
+                `Tag data:\n${data}`,
+        },
+    ];
+}
+
+function parseGeneratedQuestionArray(content) {
+    let parsed;
+    try {
+        parsed = JSON.parse(String(content ?? '').trim());
+    } catch (err) {
+        throw new Error('Tag question generation must return a JSON array of strings');
+    }
+    if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== 'string')) {
+        throw new Error('Tag question generation must return a JSON array of strings');
+    }
+    return parsed;
+}
+
+function normalizeGeneratedQuestions(questions) {
+    const out = [];
+    const seen = new Set();
+    for (const question of questions) {
+        const text = question.replace(/\s+/g, ' ').trim().slice(0, 180);
+        if (!text) continue;
+        const key = text.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(text);
+        if (out.length === 8) break;
+    }
+    if (out.length < 5) throw new Error('Tag question generation returned fewer than 5 usable questions');
+    return out;
 }
 
 function metaOf(doc) {
