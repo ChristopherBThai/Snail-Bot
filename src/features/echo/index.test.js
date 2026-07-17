@@ -3,13 +3,6 @@ import { hasManagerAccess } from '../../discord/auth.js';
 import setupEcho from './index.js';
 
 const messageBuilder = {
-    OpenModes: {
-        Resume: 'resume'
-    },
-    SubmitResults: {
-        Cancelled: 'cancelled',
-        Submitted: 'submitted'
-    },
     start: vi.fn()
 };
 const route = setupEcho({ services: { messageBuilder } }).routes[0];
@@ -28,7 +21,7 @@ describe('echo command route', () => {
             options: [
                 {
                     name: 'channel',
-                    value: '222222222222222222'
+                    value: 'channel-id'
                 },
                 {
                     name: 'message',
@@ -39,9 +32,9 @@ describe('echo command route', () => {
 
         await route.handle(context);
 
-        expect(context.sendMessage).toHaveBeenCalledWith('222222222222222222', 'Hello there.');
+        expect(context.sendMessage).toHaveBeenCalledWith('channel-id', 'Hello there.');
         expect(context.respond).toHaveBeenCalledWith(
-            'Echoed message https://discord.com/channels/111111111111111111/222222222222222222/333333333333333333',
+            'Echoed message https://discord.com/channels/guild-id/channel-id/message-id',
             { ephemeral: true }
         );
     });
@@ -51,12 +44,14 @@ describe('echo command route', () => {
             options: [
                 {
                     name: 'channel',
-                    value: '222222222222222222'
+                    value: 'channel-id'
                 }
             ]
         });
-        const submission = createSubmission(context);
-        messageBuilder.start.mockResolvedValueOnce(submission);
+        messageBuilder.start.mockImplementationOnce(async (builderContext, options) => {
+            const result = await options.submit({ context: builderContext, message: 'compiled message' });
+            expect(result).toBe('Echoed message https://discord.com/channels/guild-id/channel-id/message-id');
+        });
 
         await route.handle(context);
 
@@ -64,88 +59,27 @@ describe('echo command route', () => {
             context,
             expect.objectContaining({
                 authorize: hasManagerAccess,
-                label: 'Send to <#222222222222222222>',
-                mode: messageBuilder.OpenModes.Resume,
+                label: 'Send to <#channel-id>',
+                submitError: 'Could not send that message.',
                 submitLabel: 'Send Message'
             })
         );
-        expect(context.sendMessage).toHaveBeenCalledWith('222222222222222222', submission.message);
-        expect(submission.confirm).toHaveBeenCalledWith(
-            'Echoed message https://discord.com/channels/111111111111111111/222222222222222222/333333333333333333'
-        );
-    });
-
-    test('waits for the next builder submission when builder send fails', async () => {
-        const sendMessage = vi.fn().mockRejectedValueOnce(new Error('Discord failed.')).mockResolvedValueOnce({
-            id: '333333333333333333',
-            channel_id: '222222222222222222'
-        });
-        const context = createContext({
-            options: [
-                {
-                    name: 'channel',
-                    value: '222222222222222222'
-                }
-            ],
-            sendMessage
-        });
-        const firstSubmission = createSubmission(context, { message: 'first compiled message' });
-        const secondSubmission = createSubmission(context, { message: 'second compiled message' });
-        firstSubmission.reject.mockResolvedValueOnce(secondSubmission);
-        messageBuilder.start.mockResolvedValueOnce(firstSubmission);
-
-        await route.handle(context);
-
-        expect(sendMessage).toHaveBeenNthCalledWith(1, '222222222222222222', firstSubmission.message);
-        expect(firstSubmission.reject).toHaveBeenCalledWith('Could not send that message.');
-        expect(sendMessage).toHaveBeenNthCalledWith(2, '222222222222222222', secondSubmission.message);
-        expect(secondSubmission.confirm).toHaveBeenCalledWith(
-            'Echoed message https://discord.com/channels/111111111111111111/222222222222222222/333333333333333333'
-        );
-        expect(firstSubmission.confirm).not.toHaveBeenCalled();
-    });
-
-    test('exits when Message Builder is superseded before submit', async () => {
-        const context = createContext({
-            options: [
-                {
-                    name: 'channel',
-                    value: '222222222222222222'
-                }
-            ]
-        });
-        messageBuilder.start.mockResolvedValueOnce({
-            type: messageBuilder.SubmitResults.Cancelled
-        });
-
-        await route.handle(context);
-
-        expect(context.sendMessage).not.toHaveBeenCalled();
+        expect(context.sendMessage).toHaveBeenCalledWith('channel-id', 'compiled message');
     });
 });
-
-function createSubmission(context, { message = 'compiled message' } = {}) {
-    return {
-        confirm: vi.fn(),
-        context,
-        message,
-        reject: vi.fn(),
-        type: messageBuilder.SubmitResults.Submitted
-    };
-}
 
 function createContext({ options, sendMessage } = {}) {
     return {
         data: {
             options
         },
-        guildId: '111111111111111111',
+        guildId: 'guild-id',
         respond: vi.fn(),
         sendMessage:
             sendMessage ??
             vi.fn(() => ({
-                id: '333333333333333333',
-                channel_id: '222222222222222222'
+                id: 'message-id',
+                channel_id: 'channel-id'
             }))
     };
 }

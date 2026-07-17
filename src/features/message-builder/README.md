@@ -66,48 +66,51 @@ Consumers call:
 services.messageBuilder.start(context, {
     label,
     submitLabel,
-    mode,
     components,
-    authorize
+    sourceMessage,
+    authorize,
+    submitError,
+    submit
 });
 ```
 
-`start` responds to the opening interaction with the builder display and controls. It resolves when the user submits the builder or when a newer builder session supersedes the active one.
+`start` responds to the opening interaction with the builder display and controls. It resolves after a successful submit action or when a newer builder session supersedes the active one.
 
 - `label` names the target being edited or sent to.
 - `submitLabel` names the final submit button.
-- `mode: services.messageBuilder.OpenModes.Resume` starts from the saved current draft when one exists.
-- `mode: services.messageBuilder.OpenModes.Replace` starts from supplied `components` or an empty draft.
+- `sourceMessage` opens an existing Discord message as the starting draft for edit flows.
+- `components` starts from supplied builder components.
 - `authorize` is re-checked for every builder interaction.
+- `submitError` is the user-facing message shown when `submit` throws.
+- `submit({ context, message })` performs the consumer-owned final action.
 
-Message Builder validates the draft before submit and only returns submitted results with a sendable Discord message payload.
+When no starting point is supplied, Message Builder resumes the user's saved current draft when one exists. Message Builder validates the draft before calling `submit`, and `message` is a sendable Discord message payload that already reflects the draft's mention toggle. If `sourceMessage` cannot be opened, `start` responds with a user-facing reason and resolves as cancelled.
 
-When the user submits, consumers receive:
+When `submit` succeeds, return the confirmation message:
+
+```js
+'Echoed message ...'
+```
+
+Message Builder closes the active session and updates the controller with that success message. If `submit` throws, Message Builder responds with `submitError` and keeps the session open for another submit. Success and error messages may be plain strings or Discord message payloads.
+
+When `start` resolves, consumers receive:
 
 ```js
 {
-    type: services.messageBuilder.SubmitResults.Submitted,
-    context,
-    message,
-    confirm,
-    reject
+    ok: true
 }
 ```
 
-- `context` is the submit interaction context.
-- `message` is the final Discord message payload. It already reflects the draft's mention toggle.
-- `confirm(text)` closes the submitted builder session when it is still active and updates the controller with success text.
-- `reject(text)` responds with an ephemeral error, keeps the builder session active, and resolves with the next builder result when the user submits again or opens a newer builder.
-
-When a newer builder session supersedes the active one, consumers receive:
+or, if a newer builder session supersedes the active one:
 
 ```js
 {
-    type: services.messageBuilder.SubmitResults.Cancelled
+    ok: false
 }
 ```
 
-The consumer owns the final action, such as sending, editing, or saving the returned message payload.
+The consumer owns the final action, such as sending, editing, or saving the returned message payload, but Message Builder owns the submit loop and close/error UI. Edit consumers pass the existing Discord message as `sourceMessage`; hydration reject reasons and draft internals stay owned by Message Builder.
 
 ## Persistence
 

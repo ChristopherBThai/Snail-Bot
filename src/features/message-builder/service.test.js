@@ -1,17 +1,15 @@
-import { describe, expect, test } from 'vitest';
-import { ButtonStyle, ComponentType, SeparatorSpacingSize } from '../../discord/components.js';
+import { describe, expect, test, vi } from 'vitest';
+import { ComponentType, SeparatorSpacingSize } from '../../discord/components.js';
 import {
     BuilderActions,
     BuilderComponentTypes,
     BuilderInputIds,
     BuilderRouteIds,
-    BuilderSubmitResults,
     MaxComponentsPerSelect,
     MaxLinkButtonLabelLength,
     MaxLinkButtonsPerRow,
     MaxMediaGalleryItems,
-    MaxRenderedComponents,
-    OpenModes
+    MaxRenderedComponents
 } from './constants.js';
 import { createMessageBuilder } from './service.js';
 
@@ -21,14 +19,11 @@ describe('Message Builder service contribution', () => {
         const firstContext = createContext();
 
         await openBuilder(builder, firstContext, {
-            components: [{ type: 'text', content: 'Saved draft' }],
-            mode: OpenModes.Replace
+            components: [{ type: 'text', content: 'Saved draft' }]
         });
 
         const secondContext = createContext();
-        await openBuilder(builder, secondContext, {
-            mode: OpenModes.Resume
-        });
+        await openBuilder(builder, secondContext);
 
         expect(secondContext.responses.at(-1).flags).toBeTruthy();
         expect(getTextDisplayContents(secondContext.responses.at(-1))).toContain('Saved draft');
@@ -58,145 +53,47 @@ describe('Message Builder service contribution', () => {
         });
         const context = createContext();
 
-        await openBuilder(builder, context, {
-            mode: OpenModes.Resume
-        });
+        await openBuilder(builder, context);
 
         expect(hasTextDisplayContaining(context.responses.at(-1), '*Draft preview is empty.*')).toBe(true);
         expect(getButtonByLabel(getCurrentControls(context), 'Mentions: Off')).toBeTruthy();
     });
 
-    test('hydrates editable Discord messages into builder drafts', () => {
+    test('starts from editable source messages without exposing hydration internals', async () => {
         const builder = createBuilder();
-        const result = builder.service.createDraftFromMessage(
-            {
-                content: 'Plain content',
-                components: [
-                    { type: ComponentType.TextDisplay, content: 'Text display' },
-                    { type: ComponentType.Separator },
-                    {
-                        type: ComponentType.ActionRow,
-                        components: [
-                            {
-                                type: ComponentType.Button,
-                                style: ButtonStyle.Link,
-                                label: 'Guide',
-                                url: 'https://example.com/guide'
-                            }
-                        ]
-                    },
-                    {
-                        type: ComponentType.Section,
-                        components: [{ type: ComponentType.TextDisplay, content: 'Section text' }],
-                        accessory: {
-                            type: ComponentType.Thumbnail,
-                            media: { url: 'https://example.com/thumb.png' },
-                            spoiler: true
-                        }
-                    },
-                    {
-                        type: ComponentType.MediaGallery,
-                        items: [{ media: { url: 'https://example.com/image.png' }, spoiler: true }]
-                    },
-                    {
-                        type: ComponentType.Container,
-                        accent_color: 0x5865f2,
-                        spoiler: true,
-                        components: [{ type: ComponentType.TextDisplay, content: 'Inside' }]
-                    }
-                ]
-            },
-            { ownerId: 'hydrate-user' }
-        );
+        const editableContext = createContext();
 
-        expect(result).toMatchObject({
-            ok: true,
-            draft: {
-                components: [
-                    { type: BuilderComponentTypes.Text, content: 'Plain content' },
-                    { type: BuilderComponentTypes.Text, content: 'Text display' },
-                    { type: BuilderComponentTypes.Separator, divider: undefined, spacing: undefined },
-                    {
-                        type: BuilderComponentTypes.LinkButtons,
-                        buttons: [{ label: 'Guide', url: 'https://example.com/guide' }]
-                    },
-                    {
-                        type: BuilderComponentTypes.Section,
-                        texts: ['Section text'],
-                        thumbnailSpoiler: true,
-                        thumbnailUrl: 'https://example.com/thumb.png'
-                    },
-                    {
-                        type: BuilderComponentTypes.MediaGallery,
-                        items: [{ spoiler: true, url: 'https://example.com/image.png' }]
-                    },
-                    {
-                        type: BuilderComponentTypes.Container,
-                        accentColor: 0x5865f2,
-                        spoiler: true,
-                        children: [{ type: BuilderComponentTypes.Text, content: 'Inside' }]
-                    }
-                ],
-                ownerId: 'hydrate-user',
-                selectedComponentPath: [0]
+        await openBuilder(builder, editableContext, {
+            sourceMessage: {
+                components: [{ type: ComponentType.TextDisplay, content: 'Editable text' }]
             }
         });
+
+        expect(hasTextDisplayContaining(editableContext.responses.at(-1), 'Editable text')).toBe(true);
     });
 
-    test('rejects unsupported Discord messages during hydration', () => {
+    test('cancels start with a user-facing message when a source message cannot be edited', async () => {
         const builder = createBuilder();
-        const reasons = builder.service.HydrationRejectReasons;
+        const context = createContext();
+        const { submission } = await openBuilder(builder, context, {
+            sourceMessage: { embeds: [{}] }
+        });
 
-        expect(builder.service.createDraftFromMessage({ embeds: [{}] }, { ownerId: 'hydrate-user' })).toEqual({
-            ok: false,
-            reason: reasons.Embeds
-        });
-        expect(
-            builder.service.createDraftFromMessage({ attachments: [{ id: '1' }] }, { ownerId: 'hydrate-user' })
-        ).toEqual({
-            ok: false,
-            reason: reasons.Attachments
-        });
-        expect(builder.service.createDraftFromMessage({ poll: { question: {} } }, { ownerId: 'hydrate-user' })).toEqual(
-            {
-                ok: false,
-                reason: reasons.UnsupportedContent
-            }
-        );
-        expect(
-            builder.service.createDraftFromMessage(
-                {
-                    components: [
-                        {
-                            type: ComponentType.ActionRow,
-                            components: [
-                                {
-                                    type: ComponentType.Button,
-                                    style: ButtonStyle.Secondary,
-                                    label: 'Nope',
-                                    custom_id: 'nope'
-                                }
-                            ]
-                        }
-                    ]
-                },
-                { ownerId: 'hydrate-user' }
-            )
-        ).toEqual({ ok: false, reason: reasons.UnsupportedComponent });
+        expect(context.responses.at(-1)).toBe('That message cannot be edited because it has embeds.');
+        expect(context.followupMessages).toHaveLength(0);
+        await expect(submission).resolves.toEqual({ ok: false });
     });
 
     test('supersedes stale controls', async () => {
         const builder = createBuilder();
         const firstContext = createContext();
-        const { submission } = await openBuilder(builder, firstContext, { mode: OpenModes.Replace });
+        const { submission } = await openBuilder(builder, firstContext);
         const staleCustomId = getAddComponentCustomId(getCurrentControls(firstContext));
 
         const secondContext = createContext();
-        await openBuilder(builder, secondContext, { mode: OpenModes.Replace });
+        await openBuilder(builder, secondContext);
 
-        await expect(submission).resolves.toEqual({
-            type: BuilderSubmitResults.Cancelled
-        });
+        await expect(submission).resolves.toEqual({ ok: false });
 
         const staleContext = createContext({
             customId: staleCustomId,
@@ -212,8 +109,7 @@ describe('Message Builder service contribution', () => {
         const builder = createBuilder();
         const context = createContext();
         await openBuilder(builder, context, {
-            authorize: () => false,
-            mode: OpenModes.Replace
+            authorize: () => false
         });
 
         const actionContext = createContext({
@@ -228,9 +124,7 @@ describe('Message Builder service contribution', () => {
     test('rejects interactions from another user', async () => {
         const builder = createBuilder();
         const context = createContext({ userId: 'owner-id' });
-        await openBuilder(builder, context, {
-            mode: OpenModes.Replace
-        });
+        await openBuilder(builder, context);
 
         const actionContext = createContext({
             customId: getAddComponentCustomId(getCurrentControls(context)),
@@ -246,7 +140,7 @@ describe('Message Builder service contribution', () => {
     test('adds and edits text components', async () => {
         const builder = createBuilder();
         const context = createContext();
-        await openBuilder(builder, context, { mode: OpenModes.Replace });
+        await openBuilder(builder, context);
 
         await chooseAddComponent(builder, context, BuilderActions.AddText);
         expect(context.openedModal.title).toBe('Text component');
@@ -301,7 +195,7 @@ describe('Message Builder service contribution', () => {
     test('sets link label input length', async () => {
         const builder = createBuilder();
         const context = createContext();
-        await openBuilder(builder, context, { mode: OpenModes.Replace });
+        await openBuilder(builder, context);
 
         await chooseAddComponent(builder, context, BuilderActions.AddLinkRow);
         const labelInput = getNestedComponents(context.openedModal).find(
@@ -314,7 +208,7 @@ describe('Message Builder service contribution', () => {
     test('disables or hides builder actions that are not currently available', async () => {
         const builder = createBuilder();
         const emptyContext = createContext();
-        await openBuilder(builder, emptyContext, { mode: OpenModes.Replace });
+        await openBuilder(builder, emptyContext);
 
         expect(getButtonByLabel(getCurrentControls(emptyContext), 'Clear draft').disabled).toBe(true);
         await chooseBuilderAction(builder, emptyContext, BuilderActions.ToggleMentions);
@@ -322,8 +216,7 @@ describe('Message Builder service contribution', () => {
 
         const fullContext = createContext();
         await openBuilder(builder, fullContext, {
-            components: Array.from({ length: MaxRenderedComponents }, () => ({ type: 'separator' })),
-            mode: OpenModes.Replace
+            components: Array.from({ length: MaxRenderedComponents }, () => ({ type: 'separator' }))
         });
 
         expect(hasCustomIdStartingWith(getCurrentControls(fullContext), BuilderRouteIds.AddComponent)).toBe(false);
@@ -333,8 +226,7 @@ describe('Message Builder service contribution', () => {
         const builder = createBuilder();
         const rootFullContext = createContext();
         await openBuilder(builder, rootFullContext, {
-            components: Array.from({ length: MaxComponentsPerSelect }, () => ({ type: 'separator' })),
-            mode: OpenModes.Replace
+            components: Array.from({ length: MaxComponentsPerSelect }, () => ({ type: 'separator' }))
         });
         await selectRoot(builder, rootFullContext);
 
@@ -348,8 +240,7 @@ describe('Message Builder service contribution', () => {
                     type: 'container',
                     children: Array.from({ length: 5 }, () => ({ type: 'separator' }))
                 }
-            ],
-            mode: OpenModes.Replace
+            ]
         });
         await selectComponent(builder, splitContext, String(MaxComponentsPerSelect - 1));
 
@@ -359,7 +250,7 @@ describe('Message Builder service contribution', () => {
     test('adds new components to the current parent', async () => {
         const builder = createBuilder();
         const context = createContext();
-        await openBuilder(builder, context, { mode: OpenModes.Replace });
+        await openBuilder(builder, context);
 
         await chooseAddComponent(builder, context, BuilderActions.AddContainer);
         await chooseAddComponent(builder, context, BuilderActions.AddSeparator);
@@ -397,7 +288,7 @@ describe('Message Builder service contribution', () => {
     test('adds, edits, spoilers, selects, and removes gallery images', async () => {
         const builder = createBuilder();
         const context = createContext();
-        await openBuilder(builder, context, { mode: OpenModes.Replace });
+        await openBuilder(builder, context);
 
         await chooseAddComponent(builder, context, BuilderActions.AddMediaGallery);
         const firstImageContext = createContext({
@@ -447,7 +338,7 @@ describe('Message Builder service contribution', () => {
     test('requires section thumbnails', async () => {
         const builder = createBuilder();
         const context = createContext();
-        await openBuilder(builder, context, { mode: OpenModes.Replace });
+        await openBuilder(builder, context);
 
         await chooseAddComponent(builder, context, BuilderActions.AddSection);
         const sectionContext = createContext({
@@ -468,7 +359,7 @@ describe('Message Builder service contribution', () => {
     test('uses component-specific edit controls', async () => {
         const builder = createBuilder();
         const context = createContext();
-        await openBuilder(builder, context, { mode: OpenModes.Replace });
+        await openBuilder(builder, context);
 
         await chooseAddComponent(builder, context, BuilderActions.AddText);
         const textContext = createContext({
@@ -534,7 +425,7 @@ describe('Message Builder service contribution', () => {
     test('adds and edits separator divider and spacing', async () => {
         const builder = createBuilder();
         const context = createContext();
-        await openBuilder(builder, context, { mode: OpenModes.Replace });
+        await openBuilder(builder, context);
 
         await chooseAddComponent(builder, context, BuilderActions.AddSeparator);
         const separatorContext = await saveSeparator(builder, context, {
@@ -568,7 +459,7 @@ describe('Message Builder service contribution', () => {
     test('adds, edits, selects, and removes link buttons', async () => {
         const builder = createBuilder();
         const context = createContext();
-        await openBuilder(builder, context, { mode: OpenModes.Replace });
+        await openBuilder(builder, context);
 
         await chooseAddComponent(builder, context, BuilderActions.AddLinkRow);
         const firstLinkContext = createContext({
@@ -615,7 +506,7 @@ describe('Message Builder service contribution', () => {
     test('limits link rows to five links', async () => {
         const builder = createBuilder();
         const context = createContext();
-        await openBuilder(builder, context, { mode: OpenModes.Replace });
+        await openBuilder(builder, context);
 
         await chooseAddComponent(builder, context, BuilderActions.AddLinkRow);
         let activeContext = createContext({
@@ -655,7 +546,7 @@ describe('Message Builder service contribution', () => {
     test('limits each image gallery to ten images', async () => {
         const builder = createBuilder();
         const context = createContext();
-        await openBuilder(builder, context, { mode: OpenModes.Replace });
+        await openBuilder(builder, context);
 
         await chooseAddComponent(builder, context, BuilderActions.AddMediaGallery);
         let activeContext = createContext({
@@ -692,9 +583,7 @@ describe('Message Builder service contribution', () => {
     test('rejects empty drafts on submit', async () => {
         const builder = createBuilder();
         const context = createContext();
-        const { submission } = await openBuilder(builder, context, {
-            mode: OpenModes.Replace
-        });
+        const { submission } = await openBuilder(builder, context);
 
         await chooseBuilderAction(builder, context, BuilderActions.Submit);
 
@@ -705,9 +594,8 @@ describe('Message Builder service contribution', () => {
     test('deactivates the session after successful submit', async () => {
         const builder = createBuilder();
         const context = createContext();
-        const { submission } = await openBuilder(builder, context, {
-            mode: OpenModes.Replace
-        });
+        const submit = vi.fn(async () => 'Submitted.');
+        const { submission } = await openBuilder(builder, context, { submit });
 
         await chooseAddComponent(builder, context, BuilderActions.AddText);
         await getRoute(builder, BuilderRouteIds.TextModal).handle(
@@ -722,11 +610,9 @@ describe('Message Builder service contribution', () => {
         await chooseBuilderAction(builder, context, BuilderActions.Submit);
 
         const result = await submission;
-        expect(result.type).toBe(BuilderSubmitResults.Submitted);
-        expect(result.context).toBe(context);
-        expect(hasTextDisplayContaining(result.message, 'Ready')).toBe(true);
-        await result.confirm('Submitted.');
-        expect(context.updatedMessages.at(-1).components[0].content).toBe('Submitted.');
+        expect(result).toEqual({ ok: true });
+        expect(hasTextDisplayContaining(submit.mock.calls[0][0].message, 'Ready')).toBe(true);
+        expect(context.updatedMessages.at(-1)).toBe('Submitted.');
 
         const expiredContext = createContext({
             customId: activeCustomId,
@@ -737,62 +623,59 @@ describe('Message Builder service contribution', () => {
         expect(expiredContext.responses.at(-1)).toBe('That Message Builder session has expired.');
 
         const resumedContext = createContext();
-        await openBuilder(builder, resumedContext, {
-            mode: OpenModes.Resume
-        });
+        await openBuilder(builder, resumedContext);
 
         expect(hasTextDisplayContaining(resumedContext.responses.at(-1), 'Ready')).toBe(true);
     });
 
-    test('re-arms submit after the consumer rejects a final action', async () => {
+    test('keeps the session open when the submit action fails', async () => {
         const builder = createBuilder();
         const context = createContext();
+        const submit = vi.fn().mockRejectedValueOnce(new Error('Discord failed.')).mockResolvedValueOnce('Submitted.');
         const { submission } = await openBuilder(builder, context, {
             components: [{ type: BuilderComponentTypes.Text, content: 'Ready' }],
-            mode: OpenModes.Replace
+            submitError: 'Try submitting again.',
+            submit
         });
 
         await chooseBuilderAction(builder, context, BuilderActions.Submit);
-        const firstResult = await submission;
-        expect(firstResult.type).toBe(BuilderSubmitResults.Submitted);
-
-        const nextSubmission = firstResult.reject('Try submitting again.');
 
         expect(context.responses.at(-1)).toBe('Try submitting again.');
-
-        await chooseBuilderAction(builder, context, BuilderActions.Submit);
-        const secondResult = await nextSubmission;
-
-        expect(secondResult.type).toBe(BuilderSubmitResults.Submitted);
-        expect(secondResult.context).toBe(context);
-        expect(hasTextDisplayContaining(secondResult.message, 'Ready')).toBe(true);
-    });
-
-    test('does not re-arm rejected submissions from superseded sessions', async () => {
-        const builder = createBuilder();
-        const context = createContext();
-        const { submission } = await openBuilder(builder, context, {
-            components: [{ type: BuilderComponentTypes.Text, content: 'Ready' }],
-            mode: OpenModes.Replace
-        });
+        await expectPromisePending(submission);
 
         await chooseBuilderAction(builder, context, BuilderActions.Submit);
         const result = await submission;
 
-        const nextContext = createContext();
-        await openBuilder(builder, nextContext, { mode: OpenModes.Replace });
+        expect(result).toEqual({ ok: true });
+        expect(submit).toHaveBeenCalledTimes(2);
+        expect(hasTextDisplayContaining(submit.mock.calls[1][0].message, 'Ready')).toBe(true);
+    });
 
-        await expect(result.reject('Try submitting again.')).resolves.toEqual({
-            type: BuilderSubmitResults.Cancelled
+    test('cancels in-flight submits from superseded sessions', async () => {
+        const builder = createBuilder();
+        const context = createContext();
+        const deferredSubmit = createDeferred();
+        const { submission } = await openBuilder(builder, context, {
+            components: [{ type: BuilderComponentTypes.Text, content: 'Ready' }],
+            submit: () => deferredSubmit.promise
         });
+
+        const submitAction = chooseBuilderAction(builder, context, BuilderActions.Submit);
+        await Promise.resolve();
+
+        const nextContext = createContext();
+        await openBuilder(builder, nextContext);
+        deferredSubmit.resolve('Submitted.');
+
+        await submitAction;
+        await expect(submission).resolves.toEqual({ ok: false });
     });
 
     test('toggles mention behavior and persists the draft setting', async () => {
         const builder = createBuilder();
         const context = createContext();
         await openBuilder(builder, context, {
-            components: [{ type: BuilderComponentTypes.Text, content: 'Hello <@123456789012345678>' }],
-            mode: OpenModes.Replace
+            components: [{ type: BuilderComponentTypes.Text, content: 'Hello <@123456789012345678>' }]
         });
 
         expect(getButtonByLabel(getCurrentControls(context), 'Mentions: Off')).toBeTruthy();
@@ -802,32 +685,45 @@ describe('Message Builder service contribution', () => {
         expect(getButtonByLabel(getCurrentControls(context), 'Mentions: On')).toBeTruthy();
 
         const resumedContext = createContext();
+        let submittedContext;
+        let submittedMessage;
         const { submission } = await openBuilder(builder, resumedContext, {
-            mode: OpenModes.Resume
+            async submit({ context: submitContext, message }) {
+                submittedContext = submitContext;
+                submittedMessage = message;
+                return 'Submitted.';
+            }
         });
 
         expect(getButtonByLabel(getCurrentControls(resumedContext), 'Mentions: On')).toBeTruthy();
-
         await chooseBuilderAction(builder, resumedContext, BuilderActions.Submit);
 
         const result = await submission;
-        expect(result.context).toBe(resumedContext);
-        expect(result.message).not.toEqual(expect.objectContaining({ allowed_mentions: { parse: [] } }));
+        expect(result).toEqual({ ok: true });
+        expect(submittedContext).toBe(resumedContext);
+        expect(submittedMessage).not.toEqual(expect.objectContaining({ allowed_mentions: { parse: [] } }));
     });
 
     test('compiled submit messages suppress mentions by default', async () => {
         const builder = createBuilder();
         const context = createContext();
+        let submittedContext;
+        let submittedMessage;
         const { submission } = await openBuilder(builder, context, {
             components: [{ type: BuilderComponentTypes.Text, content: 'Hello <@123456789012345678>' }],
-            mode: OpenModes.Replace
+            async submit({ context: submitContext, message }) {
+                submittedContext = submitContext;
+                submittedMessage = message;
+                return 'Submitted.';
+            }
         });
 
         await chooseBuilderAction(builder, context, BuilderActions.Submit);
 
         const result = await submission;
-        expect(result.context).toBe(context);
-        expect(result.message).toEqual(
+        expect(result).toEqual({ ok: true });
+        expect(submittedContext).toBe(context);
+        expect(submittedMessage).toEqual(
             expect.objectContaining({
                 allowed_mentions: { parse: [] }
             })
@@ -837,9 +733,7 @@ describe('Message Builder service contribution', () => {
     test('clear saves an empty current draft', async () => {
         const builder = createBuilder();
         const context = createContext();
-        await openBuilder(builder, context, {
-            mode: OpenModes.Replace
-        });
+        await openBuilder(builder, context);
         await chooseBuilderAction(builder, context, BuilderActions.ToggleMentions);
 
         await chooseAddComponent(builder, context, BuilderActions.AddText);
@@ -854,9 +748,7 @@ describe('Message Builder service contribution', () => {
         await chooseBuilderAction(builder, context, BuilderActions.Clear);
 
         const resumedContext = createContext();
-        await openBuilder(builder, resumedContext, {
-            mode: OpenModes.Resume
-        });
+        await openBuilder(builder, resumedContext);
 
         expect(hasTextDisplayContaining(resumedContext.responses.at(-1), '*Draft preview is empty.*')).toBe(true);
         expect(getButtonByLabel(getCurrentControls(resumedContext), 'Mentions: Off')).toBeTruthy();
@@ -865,7 +757,7 @@ describe('Message Builder service contribution', () => {
     test('edits container spoiler settings', async () => {
         const builder = createBuilder();
         const context = createContext();
-        await openBuilder(builder, context, { mode: OpenModes.Replace });
+        await openBuilder(builder, context);
 
         await chooseAddComponent(builder, context, BuilderActions.AddContainer);
         await chooseBuilderAction(builder, context, BuilderActions.EditContainer);
@@ -905,8 +797,7 @@ describe('Message Builder service contribution', () => {
         const builder = createBuilder();
         const context = createContext();
         const { submission } = await openBuilder(builder, context, {
-            components: [{ type: 'container', children: [] }],
-            mode: OpenModes.Replace
+            components: [{ type: 'container', children: [] }]
         });
 
         await chooseBuilderAction(builder, context, BuilderActions.Submit);
@@ -919,8 +810,7 @@ describe('Message Builder service contribution', () => {
         const builder = createBuilder();
         const context = createContext();
         const { submission } = await openBuilder(builder, context, {
-            components: [{ type: 'link_buttons', buttons: [] }],
-            mode: OpenModes.Replace
+            components: [{ type: 'link_buttons', buttons: [] }]
         });
 
         await chooseBuilderAction(builder, context, BuilderActions.Submit);
@@ -941,8 +831,7 @@ describe('Message Builder service contribution', () => {
                         url: `https://example.com/${index + 1}`
                     }))
                 }
-            ],
-            mode: OpenModes.Replace
+            ]
         });
 
         await chooseBuilderAction(builder, context, BuilderActions.Submit);
@@ -962,8 +851,7 @@ describe('Message Builder service contribution', () => {
                         url: `https://example.com/${index + 1}.png`
                     }))
                 }
-            ],
-            mode: OpenModes.Replace
+            ]
         });
 
         await chooseBuilderAction(builder, context, BuilderActions.Submit);
@@ -976,8 +864,7 @@ describe('Message Builder service contribution', () => {
         const builder = createBuilder();
         const context = createContext();
         const { submission } = await openBuilder(builder, context, {
-            components: [{ type: 'media_gallery', items: [] }],
-            mode: OpenModes.Replace
+            components: [{ type: 'media_gallery', items: [] }]
         });
 
         await chooseBuilderAction(builder, context, BuilderActions.Submit);
@@ -997,14 +884,23 @@ async function chooseAddComponent(builder, context, action) {
     await getRoute(builder, BuilderRouteIds.AddComponent).handle(context);
 }
 
-async function openBuilder(builder, context, options) {
-    const submission = builder.service.start(context, options);
+async function openBuilder(builder, context, options = {}) {
+    const submission = builder.service.start(context, {
+        submit: async () => 'Submitted.',
+        submitError: 'Submit failed.',
+        ...options
+    });
 
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await waitForBuilderOpen();
 
     return { submission };
+}
+
+async function waitForBuilderOpen() {
+    // start returns the pending submit result while the initial display and controls open asynchronously.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
 }
 
 async function expectPromisePending(promise) {
@@ -1012,6 +908,18 @@ async function expectPromisePending(promise) {
     const result = await Promise.race([promise, Promise.resolve(pending)]);
 
     expect(result).toBe(pending);
+}
+
+function createDeferred() {
+    let resolve;
+    const promise = new Promise((resolvePromise) => {
+        resolve = resolvePromise;
+    });
+
+    return {
+        promise,
+        resolve
+    };
 }
 
 async function saveSeparator(builder, context, modalValues = {}) {

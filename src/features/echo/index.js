@@ -35,32 +35,21 @@ export default function setupEcho({ services }) {
                     const message = getCommandOptionValue(context, 'message').trim();
 
                     if (!message) {
-                        let result = await services.messageBuilder.start(context, {
+                        await services.messageBuilder.start(context, {
                             authorize: hasManagerAccess,
                             label: `Send to <#${channelId}>`,
-                            mode: services.messageBuilder.OpenModes.Resume,
+                            submitError: 'Could not send that message.',
+                            async submit({ context: submitContext, message: builtMessage }) {
+                                const sentMessage = await submitContext.sendMessage(channelId, builtMessage);
+
+                                return `Echoed message ${getMessageJumpLink({
+                                    channelId: sentMessage.channel_id,
+                                    guildId: submitContext.guildId,
+                                    messageId: sentMessage.id
+                                })}`;
+                            },
                             submitLabel: 'Send Message'
                         });
-
-                        while (result.type === services.messageBuilder.SubmitResults.Submitted) {
-                            let sentMessage;
-                            try {
-                                sentMessage = await result.context.sendMessage(channelId, result.message);
-                            } catch {
-                                result = await result.reject('Could not send that message.');
-                                continue;
-                            }
-
-                            await result.confirm(
-                                `Echoed message ${getMessageJumpLink({
-                                    channelId: sentMessage.channel_id,
-                                    guildId: result.context.guildId,
-                                    messageId: sentMessage.id
-                                })}`
-                            );
-                            return;
-                        }
-
                         return;
                     }
 

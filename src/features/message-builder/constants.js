@@ -63,16 +63,6 @@ export const BuilderInputIds = Object.freeze({
     Text: 'message_builder:text'
 });
 
-export const OpenModes = Object.freeze({
-    Replace: 'replace',
-    Resume: 'resume'
-});
-
-export const BuilderSubmitResults = Object.freeze({
-    Cancelled: 'cancelled',
-    Submitted: 'submitted'
-});
-
 export const OperationResults = Object.freeze({
     Full: 'full',
     Ok: 'ok',

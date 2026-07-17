@@ -1,14 +1,12 @@
-import { componentsMessage, SeparatorSpacingSize, textDisplay } from '../../discord/components.js';
+import { SeparatorSpacingSize } from '../../discord/components.js';
 import {
     BuilderActions,
     BuilderComponentTypes,
     BuilderInputIds,
     BuilderRouteIds,
-    BuilderSubmitResults,
     MaxLinkButtonLabelLength,
     MaxLinkButtonsPerRow,
     MaxMediaGalleryItems,
-    OpenModes,
     OperationResults
 } from './constants.js';
 import { createDraftFromMessage, HydrationRejectReasons } from './hydrate.js';
@@ -54,9 +52,7 @@ export function createMessageBuilder({ draftRepository }) {
 
     return {
         service: Object.freeze({
-            OpenModes,
-            SubmitResults: BuilderSubmitResults,
-            start(context, options) {
+            start(context, options = {}) {
                 return startBuilder({
                     activeSessions,
                     context,
@@ -68,9 +64,7 @@ export function createMessageBuilder({ draftRepository }) {
                     draftRepository,
                     options
                 });
-            },
-            createDraftFromMessage,
-            HydrationRejectReasons
+            }
         }),
         routes: [
             {
@@ -188,15 +182,29 @@ async function initializeBuilder({
     options,
     pendingResult
 }) {
-    const savedDraft = options.mode === OpenModes.Resume ? await draftRepository.load(context.userId) : undefined;
+    const sessionId = createSessionId();
+    const sourceDraft = options.sourceMessage
+        ? createDraftFromMessage(options.sourceMessage, { ownerId: context.userId, sessionId })
+        : undefined;
+
+    if (sourceDraft && !sourceDraft.ok) {
+        await context.respond(formatHydrationRejectReason(sourceDraft.reason), { ephemeral: true });
+        pendingResult.resolve(createCancelledResult());
+        return;
+    }
+
+    const savedDraft =
+        !sourceDraft && !Object.hasOwn(options, 'components') ? await draftRepository.load(context.userId) : undefined;
     const resumableDraft = savedDraft && validateRenderableDraft(savedDraft).ok ? savedDraft : undefined;
-    const draft = resumableDraft
-        ? createDraft({ ...resumableDraft, sessionId: createSessionId() })
-        : createDraft({
-              components: options.components ?? [],
-              ownerId: context.userId,
-              sessionId: createSessionId()
-          });
+    const draft =
+        sourceDraft?.draft ??
+        (resumableDraft
+            ? createDraft({ ...resumableDraft, sessionId })
+            : createDraft({
+                  components: options.components ?? [],
+                  ownerId: context.userId,
+                  sessionId
+              }));
     const session = {
         authorize: options.authorize,
         colors: context.config.colors,
@@ -205,6 +213,8 @@ async function initializeBuilder({
         label: options.label ?? 'Draft',
         pendingResult,
         submitting: false,
+        submit: options.submit,
+        submitError: options.submitError,
         submitLabel: options.submitLabel ?? 'Submit'
     };
 
@@ -721,29 +731,36 @@ async function submitSession({ activeSessions, context, session }) {
     }
 
     session.submitting = true;
-    session.pendingResult.resolve({
-        type: BuilderSubmitResults.Submitted,
-        context,
-        message: buildCompiledMessage(session.draft.components, {
-            suppressMentions: !session.draft.allowMentions
-        }),
-        async confirm(message) {
-            if (activeSessions.get(context.userId) === session) {
-                activeSessions.delete(context.userId);
-            }
-            await context.updateMessage(componentsMessage([textDisplay(message)], { ephemeral: true }));
-        },
-        async reject(message) {
-            if (session.cancelled || activeSessions.get(context.userId) !== session) {
-                return createCancelledResult();
-            }
+    const message = buildCompiledMessage(session.draft.components, {
+        suppressMentions: !session.draft.allowMentions
+    });
+    let successMessage;
 
-            const nextResult = createPendingBuilderResult();
-            session.pendingResult = nextResult;
-            session.submitting = false;
-            await context.respond(message, { ephemeral: true });
-            return nextResult.promise;
+    try {
+        successMessage = await session.submit({
+            context,
+            message
+        });
+    } catch {
+        if (session.cancelled || activeSessions.get(context.userId) !== session) {
+            session.pendingResult.resolve(createCancelledResult());
+            return;
         }
+
+        session.submitting = false;
+        await context.respond(session.submitError, { ephemeral: true });
+        return;
+    }
+
+    if (session.cancelled || activeSessions.get(context.userId) !== session) {
+        session.pendingResult.resolve(createCancelledResult());
+        return;
+    }
+
+    activeSessions.delete(context.userId);
+    await context.updateMessage(successMessage);
+    session.pendingResult.resolve({
+        ok: true
     });
 }
 
@@ -776,8 +793,28 @@ function createPendingBuilderResult() {
 
 function createCancelledResult() {
     return {
-        type: BuilderSubmitResults.Cancelled
+        ok: false
     };
+}
+
+function formatHydrationRejectReason(reason) {
+    if (reason === HydrationRejectReasons.Attachments) {
+        return 'That message cannot be edited because it has attachments.';
+    }
+
+    if (reason === HydrationRejectReasons.Embeds) {
+        return 'That message cannot be edited because it has embeds.';
+    }
+
+    if (reason === HydrationRejectReasons.UnsupportedContent) {
+        return 'That message cannot be edited because it has unsupported message content.';
+    }
+
+    if (reason === HydrationRejectReasons.TooComplex) {
+        return 'That message has more editable components than Message Builder supports.';
+    }
+
+    return 'That message cannot be edited because it uses unsupported components.';
 }
 
 async function refreshBuilderMessages(context, session) {
