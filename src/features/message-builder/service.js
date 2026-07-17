@@ -205,7 +205,12 @@ async function initializeBuilder({
                   ownerId: context.userId,
                   sessionId
               }));
+    const allowMentions = options.allowMentions !== false;
+    if (!allowMentions) {
+        draft.allowMentions = false;
+    }
     const session = {
+        allowMentions,
         authorize: options.authorize,
         colors: context.config.colors,
         displayToken: context.interaction.token,
@@ -336,6 +341,11 @@ async function handleBuilderAction({ activeSessions, context, draftRepository })
     }
 
     if (action === BuilderActions.ToggleMentions) {
+        if (!session.allowMentions) {
+            await context.respond('Mentions are disabled for this builder.', { ephemeral: true });
+            return;
+        }
+
         await applyOperationResult({
             context,
             draftRepository,
@@ -732,7 +742,7 @@ async function submitSession({ activeSessions, context, session }) {
 
     session.submitting = true;
     const message = buildCompiledMessage(session.draft.components, {
-        suppressMentions: !session.draft.allowMentions
+        suppressMentions: !session.allowMentions || !session.draft.allowMentions
     });
     let successMessage;
 

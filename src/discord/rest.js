@@ -59,6 +59,20 @@ export function createDiscordRest(config, { logger }) {
                 })
             );
         },
+        autocomplete(interaction, choices) {
+            return request('autocomplete_response.failed', () =>
+                rest.post(rest.routes.interactions.responses.callback(interaction.id, interaction.token), {
+                    body: {
+                        type: InteractionResponseType.ApplicationCommandAutocompleteResult,
+                        data: {
+                            choices
+                        }
+                    },
+                    runThroughQueue: false,
+                    unauthorized: true
+                })
+            );
+        },
         sendMessage(channelId, message) {
             return request('channel_message_send.failed', () =>
                 rest.post(rest.routes.channels.messages(channelId), {

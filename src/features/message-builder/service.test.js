@@ -730,6 +730,40 @@ describe('Message Builder service contribution', () => {
         );
     });
 
+    test('sessions that do not allow mentions force mentions off', async () => {
+        const builder = createBuilder({
+            drafts: [
+                [
+                    'user-id',
+                    {
+                        allowMentions: true,
+                        components: [{ type: BuilderComponentTypes.Text, content: 'Hello <@123456789012345678>' }],
+                        ownerId: 'user-id'
+                    }
+                ]
+            ]
+        });
+        const context = createContext();
+        let submittedMessage;
+        const { submission } = await openBuilder(builder, context, {
+            allowMentions: false,
+            async submit({ message }) {
+                submittedMessage = message;
+                return 'Submitted.';
+            }
+        });
+
+        expect(getButtonByLabel(getCurrentControls(context), 'Mentions: Off').disabled).toBe(true);
+        await chooseBuilderAction(builder, context, BuilderActions.Submit);
+
+        await expect(submission).resolves.toEqual({ ok: true });
+        expect(submittedMessage).toEqual(
+            expect.objectContaining({
+                allowed_mentions: { parse: [] }
+            })
+        );
+    });
+
     test('clear saves an empty current draft', async () => {
         const builder = createBuilder();
         const context = createContext();

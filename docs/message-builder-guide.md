@@ -5,6 +5,8 @@ Message Builder lets staff make polished Discord messages without writing JSON. 
 ## Open It
 
 - Use `/echo` without filling in the message option to build and send a new message to the selected channel.
+- Use `/tag-manage create` without filling in the message option to build and save a tag.
+- Use `/tag-manage edit` without filling in the message option to update a tag.
 - Right-click a Snail message, choose Apps, then choose `edit` to update that message in Message Builder.
 
 Only you can use your builder controls. If you open Message Builder again, the newest builder replaces the old one.
@@ -46,11 +48,15 @@ The preview does not ping anyone. Mentions are off by default for the final mess
 
 Use the Mentions button in Finish Builder if the final sent or edited message should allow pings.
 
+Some builders, such as tag create/edit, keep mentions locked off. When mentions are locked, the Mentions button is disabled.
+
 ## Submit
 
 Use Submit when the preview looks right.
 
 - For `/echo`, Submit sends the built message to the selected channel.
+- For tag create, Submit creates the tag.
+- For tag edit, Submit updates the tag.
 - For `edit`, Submit updates the selected Snail message.
 
 If something fails, Message Builder keeps your draft open so you can try again.
@@ -74,6 +80,7 @@ It cannot edit messages with embeds, attachments, stickers, polls, interactive b
 ## Tips
 
 - Keep public messages short enough to scan.
+- Keep support tags short enough to scan.
 - Use containers to group related information.
 - Use link buttons for forms, guides, and sources.
 - Use image galleries only when the images add useful context.

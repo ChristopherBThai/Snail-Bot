@@ -66,6 +66,7 @@ Consumers call:
 services.messageBuilder.start(context, {
     label,
     submitLabel,
+    allowMentions,
     components,
     sourceMessage,
     authorize,
@@ -78,6 +79,7 @@ services.messageBuilder.start(context, {
 
 - `label` names the target being edited or sent to.
 - `submitLabel` names the final submit button.
+- `allowMentions: false` forces mentions off and disables the mention toggle for sessions where the final message must never ping.
 - `sourceMessage` opens an existing Discord message as the starting draft for edit flows.
 - `components` starts from supplied builder components.
 - `authorize` is re-checked for every builder interaction.

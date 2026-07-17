@@ -1,4 +1,6 @@
 import mongoose from 'mongoose';
+import { createChannelModel } from './channel.js';
+import { createTagModel } from './tag.js';
 import { createUserModel } from './user.js';
 
 export async function connectSnailMongo(uri) {
@@ -11,6 +13,8 @@ export async function connectSnailMongo(uri) {
     return {
         connection,
         models: {
+            Channel: createChannelModel(connection),
+            Tag: createTagModel(connection),
             User: createUserModel(connection)
         }
     };

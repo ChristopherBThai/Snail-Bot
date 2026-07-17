@@ -7,10 +7,20 @@ const ROUTE_ID_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*:[a-z][a-z0-9]*(?:_[a-z0
 
 describe('createRegistry', () => {
     const context = {
+        config: {
+            colors: {
+                ui: {
+                    primary: 0x5865f2,
+                    warning: 0xfee75c
+                }
+            }
+        },
         databases: {
             snail: {
                 mongo: {
                     models: {
+                        Channel: {},
+                        Tag: {},
                         User: {}
                     }
                 }
@@ -121,6 +131,16 @@ describe('createRegistry', () => {
         expect(new Set(commandNames).size).toBe(commandNames.length);
     });
 
+    test('keeps autocomplete command routes complete', () => {
+        const registry = createRegistry(context);
+
+        for (const route of registry.routes.commandRoutes()) {
+            if (hasAutocompleteOption(route.command.options ?? [])) {
+                expect(route.autocomplete).toEqual(expect.any(Function));
+            }
+        }
+    });
+
     test('resolves command routes by Discord command name', () => {
         const registry = createRegistry(context);
 
@@ -175,4 +195,8 @@ function getOverlappingPrefixPairs(prefixes) {
             .filter((candidate) => prefix.startsWith(candidate) || candidate.startsWith(prefix))
             .map((candidate) => [prefix, candidate])
     );
+}
+
+function hasAutocompleteOption(options) {
+    return options.some((option) => option.autocomplete === true || hasAutocompleteOption(option.options ?? []));
 }

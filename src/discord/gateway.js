@@ -30,6 +30,10 @@ export async function startGateway({ config, logger, routes, rest }) {
                         interactionType: interaction.type,
                         commandName: interaction.data?.name
                     });
+                    if (interaction.type === InteractionType.ApplicationCommandAutocomplete) {
+                        await rest.autocomplete(interaction, []);
+                        return;
+                    }
                     await respondWithErrorMessage({
                         interaction,
                         logger,
@@ -49,12 +53,21 @@ export async function startGateway({ config, logger, routes, rest }) {
                             routeId: route.id,
                             userId: context.userId
                         });
+                        if (interaction.type === InteractionType.ApplicationCommandAutocomplete) {
+                            await rest.autocomplete(interaction, []);
+                            return;
+                        }
                         await respondWithErrorMessage({
                             interaction,
                             logger,
                             rest,
                             content: 'You do not have permission to use that command.'
                         });
+                        return;
+                    }
+
+                    if (interaction.type === InteractionType.ApplicationCommandAutocomplete) {
+                        await rest.autocomplete(interaction, await route.autocomplete(context));
                         return;
                     }
 
@@ -140,6 +153,9 @@ function createInteractionContext({ config, interaction, rest }) {
         },
         respond(message, options) {
             return rest.respond(interaction, message, options);
+        },
+        autocomplete(choices) {
+            return rest.autocomplete(interaction, choices);
         }
     });
 }
@@ -154,7 +170,10 @@ function getInteractionTarget(data) {
 }
 
 function getInteractionRoute(routes, interaction) {
-    if (interaction.type === InteractionType.ApplicationCommand) {
+    if (
+        interaction.type === InteractionType.ApplicationCommand ||
+        interaction.type === InteractionType.ApplicationCommandAutocomplete
+    ) {
         return routes.getCommand(interaction.data?.name);
     }
 

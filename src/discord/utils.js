@@ -4,6 +4,24 @@ export function getCommandOptionValue(context, optionName) {
     return String(option?.value ?? '');
 }
 
+export function getSubcommand(context) {
+    return context.data.options?.[0];
+}
+
+export function getSubcommandOption(context, optionName) {
+    return getSubcommand(context)?.options?.find((candidate) => candidate.name === optionName);
+}
+
+export function getSubcommandOptionValue(context, optionName) {
+    const option = getSubcommandOption(context, optionName);
+
+    return option?.value === undefined ? '' : String(option.value);
+}
+
+export function getFocusedSubcommandOption(context) {
+    return getSubcommand(context)?.options?.find((option) => option.focused);
+}
+
 export function getMessageJumpLink({ channelId, guildId, messageId }) {
     return `https://discord.com/channels/${guildId}/${channelId}/${messageId}`;
 }

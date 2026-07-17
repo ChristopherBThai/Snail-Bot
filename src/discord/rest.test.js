@@ -268,6 +268,30 @@ describe('createDiscordRest', () => {
         });
     });
 
+    test('responds to autocomplete interactions with choices', async () => {
+        discordenoRest.post.mockResolvedValueOnce(undefined);
+
+        const rest = createDiscordRest(config, { logger });
+        const interaction = {
+            id: 'interaction-id',
+            token: 'interaction-token'
+        };
+        const choices = [{ name: 'rules', value: 'rules' }];
+
+        await rest.autocomplete(interaction, choices);
+
+        expect(discordenoRest.post).toHaveBeenCalledWith('interaction-callback-route', {
+            body: {
+                type: InteractionResponseType.ApplicationCommandAutocompleteResult,
+                data: {
+                    choices
+                }
+            },
+            runThroughQueue: false,
+            unauthorized: true
+        });
+    });
+
     test('sends string messages through the channel message collection route', async () => {
         discordenoRest.post.mockResolvedValueOnce(undefined);
 

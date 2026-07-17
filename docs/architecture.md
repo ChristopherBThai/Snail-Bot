@@ -154,6 +154,8 @@ As each route kind is implemented, the router owns the relevant generic routing 
 - interaction context creation
 - generic error responses and logging
 
+Autocomplete interactions must always receive an autocomplete result payload. If an autocomplete interaction has no route, is unauthorized, or otherwise needs a generic rejection before a feature handler runs, the gateway should return an empty choices list instead of trying to send a normal ephemeral message response.
+
 Do not add runtime support for a route kind until the full path exists for that kind: registry indexing, Discord sync when applicable, gateway dispatch, focused tests, and docs.
 
 The owning feature owns product decisions and user-facing workflow behavior.

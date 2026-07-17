@@ -246,6 +246,38 @@ describe('startGateway', () => {
         );
     });
 
+    test('dispatches autocomplete routes with choices', async () => {
+        const autocomplete = vi.fn(() => [{ name: 'rules', value: 'rules' }]);
+        const { emitGatewayMessage, rest } = await startGatewayForTest({
+            routes: {
+                getCommand(commandName) {
+                    return commandName === 'tag'
+                        ? {
+                              id: 'tag:command',
+                              autocomplete,
+                              handle: vi.fn()
+                          }
+                        : undefined;
+                }
+            }
+        });
+        const interaction = {
+            id: 'interaction-id',
+            type: InteractionType.ApplicationCommandAutocomplete,
+            data: {
+                name: 'tag'
+            }
+        };
+
+        await emitGatewayMessage({
+            t: GatewayDispatchEvents.InteractionCreate,
+            d: interaction
+        });
+
+        expect(autocomplete).toHaveBeenCalledWith(expect.objectContaining({ commandName: 'tag' }));
+        expect(rest.autocomplete).toHaveBeenCalledWith(interaction, [{ name: 'rules', value: 'rules' }]);
+    });
+
     test('rejects unauthorized routes before calling the handler', async () => {
         const handle = vi.fn();
         const authorize = vi.fn(() => false);
@@ -523,6 +555,7 @@ function createRoutesStub() {
 function createRestStub() {
     return {
         addMemberRole: vi.fn(),
+        autocomplete: vi.fn(),
         createFollowupMessage: vi.fn(),
         editFollowupMessage: vi.fn(),
         editMessage: vi.fn(),

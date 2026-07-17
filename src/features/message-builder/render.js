@@ -558,6 +558,7 @@ function buildFinishControls(session) {
         textDisplay('### Finish Builder'),
         buildActionRow(session, [
             {
+                disabled: !session.allowMentions,
                 label: session.draft.allowMentions ? 'Mentions: On' : 'Mentions: Off',
                 style: session.draft.allowMentions ? ButtonStyle.Success : ButtonStyle.Secondary,
                 value: BuilderActions.ToggleMentions

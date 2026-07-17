@@ -4,8 +4,9 @@ import edit from '../features/edit/index.js';
 import messageBuilder from '../features/message-builder/index.js';
 import nick from '../features/nick/index.js';
 import snail from '../features/snail/index.js';
+import tags from '../features/tag/index.js';
 
-export const PACKAGE_REGISTRY = Object.freeze([snail, nick, afk, messageBuilder, echo, edit]);
+export const PACKAGE_REGISTRY = Object.freeze([snail, nick, afk, messageBuilder, echo, edit, tags]);
 
 export function createRegistry(context) {
     const services = {};
