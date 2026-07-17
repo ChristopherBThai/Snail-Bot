@@ -77,9 +77,171 @@ describe('startGateway', () => {
                 data: payload.d.data,
                 interaction: payload.d,
                 addMemberRole: expect.any(Function),
+                createFollowupMessage: expect.any(Function),
+                customId: undefined,
+                applicationId: undefined,
+                editFollowupMessage: expect.any(Function),
+                editMessage: expect.any(Function),
+                editOriginalResponse: expect.any(Function),
                 editBotNickname: expect.any(Function),
+                modalValues: {},
+                values: [],
+                openModal: expect.any(Function),
                 removeMemberRole: expect.any(Function),
+                sendMessage: expect.any(Function),
+                target: {
+                    id: undefined,
+                    member: undefined,
+                    message: undefined,
+                    user: undefined
+                },
+                updateMessage: expect.any(Function),
                 respond: expect.any(Function)
+            })
+        );
+    });
+
+    test('dispatches component routes', async () => {
+        const handle = vi.fn();
+        const { emitGatewayMessage } = await startGatewayForTest({
+            routes: {
+                getComponent(customId) {
+                    return customId === 'message_builder:action:session-id'
+                        ? {
+                              id: 'message_builder:action',
+                              handle
+                          }
+                        : undefined;
+                }
+            }
+        });
+        const payload = {
+            t: GatewayDispatchEvents.InteractionCreate,
+            d: {
+                id: 'interaction-id',
+                type: InteractionType.MessageComponent,
+                data: {
+                    custom_id: 'message_builder:action:session-id',
+                    values: ['add_text']
+                }
+            }
+        };
+
+        await emitGatewayMessage(payload);
+
+        expect(handle).toHaveBeenCalledWith(
+            expect.objectContaining({
+                customId: 'message_builder:action:session-id',
+                values: ['add_text']
+            })
+        );
+    });
+
+    test('exposes message context command targets', async () => {
+        const handle = vi.fn();
+        const { emitGatewayMessage } = await startGatewayForTest({
+            config: {
+                discord: {
+                    applicationId: 'application-id',
+                    token: 'token'
+                }
+            },
+            routes: {
+                getCommand(commandName) {
+                    return commandName === 'edit'
+                        ? {
+                              id: 'edit:command',
+                              handle
+                          }
+                        : undefined;
+                }
+            }
+        });
+        const message = {
+            id: 'message-id',
+            content: 'Editable'
+        };
+
+        await emitGatewayMessage({
+            t: GatewayDispatchEvents.InteractionCreate,
+            d: {
+                id: 'interaction-id',
+                channel_id: 'channel-id',
+                guild_id: 'guild-id',
+                type: InteractionType.ApplicationCommand,
+                data: {
+                    name: 'edit',
+                    target_id: 'message-id',
+                    resolved: {
+                        messages: {
+                            'message-id': message
+                        }
+                    }
+                }
+            }
+        });
+
+        expect(handle).toHaveBeenCalledWith(
+            expect.objectContaining({
+                applicationId: 'application-id',
+                target: {
+                    id: 'message-id',
+                    member: undefined,
+                    message,
+                    user: undefined
+                }
+            })
+        );
+    });
+
+    test('dispatches modal routes with modal values', async () => {
+        const handle = vi.fn();
+        const { emitGatewayMessage } = await startGatewayForTest({
+            routes: {
+                getModal(customId) {
+                    return customId === 'message_builder:text_modal:session-id'
+                        ? {
+                              id: 'message_builder:text_modal',
+                              handle
+                          }
+                        : undefined;
+                }
+            }
+        });
+        const payload = {
+            t: GatewayDispatchEvents.InteractionCreate,
+            d: {
+                id: 'interaction-id',
+                type: InteractionType.ModalSubmit,
+                data: {
+                    custom_id: 'message_builder:text_modal:session-id',
+                    components: [
+                        {
+                            component: {
+                                custom_id: 'message_builder:text',
+                                value: 'Hello'
+                            }
+                        },
+                        {
+                            component: {
+                                custom_id: 'message_builder:section_thumbnail_spoiler',
+                                values: ['spoiler']
+                            }
+                        }
+                    ]
+                }
+            }
+        };
+
+        await emitGatewayMessage(payload);
+
+        expect(handle).toHaveBeenCalledWith(
+            expect.objectContaining({
+                customId: 'message_builder:text_modal:session-id',
+                modalValues: {
+                    'message_builder:section_thumbnail_spoiler': ['spoiler'],
+                    'message_builder:text': 'Hello'
+                }
             })
         );
     });
@@ -319,6 +481,11 @@ describe('startGateway', () => {
 });
 
 async function startGatewayForTest({
+    config = {
+        discord: {
+            token: 'token'
+        }
+    },
     logger = createLoggerStub(),
     rest = createRestStub(),
     routes = createRoutesStub()
@@ -329,11 +496,7 @@ async function startGatewayForTest({
     createGatewayManager.mockReturnValueOnce(gateway);
 
     await startGateway({
-        config: {
-            discord: {
-                token: 'token'
-            }
-        },
+        config,
         logger,
         rest,
         routes
@@ -351,15 +514,24 @@ async function startGatewayForTest({
 
 function createRoutesStub() {
     return {
-        getCommand() {}
+        getCommand() {},
+        getComponent() {},
+        getModal() {}
     };
 }
 
 function createRestStub() {
     return {
         addMemberRole: vi.fn(),
+        createFollowupMessage: vi.fn(),
+        editFollowupMessage: vi.fn(),
+        editMessage: vi.fn(),
+        editOriginalResponse: vi.fn(),
         editBotNickname: vi.fn(),
+        openModal: vi.fn(),
         removeMemberRole: vi.fn(),
+        sendMessage: vi.fn(),
+        updateMessage: vi.fn(),
         respond: vi.fn()
     };
 }

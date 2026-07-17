@@ -1,6 +1,10 @@
-export async function connectDatabases() {
+import { connectSnailMongo } from './snail/mongo.js';
+
+export async function connectDatabases({ config }) {
     return {
-        snail: {},
+        snail: {
+            mongo: await connectSnailMongo(config.databases.snailMongoUri)
+        },
         owo: {}
     };
 }

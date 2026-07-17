@@ -15,7 +15,7 @@ export async function start() {
         throw new Error('BOT_TOKEN is required to initialize Discord REST and gateway.');
     }
 
-    const databases = await connectDatabases({ config, logger });
+    const databases = await connectDatabases({ config });
     const rest = createDiscordRest(config, { logger: logger.child('discord') });
     const registry = createRegistry({ config, databases, logger, rest });
 

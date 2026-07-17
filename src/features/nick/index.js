@@ -1,5 +1,6 @@
 import { ApplicationCommandOptionType, ApplicationCommandType } from 'discord-api-types/v10';
 import { hasManagerAccess } from '../../discord/auth.js';
+import { getCommandOptionValue } from '../../discord/utils.js';
 
 export default {
     routes: [
@@ -24,8 +25,7 @@ export default {
             },
             authorize: hasManagerAccess,
             async handle(context) {
-                const nicknameOption = context.data.options?.find((option) => option.name === 'nickname');
-                const nickname = String(nicknameOption?.value ?? '').trim();
+                const nickname = getCommandOptionValue(context, 'nickname').trim();
 
                 if (!context.guildId) {
                     await context.respond('This command can only be used in a sever!', { ephemeral: true });

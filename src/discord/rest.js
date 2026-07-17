@@ -35,6 +35,71 @@ export function createDiscordRest(config, { logger }) {
                 })
             );
         },
+        updateMessage(interaction, message) {
+            return request('interaction_message_update.failed', () =>
+                rest.post(rest.routes.interactions.responses.callback(interaction.id, interaction.token), {
+                    body: {
+                        type: InteractionResponseType.UpdateMessage,
+                        data: normalizeMessage(message)
+                    },
+                    runThroughQueue: false,
+                    unauthorized: true
+                })
+            );
+        },
+        openModal(interaction, modal) {
+            return request('interaction_modal_open.failed', () =>
+                rest.post(rest.routes.interactions.responses.callback(interaction.id, interaction.token), {
+                    body: {
+                        type: InteractionResponseType.Modal,
+                        data: modal
+                    },
+                    runThroughQueue: false,
+                    unauthorized: true
+                })
+            );
+        },
+        sendMessage(channelId, message) {
+            return request('channel_message_send.failed', () =>
+                rest.post(rest.routes.channels.messages(channelId), {
+                    body: normalizeMessage(message)
+                })
+            );
+        },
+        editMessage(channelId, messageId, message) {
+            return request('channel_message_update.failed', () =>
+                rest.patch(rest.routes.channels.message(channelId, messageId), {
+                    body: normalizeMessage(message)
+                })
+            );
+        },
+        createFollowupMessage(interaction, message, options) {
+            return request('interaction_followup_send.failed', () =>
+                rest.post(
+                    rest.routes.webhooks.webhook(config.discord.applicationId, interaction.token, { wait: true }),
+                    {
+                        body: normalizeMessage(message, options),
+                        unauthorized: true
+                    }
+                )
+            );
+        },
+        editFollowupMessage(token, messageId, message) {
+            return request('interaction_followup_update.failed', () =>
+                rest.patch(rest.routes.webhooks.message(config.discord.applicationId, token, messageId), {
+                    body: normalizeMessage(message),
+                    unauthorized: true
+                })
+            );
+        },
+        editOriginalResponse(token, message) {
+            return request('interaction_original_response_update.failed', () =>
+                rest.patch(rest.routes.webhooks.original(config.discord.applicationId, token), {
+                    body: normalizeMessage(message),
+                    unauthorized: true
+                })
+            );
+        },
         editBotNickname(guildId, nickname) {
             return request('bot_nickname_update.failed', () =>
                 rest.patch(rest.routes.guilds.members.bot(guildId), {

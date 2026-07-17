@@ -40,7 +40,7 @@ Startup should make runtime failures observable. The bot has known runtime infra
 
 ## Registered Package Contributions
 
-Packages export plain source-authored contribution objects. If a package needs runtime context, it exports a setup function directly and returns the contribution object. The package registry is static source, so tests verify contribution shape, feature metadata when present, route identity, and routing conflicts. Runtime code trusts registered contributions after that test-time contract.
+Packages export plain source-authored contribution objects. If a package needs runtime context, it exports a setup function directly and returns the contribution object. Package setup should compose services, repositories, routes, and contribution metadata; it should not perform database reads, database writes, Discord API calls, or other startup I/O. When a package needs saved startup state, Snail should add an explicit package initialization phase after the registry is fully composed and before command sync or gateway startup. The package registry is static source, so tests verify contribution shape, feature metadata when present, route identity, and routing conflicts. Runtime code trusts registered contributions after that test-time contract.
 
 Example route-only contribution:
 
@@ -90,7 +90,7 @@ export default function setupTicketMarket(context) {
 
 A registered package contribution may include:
 
-- `routes`: package-owned inbound Discord handlers. The current runtime starts with application command routes; concrete planned route kinds may be documented before they are implemented, but runtime support should only be added when registry indexing, command sync when needed, gateway dispatch, tests, and docs all support that kind.
+- `routes`: package-owned inbound Discord handlers. The current runtime supports application command, component, and modal routes. Runtime support for another route kind should only be added when registry indexing, command sync when needed, gateway dispatch, tests, and docs all support that kind.
 - `feature`: optional product/admin-visible metadata.
 - `events`: gateway event handlers.
 - `admin`: optional Admin Console panel contribution.
@@ -111,7 +111,7 @@ The contribution registry is the source of truth for registered packages, their 
 - expose state, logger source, and enablement metadata
 - provide feature lookup by ID
 
-Creating a package under `src/features/` does not register it by itself. Snail does not scan feature directories or load packages by naming convention. To register a contribution, import it in `src/runtime/registry.js` and add it to `PACKAGE_REGISTRY`. Packages are registered and set up in the order they appear in `PACKAGE_REGISTRY`; services exposed by earlier packages are available to later setup functions. The package registry is intentionally explicit so startup composition, tests, command sync, routing, and admin discovery all agree on the same source of truth. Registry tests verify feature metadata when present, duplicate feature IDs, registered route shape, implemented route contracts, duplicate route IDs, and duplicate command names.
+Creating a package under `src/features/` does not register it by itself. Snail does not scan feature directories or load packages by naming convention. To register a contribution, import it in `src/runtime/registry.js` and add it to `PACKAGE_REGISTRY`. Packages are registered and set up in the order they appear in `PACKAGE_REGISTRY`; services exposed by earlier packages are available to later setup functions. The package registry is intentionally explicit so startup composition, tests, command sync, routing, and admin discovery all agree on the same source of truth. Registry tests verify feature metadata when present, duplicate feature IDs, registered route shape, implemented route contracts, duplicate route IDs, duplicate command names, and component/modal custom ID prefixes that are unique and do not overlap.
 
 The registry should not know feature-specific settings or rules. It stores contracts, builds lookup indexes, and delegates behavior to the owning contribution.
 
@@ -122,6 +122,8 @@ Discord routing should be unified. A route is a package-owned handler for an inb
 Route IDs are Snail's stable internal route identity for logs, diagnostics, tests, admin references, and future state keys. Discord matching uses kind-specific fields such as `command.name`, `customId`, `customIdPrefix`, or gateway event names. Do not use the route ID as the Discord matching key unless the owning route deliberately makes those values the same.
 
 Application commands share `kind: 'command'`. Slash commands, user context commands, and message context commands should be distinguished by the Discord command definition, such as `command.type`, not by separate route kinds.
+
+Component and modal routes match the `custom_id` Discord sends back when a user clicks a component or submits a modal. The route ID is Snail's internal name for that route. The `customIdPrefix` is the beginning of the Discord `custom_id` values that route handles, such as `message_builder:action:` for Message Builder action selects. Prefixes must be unique and non-overlapping: no component prefix may start with another component prefix, and no modal prefix may start with another modal prefix.
 
 Every route contribution should carry enough metadata for generic routing:
 

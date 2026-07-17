@@ -26,6 +26,15 @@ const discordenoRest = vi.hoisted(() => ({
             members: {
                 bot: vi.fn(() => 'bot-member-route')
             }
+        },
+        channels: {
+            message: vi.fn(() => 'channel-message-route'),
+            messages: vi.fn(() => 'channel-messages-route')
+        },
+        webhooks: {
+            message: vi.fn(() => 'webhook-message-route'),
+            original: vi.fn(() => 'webhook-original-route'),
+            webhook: vi.fn(() => 'webhook-route')
         }
     }
 }));
@@ -200,6 +209,187 @@ describe('createDiscordRest', () => {
                 }
             },
             runThroughQueue: false,
+            unauthorized: true
+        });
+    });
+
+    test('updates interaction messages', async () => {
+        discordenoRest.post.mockResolvedValueOnce(undefined);
+
+        const rest = createDiscordRest(config, { logger });
+        const interaction = {
+            id: 'interaction-id',
+            token: 'interaction-token'
+        };
+
+        await rest.updateMessage(interaction, 'Updated message.');
+
+        expect(discordenoRest.post).toHaveBeenCalledWith('interaction-callback-route', {
+            body: {
+                type: InteractionResponseType.UpdateMessage,
+                data: {
+                    flags: MessageFlags.IsComponentsV2,
+                    components: [
+                        {
+                            type: ComponentType.TextDisplay,
+                            content: 'Updated message.'
+                        }
+                    ]
+                }
+            },
+            runThroughQueue: false,
+            unauthorized: true
+        });
+    });
+
+    test('opens interaction modals', async () => {
+        discordenoRest.post.mockResolvedValueOnce(undefined);
+
+        const rest = createDiscordRest(config, { logger });
+        const interaction = {
+            id: 'interaction-id',
+            token: 'interaction-token'
+        };
+        const modal = {
+            title: 'Modal',
+            custom_id: 'modal-id',
+            components: []
+        };
+
+        await rest.openModal(interaction, modal);
+
+        expect(discordenoRest.post).toHaveBeenCalledWith('interaction-callback-route', {
+            body: {
+                type: InteractionResponseType.Modal,
+                data: modal
+            },
+            runThroughQueue: false,
+            unauthorized: true
+        });
+    });
+
+    test('sends string messages through the channel message collection route', async () => {
+        discordenoRest.post.mockResolvedValueOnce(undefined);
+
+        const rest = createDiscordRest(config, { logger });
+
+        await rest.sendMessage('channel-id', 'Public message.');
+
+        expect(discordenoRest.routes.channels.messages).toHaveBeenCalledWith('channel-id');
+        expect(discordenoRest.post).toHaveBeenCalledWith('channel-messages-route', {
+            body: {
+                flags: MessageFlags.IsComponentsV2,
+                components: [
+                    {
+                        type: ComponentType.TextDisplay,
+                        content: 'Public message.'
+                    }
+                ]
+            }
+        });
+    });
+
+    test('edits channel messages through the channel message route', async () => {
+        discordenoRest.patch.mockResolvedValueOnce(undefined);
+
+        const rest = createDiscordRest(config, { logger });
+
+        await rest.editMessage('channel-id', 'message-id', 'Edited message.');
+
+        expect(discordenoRest.routes.channels.message).toHaveBeenCalledWith('channel-id', 'message-id');
+        expect(discordenoRest.patch).toHaveBeenCalledWith('channel-message-route', {
+            body: {
+                flags: MessageFlags.IsComponentsV2,
+                components: [
+                    {
+                        type: ComponentType.TextDisplay,
+                        content: 'Edited message.'
+                    }
+                ]
+            }
+        });
+    });
+
+    test('creates ephemeral interaction follow-up messages', async () => {
+        const message = {
+            id: 'display-message-id'
+        };
+        discordenoRest.post.mockResolvedValueOnce(message);
+
+        const rest = createDiscordRest(config, { logger });
+        const interaction = {
+            token: 'interaction-token'
+        };
+
+        const result = await rest.createFollowupMessage(interaction, 'Preview.', { ephemeral: true });
+
+        expect(result).toBe(message);
+        expect(discordenoRest.routes.webhooks.webhook).toHaveBeenCalledWith(
+            config.discord.applicationId,
+            interaction.token,
+            { wait: true }
+        );
+        expect(discordenoRest.post).toHaveBeenCalledWith('webhook-route', {
+            body: {
+                flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+                components: [
+                    {
+                        type: ComponentType.TextDisplay,
+                        content: 'Preview.'
+                    }
+                ]
+            },
+            unauthorized: true
+        });
+    });
+
+    test('edits interaction follow-up messages', async () => {
+        discordenoRest.patch.mockResolvedValueOnce(undefined);
+
+        const rest = createDiscordRest(config, { logger });
+
+        await rest.editFollowupMessage('interaction-token', 'display-message-id', 'Updated preview.');
+
+        expect(discordenoRest.routes.webhooks.message).toHaveBeenCalledWith(
+            config.discord.applicationId,
+            'interaction-token',
+            'display-message-id'
+        );
+        expect(discordenoRest.patch).toHaveBeenCalledWith('webhook-message-route', {
+            body: {
+                flags: MessageFlags.IsComponentsV2,
+                components: [
+                    {
+                        type: ComponentType.TextDisplay,
+                        content: 'Updated preview.'
+                    }
+                ]
+            },
+            unauthorized: true
+        });
+    });
+
+    test('edits original interaction responses', async () => {
+        discordenoRest.patch.mockResolvedValueOnce(undefined);
+
+        const rest = createDiscordRest(config, { logger });
+
+        await rest.editOriginalResponse('interaction-token', 'Updated preview.');
+
+        expect(discordenoRest.routes.webhooks.original).toHaveBeenCalledWith(
+            config.discord.applicationId,
+            'interaction-token'
+        );
+        expect(discordenoRest.patch).toHaveBeenCalledWith('webhook-original-route', {
+            body: {
+                flags: MessageFlags.IsComponentsV2,
+                components: [
+                    {
+                        type: ComponentType.TextDisplay,
+                        content: 'Updated preview.'
+                    }
+                ]
+            },
             unauthorized: true
         });
     });

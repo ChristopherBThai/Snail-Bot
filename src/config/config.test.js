@@ -37,6 +37,16 @@ describe('loadConfig', () => {
         }
     });
 
+    test('keeps shared UI colors in source config', async () => {
+        const config = await loadConfig();
+
+        for (const color of [config.colors.ui.primary, config.colors.ui.success, config.colors.ui.warning]) {
+            expect(color).toBeGreaterThanOrEqual(0x000000);
+            expect(color).toBeLessThanOrEqual(0xffffff);
+            expect(Number.isInteger(color)).toBe(true);
+        }
+    });
+
     test.each([
         ['missing token', undefined, null],
         ['blank token', '   ', null],

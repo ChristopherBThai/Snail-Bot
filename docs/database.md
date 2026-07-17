@@ -4,7 +4,7 @@ This document describes Snail and OwO databases, saved records, and ownership ru
 
 ## Ownership
 
-Snail owns its own saved records for feature state, configuration, tags, channels, Snail-owned user state, Snail-owned quest state, feature runtime state, and operational behavior.
+Snail owns its own saved records for feature state, configuration, tags, channels, user state, quest state, feature runtime state, and operational behavior.
 
 OwO owns OwO records. Snail may read OwO records through OwO database clients, but Snail must not change OwO records except through named OwO services.
 
@@ -29,7 +29,7 @@ Features should not casually reach through multiple database clients. If a featu
 
 Feature-local repositories are optional, not automatic. Use them when they make feature logic easier to understand, test, or maintain, especially for multi-query, multi-database, or feature-vocabulary access. Feature-specific schemas and models should live with that feature's repository instead of shared Snail data files.
 
-Cross-feature records, such as Snail-owned user state and user logs, belong in shared data models with feature state isolated in named subdocuments. Avoid creating models or repositories for every collection by default.
+Cross-feature records, such as Snail user state and user logs, belong in shared data models with feature state isolated in named subdocuments. Current per-user state belongs under the shared `User` record when there is one current value or state bundle per user, such as `User.messageBuilder.draft` or `User.ticketMarket.marketAgreedAt`. Use a separate collection when the records are repeated history, many-per-user, queried independently from the user, or belong to a non-user concept. Avoid creating models or repositories for every collection by default.
 
 Connection modules should expose connected clients, pools, connections, and shared models only. They should not expose feature-specific query helpers such as "get this feature's count" or "load this feature's data." Those helpers belong in the owning feature repository.
 
@@ -53,7 +53,7 @@ A reference for the databases Snail connects to, why each connection exists, whe
 
 | Connection | Read/Write | Used By | Purpose |
 | --- | --- | --- | --- |
-| Snail Mongo | read/write | Global runtime, Quest List, Tags, Message Builder, Ticket Market, Admin Console, Logs | Required for Snail-owned config, feature runtime state, logs metadata where persisted, tags, message-builder drafts, quest-list queue rows, ticket-market user/ad state, and user logs. |
+| Snail Mongo | read/write | Global runtime, Message Builder, Quest List, Tags, Ticket Market, Admin Console, Logs | Required for Snail config, persisted user-scoped Message Builder drafts, feature runtime state, logs metadata where saved, tags, quest-list queue rows, ticket-market user/ad state, and user logs. |
 | OwO Mongo | read-only | Quest List | Exposes OwO active quest documents. Quest List owns the feature-local repository code that queries and translates them. |
 | OwO Redis | read-only | Quest List | Exposes OwO lifetime stat hashes such as `user_stats:{userId}`. Quest List owns the feature-local repository code that reads and translates them. |
 | OwO MySQL | read-only | Ticket Market | Exposes Wrapped Ticket inventory from the OwO `owo` database. Ticket Market reads inventory to verify sellers have enough Wrapped Tickets before posting ads. |

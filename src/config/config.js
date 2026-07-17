@@ -1,4 +1,11 @@
 const config = {
+    colors: {
+        ui: {
+            primary: 0x5865f2,
+            success: 0x57f287,
+            warning: 0xfee75c
+        }
+    },
     discord: {
         applicationId: '729569334153969705',
         guildId: '420104212895105044'

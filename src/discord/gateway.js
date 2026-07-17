@@ -1,5 +1,6 @@
 import { createGatewayManager } from '@discordeno/gateway';
 import { GatewayDispatchEvents, InteractionType } from 'discord-api-types/v10';
+import { getModalValues } from './utils.js';
 
 export async function startGateway({ config, logger, routes, rest }) {
     const gateway = createGatewayManager({
@@ -21,10 +22,7 @@ export async function startGateway({ config, logger, routes, rest }) {
                 }
 
                 const interaction = payload.d;
-                const route =
-                    interaction.type === InteractionType.ApplicationCommand
-                        ? routes.getCommand(interaction.data?.name)
-                        : undefined;
+                const route = getInteractionRoute(routes, interaction);
 
                 if (!route) {
                     logger.warn('interaction_route.missing', {
@@ -98,13 +96,18 @@ function createInteractionContext({ config, interaction, rest }) {
 
     return Object.freeze({
         config,
+        applicationId: config.discord.applicationId,
+        customId: data.custom_id,
         data,
         interaction,
         commandName: data.name,
         channelId: interaction.channel_id,
         guildId: interaction.guild_id,
         memberRoles: interaction.member?.roles ?? [],
+        modalValues: getModalValues(data.components ?? []),
+        target: getInteractionTarget(data),
         userId: interaction.member?.user?.id ?? interaction.user?.id,
+        values: data.values ?? [],
         editBotNickname(guildId, nickname) {
             return rest.editBotNickname(guildId, nickname);
         },
@@ -114,8 +117,54 @@ function createInteractionContext({ config, interaction, rest }) {
         removeMemberRole(guildId, userId, roleId, reason) {
             return rest.removeMemberRole(guildId, userId, roleId, reason);
         },
+        sendMessage(channelId, message) {
+            return rest.sendMessage(channelId, message);
+        },
+        editMessage(channelId, messageId, message) {
+            return rest.editMessage(channelId, messageId, message);
+        },
+        createFollowupMessage(message, options) {
+            return rest.createFollowupMessage(interaction, message, options);
+        },
+        editFollowupMessage(messageId, message, token = interaction.token) {
+            return rest.editFollowupMessage(token, messageId, message);
+        },
+        editOriginalResponse(message, token = interaction.token) {
+            return rest.editOriginalResponse(token, message);
+        },
+        updateMessage(message) {
+            return rest.updateMessage(interaction, message);
+        },
+        openModal(modal) {
+            return rest.openModal(interaction, modal);
+        },
         respond(message, options) {
             return rest.respond(interaction, message, options);
         }
     });
+}
+
+function getInteractionTarget(data) {
+    return {
+        id: data.target_id,
+        member: data.target_id ? data.resolved?.members?.[data.target_id] : undefined,
+        message: data.target_id ? data.resolved?.messages?.[data.target_id] : undefined,
+        user: data.target_id ? data.resolved?.users?.[data.target_id] : undefined
+    };
+}
+
+function getInteractionRoute(routes, interaction) {
+    if (interaction.type === InteractionType.ApplicationCommand) {
+        return routes.getCommand(interaction.data?.name);
+    }
+
+    if (interaction.type === InteractionType.MessageComponent) {
+        return routes.getComponent(interaction.data?.custom_id);
+    }
+
+    if (interaction.type === InteractionType.ModalSubmit) {
+        return routes.getModal(interaction.data?.custom_id);
+    }
+
+    return undefined;
 }

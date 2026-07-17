@@ -24,7 +24,7 @@ These values are secrets or deployment-local connection strings and should come 
 | Value | Purpose |
 | --- | --- |
 | `BOT_TOKEN` | Discord REST and gateway authentication. |
-| `SNAIL_MONGO_URI` | Snail-owned Mongo data. |
+| `SNAIL_MONGO_URI` | Snail Mongo data. |
 | `OWO_MONGO_URI` | Read-only OwO quest documents. |
 | `OWO_REDIS_URL` | Read-only OwO stat hashes. |
 | `OWO_MYSQL_URI` | Read-only Wrapped Ticket inventory. |
@@ -39,6 +39,13 @@ Non-secret config should be explicit and grouped by purpose:
 
 ```js
 export default {
+    colors: {
+        ui: {
+            primary: 0x5865f2,
+            success: 0x57f287,
+            warning: 0xfee75c
+        }
+    },
     discord: {
         applicationId: '...',
         guildId: '...'
@@ -93,11 +100,15 @@ Command sync is authoritative. If the running code provides an empty guild or gl
 
 `users.owner`, `roles.admin`, `roles.manager`, and `roles.helper` are source-controlled Discord IDs used by staff-only route authorization. Each staff role group has `permission` for authorization checks and `display` for the AFK member-list role. Authorization helpers follow the owner, admin, manager, helper, and staff hierarchy. Routes that need manager access should use `hasManagerAccess` as their `authorize` function.
 
+## UI Color Config
+
+`colors.ui.primary`, `colors.ui.success`, and `colors.ui.warning` are shared numeric RGB values for Discord component accents. Features that need consistent Discord UI accents should consume these values from config instead of hardcoding color literals.
+
 ## Feature Runtime Config
 
 Feature runtime settings include values such as enabled state, log level, Quest List channel, Ticket Market rules channel, market access role, timing, copy, and similar staff-managed settings.
 
-These settings should be persisted under Snail-owned storage and scoped by feature ID. Use individual settings unless the feature has a concrete reason to query or relate a settings document as a first-class record.
+These settings should be saved under Snail storage and scoped by feature ID. Use individual settings unless the feature has a concrete reason to query or relate a settings document as a first-class record.
 
 ## Documentation Updates
 
