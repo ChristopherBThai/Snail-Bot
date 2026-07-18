@@ -39,6 +39,15 @@ class Qdrant {
         }
     }
 
+    async resetCollection(name, vectorSize) {
+        try {
+            await this.client.delete(`/collections/${name}`);
+        } catch (err) {
+            if (err.response?.status !== 404) throw err;
+        }
+        await this.ensureCollection(name, vectorSize);
+    }
+
     async search(name, { vector, limit, scoreThreshold, filter }) {
         const body = {
             vector,

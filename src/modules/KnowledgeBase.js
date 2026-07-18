@@ -476,6 +476,13 @@ module.exports = class KnowledgeBase extends require('./Module') {
         await this.qdrant.deleteByFilter(this.collection, tagFilter(tagId));
     }
 
+    async resetQdrantAndSync() {
+        if (!this.qdrant) await this.initQdrant();
+        await this.qdrant.resetCollection(this.collection, this.embeddingSize);
+        const summary = await this.sync();
+        return { collection: this.collection, ...summary };
+    }
+
     // Sync a single entry. Cheap path used after CRUD mutations.
     async syncEntry(doc) {
         if (!this.qdrant) await this.initQdrant();

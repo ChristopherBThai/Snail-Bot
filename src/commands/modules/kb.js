@@ -16,6 +16,7 @@ module.exports = new Command({
         '- `snail kb status`\n - Show tag-backed knowledge base sync status and collection info\n' +
         '- `snail kb reindex`\n - Sync Mongo tags to Qdrant (only changed tag points are re-embedded)\n' +
         '- `snail kb reindex dry`\n - Show what a reindex would do without making changes\n' +
+        '- `snail kb reset confirm`\n - Destructively recreate the Qdrant collection, then sync Mongo tags. Remote resets require backup through `ssh hub.corg.network` first.\n' +
         '- `snail kb find {query}`\n - Search matching tags for manager/debug review\n' +
         '- `snail kb model {modelSlug}`\n - Set the chat model (OpenRouter slug)\n',
 
@@ -23,6 +24,7 @@ module.exports = new Command({
         'snail kb status',
         'snail kb reindex',
         'snail kb reindex dry',
+        'snail kb reset confirm',
         'snail kb find how do gems expire',
         'snail kb model anthropic/claude-haiku-4.5',
     ],
@@ -41,6 +43,8 @@ module.exports = new Command({
                 return showStatus.call(this, KB);
             case 'reindex':
                 return runReindex.call(this, KB);
+            case 'reset':
+                return runReset.call(this, KB);
             case 'find':
                 return runFind.call(this, KB);
             case 'add':
@@ -50,7 +54,7 @@ module.exports = new Command({
                 return setModel.call(this, KB);
             default:
                 await this.error(
-                    'that is not a valid subcommand! Use `snail kb [status|reindex|find|model] {...arguments}`'
+                    'that is not a valid subcommand! Use `snail kb [status|reindex|reset|find|model] {...arguments}`'
                 );
         }
     },
@@ -121,6 +125,45 @@ async function runReindex(KB) {
     } catch (err) {
         console.error('[KB] reindex failed:', err);
         await status.edit({ content: `🚫 **|** Reindex failed: \`${err.message}\`` });
+    }
+}
+
+async function runReset(KB) {
+    const confirm = this.message.args[0]?.toLowerCase() === 'confirm';
+    const backupReminder =
+        'Remote reset requires backup evidence first: run/record backup through `ssh hub.corg.network` before using this command against remote Qdrant.';
+
+    if (!confirm) {
+        await this.error(
+            `this is destructive: it recreates Qdrant collection \`${KB.collection}\`. ` +
+                `${backupReminder} To continue, run \`snail kb reset confirm\`.`
+        );
+        return;
+    }
+
+    if (KB.syncing) {
+        await this.error('a sync is already in progress!');
+        return;
+    }
+
+    const status = await this.send(`⚠️ **|** Resetting Qdrant collection \`${KB.collection}\` and syncing tags...`);
+
+    try {
+        const summary = await KB.resetQdrantAndSync();
+        const embed = {
+            title: 'Qdrant Reset Complete',
+            color: this.config.embedcolor,
+            description:
+                `**Collection:** \`${summary.collection || KB.collection}\`\n` +
+                `**Tags:** ${summary.totalTags}\n` +
+                `**Points:** ${summary.totalPoints} ` +
+                `(${summary.totalQuestions} generated questions + ${summary.totalAnswers} tag data points)\n\n` +
+                `**Backup reminder:** ${backupReminder}`,
+        };
+        await status.edit({ content: '', embed });
+    } catch (err) {
+        console.error('[KB] reset failed:', err);
+        await status.edit({ content: `🚫 **|** Reset failed: \`${err.message}\`` });
     }
 }
 
