@@ -247,8 +247,6 @@ async function testQdrantResetHelperDeletesThenEnsuresCollection() {
         ['delete', '/collections/phase7_tags'],
         ['get', '/collections/phase7_tags'],
         ['put', '/collections/phase7_tags', { vectors: { size: 4096, distance: 'Cosine' } }],
-        ['put', '/collections/phase7_tags/index', { field_name: 'category', field_schema: 'keyword' }],
-        ['put', '/collections/phase7_tags/index', { field_name: 'entry_id', field_schema: 'keyword' }],
         ['put', '/collections/phase7_tags/index', { field_name: 'tag_id', field_schema: 'keyword' }],
         ['put', '/collections/phase7_tags/index', { field_name: 'kind', field_schema: 'keyword' }],
     ]);

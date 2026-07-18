@@ -26,7 +26,7 @@ class Qdrant {
         }
 
         // Payload indexes — safe to retry; Qdrant errors on duplicate which we ignore
-        for (const field of ['category', 'entry_id', 'tag_id', 'kind']) {
+        for (const field of ['tag_id', 'kind']) {
             try {
                 await this.client.put(`/collections/${name}/index`, {
                     field_name: field,

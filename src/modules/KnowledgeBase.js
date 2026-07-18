@@ -57,10 +57,6 @@ module.exports = class KnowledgeBase extends require('./Module') {
         this.addEvent('messageCreate', this.onMessage);
     }
 
-    get Knowledge() {
-        return this.bot.snail_db.Knowledge;
-    }
-
     get Tag() {
         return this.bot.snail_db.Tag;
     }
@@ -247,90 +243,6 @@ module.exports = class KnowledgeBase extends require('./Module') {
             .filter(Boolean);
     }
 
-    // ─── CRUD ───────────────────────────────────────────────────────────
-
-    async getEntry(id) {
-        return this.Knowledge.findById(id);
-    }
-
-    // Throws if any q variant in `variants` collides with an existing entry's
-    // q (case-insensitive). Pass `exceptId` to ignore that entry's own variants.
-    async assertNoVariantCollision(variants, exceptId = null) {
-        const norm = variants.map((v) => v.trim().toLowerCase());
-        const query = { q: { $in: variants } };
-        if (exceptId) query._id = { $ne: exceptId };
-        const candidates = await this.Knowledge.find(query, { q: 1 }).lean();
-
-        for (const cand of candidates) {
-            for (const v of cand.q) {
-                if (norm.includes(v.trim().toLowerCase())) {
-                    throw new Error(`question variant "${v}" already exists on another entry`);
-                }
-            }
-        }
-    }
-
-    async createEntry({ q, a, category = [], source = null, userId = null }) {
-        const variants = normalizeVariants(q);
-        if (!variants.length) throw new Error('at least one q variant is required');
-        if (typeof a !== 'string' || !a.trim()) throw new Error('answer is required');
-
-        await this.assertNoVariantCollision(variants);
-
-        const doc = await this.Knowledge.create({
-            q: variants,
-            a: a.trim(),
-            category: normalizeCategory(category),
-            source: source || null,
-            createdBy: userId,
-            updatedBy: userId,
-        });
-        this.applyHashes(doc);
-        await doc.save();
-        await this.syncEntry(doc);
-        return doc;
-    }
-
-    async updateEntry(id, patch, userId = null) {
-        const doc = await this.Knowledge.findById(id);
-        if (!doc) throw new Error(`entry ${id} not found`);
-
-        if (patch.q !== undefined) {
-            const variants = normalizeVariants(patch.q);
-            if (!variants.length) throw new Error('at least one q variant is required');
-            await this.assertNoVariantCollision(variants, doc._id);
-            doc.q = variants;
-        }
-        if (patch.a !== undefined) {
-            if (typeof patch.a !== 'string' || !patch.a.trim()) throw new Error('answer is required');
-            doc.a = patch.a.trim();
-        }
-        if (patch.category !== undefined) doc.category = normalizeCategory(patch.category);
-        if (patch.source !== undefined) doc.source = patch.source || null;
-        if (userId) doc.updatedBy = userId;
-
-        this.applyHashes(doc);
-        await doc.save();
-        await this.syncEntry(doc);
-        return doc;
-    }
-
-    async deleteEntry(id) {
-        const doc = await this.Knowledge.findById(id);
-        if (!doc) return null;
-
-        if (!this.qdrant) await this.initQdrant();
-        await this.qdrant.deleteByFilter(this.collection, entryFilter(String(doc._id)));
-        await doc.deleteOne();
-        return doc;
-    }
-
-    applyHashes(doc) {
-        doc.qHashes = doc.q.map(sha1);
-        doc.aHash = sha1(doc.a);
-        doc.metaHash = sha1(stableStringify(metaOf(doc)));
-    }
-
     // ─── Sync ───────────────────────────────────────────────────────────
 
     async sync({ dryRun = false } = {}) {
@@ -483,22 +395,6 @@ module.exports = class KnowledgeBase extends require('./Module') {
         return { collection: this.collection, ...summary };
     }
 
-    // Sync a single entry. Cheap path used after CRUD mutations.
-    async syncEntry(doc) {
-        if (!this.qdrant) await this.initQdrant();
-        if (!this.openrouterApiKey) throw new Error('Missing OPENROUTER_API_KEY');
-
-        const desired = buildDesiredPoints([doc.toObject ? doc.toObject() : doc], this.namespace);
-        const existing = await this.qdrant.scrollAll(
-            this.collection,
-            ['q_hash', 'meta_hash', 'entry_id'],
-            entryFilter(String(doc._id))
-        );
-
-        const diff = computeDiff(desired, existing);
-        await this.applyDiff(diff, () => {});
-    }
-
     async applyDiff({ toEmbed, toUpdateMeta, toDelete }, log) {
         if (toDelete.length) {
             await this.qdrant.deletePoints(this.collection, toDelete);
@@ -552,10 +448,6 @@ module.exports = class KnowledgeBase extends require('./Module') {
 };
 
 // ─── Pure helpers ───────────────────────────────────────────────────────
-
-function entryFilter(entryId) {
-    return { must: [{ key: 'entry_id', match: { value: entryId } }] };
-}
 
 function tagFilter(tagId) {
     return { must: [{ key: 'tag_id', match: { value: String(tagId) } }] };
@@ -656,54 +548,6 @@ function normalizeGeneratedQuestions(questions) {
     return out;
 }
 
-function metaOf(doc) {
-    return {
-        a: doc.a,
-        source: doc.source ?? null,
-        category: Array.isArray(doc.category) ? [...doc.category].sort() : doc.category ?? null,
-    };
-}
-
-function normalizeVariants(q) {
-    if (!Array.isArray(q)) throw new Error('q must be an array');
-    return q.map((v) => String(v).trim()).filter(Boolean);
-}
-
-function normalizeCategory(category) {
-    if (category == null) return [];
-    return Array.isArray(category) ? category.filter(Boolean) : [String(category).trim()].filter(Boolean);
-}
-
-// Flatten docs into the point-descriptor map used for sync diffing.
-// Each entry yields: one point per q variant + one point for the answer text.
-function buildDesiredPoints(docs, namespace) {
-    const desired = new Map();
-    for (const doc of docs) {
-        const entryId = String(doc._id);
-        const metaHash = sha1(stableStringify(metaOf(doc)));
-        const aHash = sha1(doc.a);
-
-        for (const variant of doc.q) {
-            const qHash = sha1(variant);
-            const pointId = toPointId(namespace, qHash);
-            desired.set(pointId, { pointId, kind: 'q', text: variant, doc, entryId, qHash, aHash, metaHash });
-        }
-
-        const aPointId = toPointId(namespace, `a:${aHash}`);
-        desired.set(aPointId, {
-            pointId: aPointId,
-            kind: 'a',
-            text: doc.a,
-            doc,
-            entryId,
-            qHash: null,
-            aHash,
-            metaHash,
-        });
-    }
-    return desired;
-}
-
 function buildDesiredTagPoints(tag, namespace) {
     const tagId = String(tag._id);
     const data = String(tag.data ?? '').trim();
@@ -746,9 +590,9 @@ function countByKind(desired, kind) {
     return n;
 }
 
-// Diff desired against existing Qdrant points. existingPoints is only the
-// set we should consider for deletion — for full syncs it's the whole
-// collection, for syncEntry it's just one entry's points.
+// Diff desired tag points against existing Qdrant points. existingPoints is only
+// the set we should consider for deletion — for full syncs it's the whole
+// collection, for single-tag syncs it's one tag's points.
 function computeDiff(desired, existingPoints) {
     const existingById = new Map(existingPoints.map((p) => [String(p.id), p]));
     const toEmbed = [];
@@ -759,20 +603,14 @@ function computeDiff(desired, existingPoints) {
         const prev = existingById.get(String(pointId));
         if (!prev) {
             toEmbed.push({ ...desc, op: 'add' });
-        } else if (isTagPoint(desc)) {
-            const previousPayload = prev.payload || {};
-            const desiredPayload = buildPayload(desc);
-            if (previousPayload.kind !== desc.kind || previousPayload.tag_id !== desc.tagId) {
-                toEmbed.push({ ...desc, op: 'vector' });
-            } else if (!payloadMatches(previousPayload, desiredPayload)) {
-                toUpdateMeta.push(desc);
-            }
-        } else if (desc.kind === 'q' && prev.payload?.q_hash !== desc.qHash) {
-            // Defensive: Q point IDs derive from q_hash so this shouldn't fire
+            continue;
+        }
+
+        const previousPayload = prev.payload || {};
+        const desiredPayload = buildPayload(desc);
+        if (previousPayload.kind !== desc.kind || previousPayload.tag_id !== desc.tagId) {
             toEmbed.push({ ...desc, op: 'vector' });
-        } else if (prev.payload?.meta_hash !== desc.metaHash || !prev.payload?.entry_id) {
-            // Force a payload refresh on points missing entry_id (one-time
-            // backfill for points indexed before that field existed).
+        } else if (!payloadMatches(previousPayload, desiredPayload)) {
             toUpdateMeta.push(desc);
         }
     }
@@ -784,10 +622,6 @@ function computeDiff(desired, existingPoints) {
     return { toEmbed, toUpdateMeta, toDelete };
 }
 
-function isTagPoint(desc) {
-    return desc.kind === 'tag_answer' || desc.kind === 'tag_question';
-}
-
 function payloadMatches(previousPayload, desiredPayload) {
     for (const [key, value] of Object.entries(desiredPayload)) {
         if (previousPayload[key] !== value) return false;
@@ -796,35 +630,14 @@ function payloadMatches(previousPayload, desiredPayload) {
 }
 
 function buildPayload(item) {
-    if (item.kind === 'tag_answer' || item.kind === 'tag_question') {
-        const payload = {
-            tag_id: item.tagId,
-            kind: item.kind,
-            data_hash: item.dataHash,
-        };
-        if (item.kind === 'tag_question') {
-            payload.question = item.text;
-            payload.question_hash = item.questionHash;
-        }
-        return payload;
-    }
-
-    const { kind, doc, entryId, qHash, aHash, metaHash } = item;
     const payload = {
-        kind,
-        entry_id: entryId,
-        a: doc.a,
-        a_hash: aHash,
-        meta_hash: metaHash,
-        updated_at: Math.floor(Date.now() / 1000),
+        tag_id: item.tagId,
+        kind: item.kind,
+        data_hash: item.dataHash,
     };
-    if (kind === 'q') {
-        payload.q = item.text;
-        payload.q_hash = qHash;
-    }
-    if (doc.source != null) payload.source = doc.source;
-    if (doc.category != null && (!Array.isArray(doc.category) || doc.category.length)) {
-        payload.category = doc.category;
+    if (item.kind === 'tag_question') {
+        payload.question = item.text;
+        payload.question_hash = item.questionHash;
     }
     return payload;
 }
