@@ -128,7 +128,10 @@ async function main() {
     assert.deepStrictEqual(result.errors, []);
 
     syncCalls.length = 0;
-    result = await runCase({ args: ['add', 'gems', 'Gems improve hunting.'], knowledgebase: { ...enabledKb, enabled: false } });
+    result = await runCase({
+        args: ['add', 'gems', 'Gems improve hunting.'],
+        knowledgebase: { ...enabledKb, enabled: false },
+    });
     assert.deepStrictEqual(normalize(result.calls), [
         ['findById', 'gems'],
         ['create', { _id: 'gems', data: 'Gems improve hunting.' }],

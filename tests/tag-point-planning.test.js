@@ -11,7 +11,8 @@ function loadKnowledgeBaseHelpers() {
         exports: {},
         require(request) {
             if (request === './Module') return class Module {};
-            if (request === '../utils/kb.js') return { Qdrant: class Qdrant {}, embed: async () => [], chat: async () => ({}) };
+            if (request === '../utils/kb.js')
+                return { Qdrant: class Qdrant {}, embed: async () => [], chat: async () => ({}) };
             return require(request);
         },
         console,
@@ -40,8 +41,7 @@ const { buildDesiredTagPoints, buildPayload, tagFilter } = loadKnowledgeBaseHelp
 const namespace = '1b671a64-40d5-491e-99b0-da01ff1f3341';
 const tag = {
     _id: 'gems',
-    data:
-        'Gems can be equipped before hunting to improve your hunt rewards and give you a chance to find gem-tier animals.',
+    data: 'Gems can be equipped before hunting to improve your hunt rewards and give you a chance to find gem-tier animals.',
     kb: {
         dataHash: '064c4f0012bc743005d310f04908e62713be347b',
         promptVersion: 'tag-question-v1',

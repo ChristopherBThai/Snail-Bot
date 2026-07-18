@@ -264,7 +264,9 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
             const questionCount = countByKind(desired, 'tag_question');
             const answerCount = countByKind(desired, 'tag_answer');
-            log(`built ${answerCount} tag_answer points + ${questionCount} tag_question points = ${desired.size} total`);
+            log(
+                `built ${answerCount} tag_answer points + ${questionCount} tag_question points = ${desired.size} total`
+            );
 
             const existing = await this.qdrant.scrollAll(this.collection, tagPayloadFields());
             log(`scrolled ${existing.length} existing points in '${this.collection}'`);
@@ -662,7 +664,11 @@ function groupHitsByTag(hits) {
         if (hit.score > group.topScore) group.topScore = hit.score;
         const kind = hit.payload?.kind;
         if (kind && !group.matchedKinds.includes(kind)) group.matchedKinds.push(kind);
-        if (kind === 'tag_question' && hit.payload?.question && !group.matchedQuestions.includes(hit.payload.question)) {
+        if (
+            kind === 'tag_question' &&
+            hit.payload?.question &&
+            !group.matchedQuestions.includes(hit.payload.question)
+        ) {
             group.matchedQuestions.push(hit.payload.question);
         }
     }
@@ -676,7 +682,9 @@ async function leanQuery(query) {
 }
 
 function previewText(text, max) {
-    const normalized = String(text ?? '').replace(/\s+/g, ' ').trim();
+    const normalized = String(text ?? '')
+        .replace(/\s+/g, ' ')
+        .trim();
     return normalized.length > max ? `${normalized.slice(0, max - 1)}…` : normalized;
 }
 

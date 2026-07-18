@@ -67,7 +67,10 @@ async function main() {
             return { content: '[]' };
         },
     });
-    const kb = new helpers.KnowledgeBase({ config: { kb: {} }, snail_db: { Tag: { updateOne: async () => assert.fail('current cache should not update') } } });
+    const kb = new helpers.KnowledgeBase({
+        config: { kb: {} },
+        snail_db: { Tag: { updateOne: async () => assert.fail('current cache should not update') } },
+    });
     kb.openrouterApiKey = 'test-api-key';
 
     const currentQuestions = [
@@ -80,7 +83,12 @@ async function main() {
     const currentTag = {
         _id: 'gems',
         data: 'Gems can be equipped before hunting.',
-        kb: buildKb({ tagId: 'gems', data: 'Gems can be equipped before hunting.', questions: currentQuestions, helpers }),
+        kb: buildKb({
+            tagId: 'gems',
+            data: 'Gems can be equipped before hunting.',
+            questions: currentQuestions,
+            helpers,
+        }),
         async save() {
             throw new Error('current cache should not save');
         },
@@ -111,7 +119,10 @@ async function main() {
             return { content: JSON.stringify([...generatedTexts, generatedTexts[0], '   ']) };
         },
     });
-    const staleKb = new staleHelpers.KnowledgeBase({ config: { kb: {} }, snail_db: { Tag: { updateOne: async () => assert.fail('hydrated tag should save itself') } } });
+    const staleKb = new staleHelpers.KnowledgeBase({
+        config: { kb: {} },
+        snail_db: { Tag: { updateOne: async () => assert.fail('hydrated tag should save itself') } },
+    });
     staleKb.openrouterApiKey = 'test-api-key';
 
     let saved = 0;
@@ -174,10 +185,7 @@ async function main() {
 
     const leanRefreshed = await leanKb.ensureTagKbCache(malformedLeanTag);
     assert.strictEqual(leanChatCalls, 1);
-    assert.deepStrictEqual(normalize(updateArgs), [
-        { _id: 'gems' },
-        { $set: { kb: normalize(leanRefreshed) } },
-    ]);
+    assert.deepStrictEqual(normalize(updateArgs), [{ _id: 'gems' }, { $set: { kb: normalize(leanRefreshed) } }]);
     assert.strictEqual(malformedLeanTag.kb, leanRefreshed);
     assert.deepStrictEqual(normalize(leanRefreshed.questions.map((q) => q.text)), generatedTexts.slice(0, 8));
 

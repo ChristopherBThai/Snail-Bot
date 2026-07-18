@@ -3,7 +3,11 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-function loadKnowledgeBase({ Qdrant = class Qdrant {}, embedImpl = async () => [], chatImpl = async () => ({ content: '[]' }) } = {}) {
+function loadKnowledgeBase({
+    Qdrant = class Qdrant {},
+    embedImpl = async () => [],
+    chatImpl = async () => ({ content: '[]' }),
+} = {}) {
     const modulePath = path.join(__dirname, '..', 'src', 'modules', 'KnowledgeBase.js');
     const source = fs.readFileSync(modulePath, 'utf8');
     const sandbox = {
@@ -131,7 +135,13 @@ async function testCommandResetIsExplicitAndOwnerOwned() {
                     syncing: false,
                     async resetQdrantAndSync() {
                         calls.push(['resetQdrantAndSync']);
-                        return { collection: 'phase7_tags', totalTags: 2, totalPoints: 12, totalQuestions: 10, totalAnswers: 2 };
+                        return {
+                            collection: 'phase7_tags',
+                            totalTags: 2,
+                            totalPoints: 12,
+                            totalQuestions: 10,
+                            totalAnswers: 2,
+                        };
                     },
                     async sync() {
                         calls.push(['sync']);

@@ -167,7 +167,9 @@ async function testAskAndDebugUseAuthoritativeTags() {
     assert.strictEqual(debug.groups[0].tagId, 'gems');
     assert.strictEqual(debug.groups[0].topScore, 0.91);
     assert.deepStrictEqual(normalize(debug.groups[0].matchedKinds), ['tag_question', 'tag_answer']);
-    assert.deepStrictEqual(normalize(debug.groups[0].matchedQuestions), ['Generated scaffolding: should I use a gem before hunting?']);
+    assert.deepStrictEqual(normalize(debug.groups[0].matchedQuestions), [
+        'Generated scaffolding: should I use a gem before hunting?',
+    ]);
     assert.strictEqual(debug.groups[0].tag.data, 'Authoritative Mongo data: gems improve hunt rewards.');
     assert.strictEqual(debug.groups[0].dataPreview, 'Authoritative Mongo data: gems improve hunt rewards.');
     assert.deepStrictEqual(normalize(tagFindQueries[0]), { _id: { $in: ['gems', 'rules'] } });
@@ -247,7 +249,9 @@ async function testKbFindIsTagShapedAndAddIsRejected() {
 async function main() {
     await testAskAndDebugUseAuthoritativeTags();
     await testKbFindIsTagShapedAndAddIsRejected();
-    console.log('Phase 6 retrieval uses grouped tag hits, authoritative Tag.data, tag-shaped debug/find, and rejects kb add.');
+    console.log(
+        'Phase 6 retrieval uses grouped tag hits, authoritative Tag.data, tag-shaped debug/find, and rejects kb add.'
+    );
 }
 
 main().catch((err) => {

@@ -48,7 +48,9 @@ module.exports = new Command({
             case 'find':
                 return runFind.call(this, KB);
             case 'add':
-                await this.error('`snail kb add` has been removed. Add support content with `snail tag add {name} {data}`.');
+                await this.error(
+                    '`snail kb add` has been removed. Add support content with `snail tag add {name} {data}`.'
+                );
                 return;
             case 'model':
                 return setModel.call(this, KB);
@@ -200,9 +202,10 @@ async function runFind(KB) {
 
     const fields = groups.slice(0, 5).map((group, index) => {
         const kinds = group.matchedKinds?.join(', ') || '—';
-        const questions = group.matchedQuestions?.length
-            ? group.matchedQuestions.map((q) => `- ${q.slice(0, FIND_QUESTION_LEN)}${q.length > FIND_QUESTION_LEN ? '…' : ''}`).join('\n')
-            : '—';
+        const matchedQuestions = (group.matchedQuestions || []).map(
+            (q) => `- ${q.slice(0, FIND_QUESTION_LEN)}${q.length > FIND_QUESTION_LEN ? '…' : ''}`
+        );
+        const questions = matchedQuestions.length ? matchedQuestions.join('\n') : '—';
         const preview = (group.dataPreview || '').slice(0, FIND_PREVIEW_LEN);
         const ellipsis = (group.dataPreview || '').length > FIND_PREVIEW_LEN ? '…' : '';
         return {

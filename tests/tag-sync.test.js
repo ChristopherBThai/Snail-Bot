@@ -154,7 +154,10 @@ async function main() {
     const fullUpsert = calls.find((call) => call[0] === 'upsert');
     assert.strictEqual(fullUpsert[2].length, 1 + tag.kb.questions.length);
     assert.strictEqual(fullUpsert[2].filter((point) => point.payload.kind === 'tag_answer').length, 1);
-    assert.strictEqual(fullUpsert[2].filter((point) => point.payload.kind === 'tag_question').length, tag.kb.questions.length);
+    assert.strictEqual(
+        fullUpsert[2].filter((point) => point.payload.kind === 'tag_question').length,
+        tag.kb.questions.length
+    );
     assert.ok(fullUpsert[2].every((point) => point.payload.tag_id === 'gems'));
     assert.ok(fullUpsert[2].every((point) => !Object.prototype.hasOwnProperty.call(point.payload, 'data')));
     assert.ok(fullUpsert[2].every((point) => !Object.prototype.hasOwnProperty.call(point.payload, 'prompt_version')));

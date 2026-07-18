@@ -98,9 +98,10 @@ module.exports = new Command({
                 .join('\n');
             const more = truncated > 0 ? `\n*+${truncated} more match${truncated > 1 ? 'es' : ''}*` : '';
             const kinds = group.matchedKinds.join(', ') || '—';
-            const questions = group.matchedQuestions.length
-                ? group.matchedQuestions.map((q) => `- ${q.slice(0, Q_TEXT_LEN)}${q.length > Q_TEXT_LEN ? '…' : ''}`).join('\n')
-                : '—';
+            const matchedQuestions = group.matchedQuestions.map(
+                (q) => `- ${q.slice(0, Q_TEXT_LEN)}${q.length > Q_TEXT_LEN ? '…' : ''}`
+            );
+            const questions = matchedQuestions.length ? matchedQuestions.join('\n') : '—';
             const preview = group.dataPreview.slice(0, PREVIEW_LEN);
             const ellipsis = group.dataPreview.length > PREVIEW_LEN ? '…' : '';
 
