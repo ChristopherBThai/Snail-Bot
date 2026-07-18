@@ -172,9 +172,10 @@ module.exports = class KnowledgeBase extends require('./Module') {
             scoreThreshold: this.scoreThreshold,
         });
 
-        const hits = dedupeByEntry(rawHits).slice(0, this.topK);
+        const groups = await this.materializeTagGroups(groupHitsByTag(rawHits).slice(0, this.topK));
+        const hits = groups.flatMap((group) => group.hits);
 
-        if (!hits.length) {
+        if (!groups.length) {
             return {
                 answer:
                     "I don't have anything in my knowledge base about that. " +
@@ -184,7 +185,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
             };
         }
 
-        const context = hits.map((hit, i) => formatContextEntry(hit, i + 1)).join('\n\n');
+        const context = groups.map(formatTagAnswerContext).join('\n\n');
 
         const { content } = await chat({
             apiKey: this.openrouterApiKey,
@@ -193,11 +194,11 @@ module.exports = class KnowledgeBase extends require('./Module') {
             temperature: this.temperature,
             messages: [
                 { role: 'system', content: SYSTEM_PROMPT },
-                { role: 'user', content: `Knowledge base entries:\n${context}\n\nQuestion: ${question}` },
+                { role: 'user', content: `Support tag entries:\n${context}\n\nUser question:\n${question}` },
             ],
         });
 
-        const sources = [...new Set(hits.map((h) => h.payload?.source).filter(Boolean))];
+        const sources = groups.map((group) => group.tagId);
         return { answer: content, sources, hits };
     }
 
@@ -211,13 +212,13 @@ module.exports = class KnowledgeBase extends require('./Module') {
             limit: wantEntries * 5,
             scoreThreshold: includeBelowThreshold ? undefined : this.scoreThreshold,
         });
+        const groups = await this.materializeTagGroups(groupHitsByTag(hits).slice(0, wantEntries));
 
-        return { hits, threshold: this.scoreThreshold };
+        return { hits, groups, threshold: this.scoreThreshold };
     }
 
-    // Find entries semantically similar to a question. Used by the moderator
-    // "find" and "add" flows to surface possible duplicates. Returns dedup'd
-    // hits grouped by entry, with each entry's Mongo doc materialized.
+    // Find tags semantically similar to a question. Used by the manager "find"
+    // flow as a read/debug surface over tag-backed retrieval results.
     async findSimilar(question, { limit = 5 } = {}) {
         if (!this.qdrant) await this.initQdrant();
         const vector = await this.embedQuery(question);
@@ -227,32 +228,23 @@ module.exports = class KnowledgeBase extends require('./Module') {
             limit: limit * 5,
         });
 
-        const groups = groupHitsByEntry(rawHits).slice(0, limit);
+        return this.materializeTagGroups(groupHitsByTag(rawHits).slice(0, limit));
+    }
 
-        // Resolve each group's Mongo doc. Points indexed before entry_id was
-        // added to payloads have entryId=null; fall back to matching by aHash.
-        const idSet = new Set(groups.map((g) => g.entryId).filter(Boolean));
-        const aHashSet = new Set(
-            groups
-                .filter((g) => !g.entryId)
-                .map((g) => g.aHash)
-                .filter(Boolean)
-        );
-
-        const orClauses = [];
-        if (idSet.size) orClauses.push({ _id: { $in: [...idSet] } });
-        if (aHashSet.size) orClauses.push({ aHash: { $in: [...aHashSet] } });
-
-        const docs = orClauses.length ? await this.Knowledge.find({ $or: orClauses }).lean() : [];
-        const docById = new Map(docs.map((d) => [String(d._id), d]));
-        const docByAHash = new Map(docs.map((d) => [d.aHash, d]));
+    async materializeTagGroups(groups) {
+        if (!groups.length) return [];
+        const tagIds = groups.map((group) => group.tagId);
+        const docs = await leanQuery(this.Tag.find({ _id: { $in: tagIds } }));
+        const tagById = new Map(docs.map((doc) => [String(doc._id), doc]));
 
         return groups
-            .map((g) => {
-                const doc = (g.entryId && docById.get(g.entryId)) || (g.aHash && docByAHash.get(g.aHash)) || null;
-                return { ...g, doc, entryId: doc ? String(doc._id) : g.entryId };
+            .map((group) => {
+                const tag = tagById.get(group.tagId);
+                if (!tag) return null;
+                const dataPreview = previewText(tag.data, 220);
+                return { ...group, tag, doc: tag, dataPreview };
             })
-            .filter((g) => g.doc);
+            .filter(Boolean);
     }
 
     // ─── CRUD ───────────────────────────────────────────────────────────
@@ -830,50 +822,50 @@ function buildPayload(item) {
     return payload;
 }
 
-function dedupeByEntry(hits) {
-    const seen = new Set();
-    const out = [];
-    for (const hit of hits) {
-        const key = hit.payload?.entry_id || hit.payload?.a_hash || hit.payload?.a;
-        if (!key || seen.has(key)) continue;
-        seen.add(key);
-        out.push(hit);
-    }
-    return out;
-}
-
-// Group Qdrant hits by entry_id, preserving Qdrant's score-desc order.
-// Returns [{ entryId, topScore, hits: [...] }] with the top-scoring hit first
-// in each group.
-function groupHitsByEntry(hits) {
+function groupHitsByTag(hits) {
     const groups = new Map();
     for (const hit of hits) {
-        const key = hit.payload?.entry_id || hit.payload?.a_hash || hit.payload?.a;
-        if (!key) continue;
+        const tagId = hit.payload?.tag_id;
+        if (!tagId) continue;
+        const key = String(tagId);
         if (!groups.has(key)) {
             groups.set(key, {
-                entryId: hit.payload?.entry_id || null,
-                aHash: hit.payload?.a_hash || null,
+                tagId: key,
                 topScore: hit.score,
-                hits: [hit],
+                hits: [],
+                matchedKinds: [],
+                matchedQuestions: [],
             });
-        } else {
-            groups.get(key).hits.push(hit);
+        }
+        const group = groups.get(key);
+        group.hits.push(hit);
+        if (hit.score > group.topScore) group.topScore = hit.score;
+        const kind = hit.payload?.kind;
+        if (kind && !group.matchedKinds.includes(kind)) group.matchedKinds.push(kind);
+        if (kind === 'tag_question' && hit.payload?.question && !group.matchedQuestions.includes(hit.payload.question)) {
+            group.matchedQuestions.push(hit.payload.question);
         }
     }
     return Array.from(groups.values());
 }
 
-function formatContextEntry(hit, index) {
-    const p = hit.payload || {};
-    const cats = Array.isArray(p.category) ? p.category.join(', ') : p.category || 'uncategorized';
-    const answer = (p.a || '')
+async function leanQuery(query) {
+    if (!query) return [];
+    if (typeof query.lean === 'function') return query.lean();
+    return query;
+}
+
+function previewText(text, max) {
+    const normalized = String(text ?? '').replace(/\s+/g, ' ').trim();
+    return normalized.length > max ? `${normalized.slice(0, max - 1)}…` : normalized;
+}
+
+function formatTagAnswerContext(group) {
+    const data = String(group.tag?.data ?? '')
         .replace(/[ \t]+\n/g, '\n')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
-    const sourceLine = p.source ? `\nSource: ${p.source}` : '';
-    const qLine = p.q ? `\nQ: ${p.q}` : '';
-    return `[Entry ${index}] (categories: ${cats})${qLine}\nA: ${answer}${sourceLine}`;
+    return `[Tag: ${group.tagId}]\n${data}`;
 }
 
 function formatSource(source) {

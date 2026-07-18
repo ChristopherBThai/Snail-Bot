@@ -64,14 +64,14 @@ module.exports = new Command({
             return;
         }
 
-        const { hits, threshold } = result;
+        const { hits, groups, threshold } = result;
 
-        if (!hits.length) {
+        if (!hits.length || !groups.length) {
             await this.send({
                 embed: {
                     title: 'KB Debug — no results',
                     description:
-                        `**Question:** ${question}\n\nQdrant returned 0 points. ` +
+                        `**Question:** ${question}\n\nQdrant returned ${hits.length} points and ${groups.length} tag matches. ` +
                         'The collection may be empty — run `snail kb reindex`.',
                     color: this.config.color.orange,
                 },
@@ -79,68 +79,56 @@ module.exports = new Command({
             return;
         }
 
-        // Group hits by entry (a_hash). Qdrant returns hits sorted by score desc,
-        // so the first hit per group is the top-scoring variant for that entry.
-        const groups = new Map();
-        for (const hit of hits) {
-            const key = hit.payload?.a_hash || hit.payload?.a;
-            if (!key) continue;
-            if (!groups.has(key)) groups.set(key, []);
-            groups.get(key).push(hit);
-        }
+        const ranked = groups.slice(0, limit);
 
-        const ranked = Array.from(groups.values()).slice(0, limit);
-
-        const fields = ranked.map((groupHits, i) => {
-            const top = groupHits[0];
-            const p = top.payload || {};
-            const passes = top.score >= threshold ? '✅' : '⚠️';
-            const cats = Array.isArray(p.category) ? p.category.join(', ') : p.category || '—';
-            const preview = (p.a || '').replace(/\s+/g, ' ').slice(0, PREVIEW_LEN);
-            const ellipsis = (p.a || '').length > PREVIEW_LEN ? '…' : '';
-            const sourceLine = p.source ? `\n**Source:** ${p.source}` : '';
-
-            const shown = groupHits.slice(0, MAX_VARIANTS_PER_GROUP);
-            const truncated = groupHits.length - shown.length;
-            const matchedQs = shown
-                .map((h) => {
-                    const kind = h.payload?.kind === 'a' ? '(a)' : '(q)';
-                    if (h.payload?.kind === 'a') {
-                        return `\`${h.score.toFixed(4)}\` ${kind} answer passage`;
+        const fields = ranked.map((group, i) => {
+            const passes = group.topScore >= threshold ? '✅' : '⚠️';
+            const shown = group.hits.slice(0, MAX_VARIANTS_PER_GROUP);
+            const truncated = group.hits.length - shown.length;
+            const matched = shown
+                .map((hit) => {
+                    const kind = hit.payload?.kind || 'unknown';
+                    if (kind === 'tag_question') {
+                        const q = (hit.payload?.question || '—').slice(0, Q_TEXT_LEN);
+                        const tail = (hit.payload?.question || '').length > Q_TEXT_LEN ? '…' : '';
+                        return `\`${hit.score.toFixed(4)}\` (${kind}) ${q}${tail}`;
                     }
-                    const q = (h.payload?.q || '—').slice(0, Q_TEXT_LEN);
-                    const tail = (h.payload?.q || '').length > Q_TEXT_LEN ? '…' : '';
-                    return `\`${h.score.toFixed(4)}\` ${kind} ${q}${tail}`;
+                    return `\`${hit.score.toFixed(4)}\` (${kind}) tag data passage`;
                 })
                 .join('\n');
             const more = truncated > 0 ? `\n*+${truncated} more match${truncated > 1 ? 'es' : ''}*` : '';
-
-            const matchLabel = `${groupHits.length} match${groupHits.length > 1 ? 'es' : ''}`;
+            const kinds = group.matchedKinds.join(', ') || '—';
+            const questions = group.matchedQuestions.length
+                ? group.matchedQuestions.map((q) => `- ${q.slice(0, Q_TEXT_LEN)}${q.length > Q_TEXT_LEN ? '…' : ''}`).join('\n')
+                : '—';
+            const preview = group.dataPreview.slice(0, PREVIEW_LEN);
+            const ellipsis = group.dataPreview.length > PREVIEW_LEN ? '…' : '';
 
             return {
-                name: `${i + 1}. ${passes} top score ${top.score.toFixed(4)} — ${matchLabel}`,
+                name: `${i + 1}. ${passes} \`${group.tagId}\` — top score ${group.topScore.toFixed(4)}`,
                 value:
-                    `**Matched:**\n${matchedQs}${more}\n` +
-                    `**A preview:** ${preview}${ellipsis}\n` +
-                    `**Categories:** ${cats}${sourceLine}`,
+                    `**Matched kinds:** ${kinds}\n` +
+                    `**Matched hits:**\n${matched}${more}\n` +
+                    `**Generated-question matches:**\n${questions}\n` +
+                    `**Tag data preview:** ${preview}${ellipsis}`,
             };
         });
 
-        const passingGroups = ranked.filter((g) => g[0].score >= threshold).length;
+        const passingGroups = ranked.filter((group) => group.topScore >= threshold).length;
 
         const embed = {
             title: 'KB Debug Results',
             description:
                 `**Question:** ${question}\n` +
-                `**Threshold:** ${threshold} — **${passingGroups}/${ranked.length}** entries would pass\n` +
-                `**Raw hits fetched:** ${hits.length} (${groups.size} unique entries)`,
+                `**Threshold:** ${threshold} — **${passingGroups}/${ranked.length}** tags would pass\n` +
+                `**Raw hits fetched:** ${hits.length} (${groups.length} unique tags)`,
             color: this.config.embedcolor,
             fields: fields.slice(0, 10),
             footer: {
                 text:
                     ranked.length > 10
-                        ? `Showing top 10 of ${ranked.length} unique entries (Discord embed limit)`
-                        : `${ranked.length} unique entries`,
+                        ? `Showing top 10 of ${ranked.length} unique tags (Discord embed limit)`
+                        : `${ranked.length} unique tags`,
             },
         };
 
