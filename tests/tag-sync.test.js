@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-function loadKnowledgeBase({ chatImpl, embedImpl }) {
+function loadKnowledgeBase({ chatImpl, embedImpl, consoleImpl = console }) {
     const modulePath = path.join(__dirname, '..', 'src', 'modules', 'KnowledgeBase.js');
     const source = fs.readFileSync(modulePath, 'utf8');
     const sandbox = {
@@ -25,7 +25,7 @@ function loadKnowledgeBase({ chatImpl, embedImpl }) {
             }
             return require(request);
         },
-        console,
+        console: consoleImpl,
         process,
         Date,
         RegExp,
@@ -194,6 +194,36 @@ async function main() {
         ['deleteByFilter', 'test_tags', { must: [{ key: 'tag_id', match: { value: 'missing' } }] }],
     ]);
     assert.deepStrictEqual(normalize(missingSummary), { deleted: true, tagId: 'missing' });
+
+    const syncLogs = [];
+    const progressHelpers = loadKnowledgeBase({
+        chatImpl: async () => {
+            throw new Error('dry sync should not generate questions');
+        },
+        embedImpl: async () => {
+            throw new Error('dry sync should not embed points');
+        },
+        consoleImpl: {
+            ...console,
+            log: (line) => syncLogs.push(line),
+        },
+    });
+    const progressTags = Array.from({ length: 26 }, (_, index) => {
+        const id = `tag-${index + 1}`;
+        const progressTag = { _id: id, data: `Data for ${id}` };
+        progressTag.kb = currentKb(progressHelpers, progressTag);
+        return progressTag;
+    });
+    const progressKb = new progressHelpers.KnowledgeBase({
+        config: { kb: { collection: 'test_tags' } },
+        snail_db: { Tag: { find: () => progressTags } },
+    });
+    progressKb.qdrant = { scrollAll: async () => [] };
+
+    const progressSummary = await progressKb.sync({ dryRun: true });
+    assert.strictEqual(progressSummary.totalTags, 26);
+    assert.ok(syncLogs.some((line) => line.includes('processed 25/26 tags; planned')));
+    assert.ok(syncLogs.some((line) => line.includes('processed 26/26 tags; planned')));
 
     console.log('KnowledgeBase syncs tag-derived Qdrant points and deletes by tag_id.');
 }

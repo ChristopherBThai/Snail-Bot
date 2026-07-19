@@ -12,6 +12,8 @@ const SYSTEM_PROMPT =
 
 const EMBED_BATCH = 64;
 const META_LOG_EVERY = 50;
+const TAG_SYNC_LOG_EVERY = 25;
+const RAW_GENERATION_RESPONSE_LOG_CHARS = 4000;
 const TAG_QUESTION_PROMPT_VERSION = 'tag-question-v1';
 const TAG_QUESTION_SYSTEM_PROMPT =
     'You generate retrieval scaffolding questions for OwO Discord bot support tags. ' +
@@ -257,9 +259,13 @@ module.exports = class KnowledgeBase extends require('./Module') {
             log(`loaded ${tags.length} tags from Mongo`);
 
             const desired = new Map();
-            for (const tag of tags) {
+            for (let i = 0; i < tags.length; i++) {
+                const tag = tags[i];
                 if (!dryRun) await this.ensureTagKbCache(tag);
                 for (const [pointId, point] of this.buildDesiredTagPoints(tag)) desired.set(pointId, point);
+                if ((i + 1) % TAG_SYNC_LOG_EVERY === 0 || i + 1 === tags.length) {
+                    log(`processed ${i + 1}/${tags.length} tags; planned ${desired.size} points so far`);
+                }
             }
 
             const questionCount = countByKind(desired, 'tag_question');
@@ -327,7 +333,17 @@ module.exports = class KnowledgeBase extends require('./Module') {
             messages: buildTagQuestionMessages(tag),
         });
 
-        const questions = normalizeGeneratedQuestions(parseGeneratedQuestionArray(content)).map((text) => ({
+        let generatedQuestions;
+        try {
+            generatedQuestions = parseGeneratedQuestionArray(content);
+        } catch (err) {
+            console.error(
+                `[KB] tag question generation raw response for tag '${String(tag._id)}': ${truncateForLog(content)}`
+            );
+            throw err;
+        }
+
+        const questions = normalizeGeneratedQuestions(generatedQuestions).map((text) => ({
             text,
             hash: sha1(text),
         }));
@@ -519,6 +535,14 @@ function buildTagQuestionMessages(tag) {
                 `Tag data:\n${data}`,
         },
     ];
+}
+
+function truncateForLog(value) {
+    const text = String(value ?? '');
+    if (text.length <= RAW_GENERATION_RESPONSE_LOG_CHARS) return text;
+    return `${text.slice(0, RAW_GENERATION_RESPONSE_LOG_CHARS)}… [truncated ${
+        text.length - RAW_GENERATION_RESPONSE_LOG_CHARS
+    } chars]`;
 }
 
 function parseGeneratedQuestionArray(content) {

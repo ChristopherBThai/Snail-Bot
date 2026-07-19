@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-function loadKnowledgeBase({ chatImpl }) {
+function loadKnowledgeBase({ chatImpl, consoleImpl = console }) {
     const modulePath = path.join(__dirname, '..', 'src', 'modules', 'KnowledgeBase.js');
     const source = fs.readFileSync(modulePath, 'utf8');
     const sandbox = {
@@ -24,7 +24,7 @@ function loadKnowledgeBase({ chatImpl }) {
             }
             return require(request);
         },
-        console,
+        console: consoleImpl,
         process,
         Date,
         RegExp,
@@ -188,6 +188,26 @@ async function main() {
     assert.deepStrictEqual(normalize(updateArgs), [{ _id: 'gems' }, { $set: { kb: normalize(leanRefreshed) } }]);
     assert.strictEqual(malformedLeanTag.kb, leanRefreshed);
     assert.deepStrictEqual(normalize(leanRefreshed.questions.map((q) => q.text)), generatedTexts.slice(0, 8));
+
+    const loggedErrors = [];
+    const invalidHelpers = loadKnowledgeBase({
+        chatImpl: async () => ({ content: 'not json from model' }),
+        consoleImpl: {
+            ...console,
+            error: (...args) => loggedErrors.push(args.join(' ')),
+        },
+    });
+    const invalidKb = new invalidHelpers.KnowledgeBase({
+        config: { kb: {} },
+        snail_db: { Tag: { updateOne: async () => assert.fail('invalid generation should not persist') } },
+    });
+    invalidKb.openrouterApiKey = 'test-api-key';
+
+    await assert.rejects(
+        () => invalidKb.ensureTagKbCache({ _id: 'gems', data: 'Gems can be equipped before hunting.' }),
+        /Tag question generation must return a JSON array of strings/
+    );
+    assert.ok(loggedErrors.some((line) => line.includes("raw response for tag 'gems': not json from model")));
 
     console.log('KnowledgeBase caches generated tag retrieval questions and reuses current caches.');
 }
