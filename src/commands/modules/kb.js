@@ -84,6 +84,9 @@ async function showStatus(KB) {
           `\n - unchanged: ${KB.lastSyncSummary.unchanged}`
         : '';
 
+    const progress = typeof KB.getSyncProgress === 'function' ? KB.getSyncProgress() : null;
+    const progressSummary = progress ? formatSyncProgress(progress) : '';
+
     const embed = {
         title: 'Knowledge Base Status',
         color: this.config.embedcolor,
@@ -93,9 +96,40 @@ async function showStatus(KB) {
             `**Points in Qdrant:** ${pointCount}\n` +
             `**Chat Model:** \`${KB.chatModel}\`\n` +
             `**Embedding Model:** \`${KB.embeddingModel}\`\n` +
-            `**Last Sync:** ${last}${lastSummary}`,
+            `**Last Sync:** ${last}${lastSummary}${progressSummary}`,
     };
     await this.send({ embed });
+}
+
+function formatSyncProgress(progress) {
+    const started = progress.startedAt
+        ? `<t:${Math.floor(new Date(progress.startedAt).getTime() / 1000)}:R>`
+        : 'unknown';
+    const updated = progress.updatedAt
+        ? `<t:${Math.floor(new Date(progress.updatedAt).getTime() / 1000)}:R>`
+        : 'unknown';
+    const lines = [
+        '',
+        '**Current Sync Progress:**',
+        ` - mode: ${progress.dryRun ? 'dry run' : 'live sync'}`,
+        ` - phase: ${progress.phase}`,
+        ` - tags: ${progress.processedTags}/${progress.totalTags}`,
+        ` - planned points: ${progress.plannedPoints}`,
+    ];
+
+    if (progress.totalAnswers || progress.totalQuestions) {
+        lines.push(
+            ` - point types: ${progress.totalAnswers} tag data + ${progress.totalQuestions} generated questions`
+        );
+    }
+    if (progress.totalEmbeds) lines.push(` - embedded: ${progress.embeddedPoints}/${progress.totalEmbeds}`);
+    if (progress.totalPayloadUpdates) {
+        lines.push(` - payload updates: ${progress.updatedPayloads}/${progress.totalPayloadUpdates}`);
+    }
+    if (progress.deletedPoints) lines.push(` - deleted: ${progress.deletedPoints}`);
+    lines.push(` - started: ${started}`);
+    lines.push(` - updated: ${updated}`);
+    return `\n${lines.join('\n')}`;
 }
 
 async function runReindex(KB) {

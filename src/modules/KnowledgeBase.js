@@ -53,6 +53,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
         this.qdrant = null;
         this.syncing = false;
+        this.syncProgress = null;
         this.lastSync = null;
         this.lastSyncSummary = null;
 
@@ -247,15 +248,46 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
     // ─── Sync ───────────────────────────────────────────────────────────
 
+    startSyncProgress(dryRun) {
+        this.syncProgress = {
+            dryRun,
+            phase: 'starting',
+            processedTags: 0,
+            totalTags: 0,
+            plannedPoints: 0,
+            totalAnswers: 0,
+            totalQuestions: 0,
+            embeddedPoints: 0,
+            totalEmbeds: 0,
+            updatedPayloads: 0,
+            totalPayloadUpdates: 0,
+            deletedPoints: 0,
+            startedAt: new Date(),
+            updatedAt: new Date(),
+        };
+    }
+
+    updateSyncProgress(patch) {
+        if (!this.syncProgress) return;
+        Object.assign(this.syncProgress, patch, { updatedAt: new Date() });
+    }
+
+    getSyncProgress() {
+        if (!this.syncProgress) return null;
+        return { ...this.syncProgress };
+    }
+
     async sync({ dryRun = false } = {}) {
         if (this.syncing) throw new Error('A sync is already in progress');
         if (!this.qdrant) await this.initQdrant();
         if (!dryRun && !this.openrouterApiKey) throw new Error('Missing OPENROUTER_API_KEY');
 
         this.syncing = true;
+        this.startSyncProgress(dryRun);
         const log = (msg) => console.log(`[KB] sync${dryRun ? ' (dry)' : ''}: ${msg}`);
         try {
             const tags = await this.Tag.find();
+            this.updateSyncProgress({ phase: 'planning', totalTags: tags.length });
             log(`loaded ${tags.length} tags from Mongo`);
 
             const desired = new Map();
@@ -263,6 +295,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
                 const tag = tags[i];
                 if (!dryRun) await this.ensureTagKbCache(tag);
                 for (const [pointId, point] of this.buildDesiredTagPoints(tag)) desired.set(pointId, point);
+                this.updateSyncProgress({ processedTags: i + 1, plannedPoints: desired.size });
                 if ((i + 1) % TAG_SYNC_LOG_EVERY === 0 || i + 1 === tags.length) {
                     log(`processed ${i + 1}/${tags.length} tags; planned ${desired.size} points so far`);
                 }
@@ -270,6 +303,12 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
             const questionCount = countByKind(desired, 'tag_question');
             const answerCount = countByKind(desired, 'tag_answer');
+            this.updateSyncProgress({
+                phase: 'diffing',
+                totalAnswers: answerCount,
+                totalQuestions: questionCount,
+                plannedPoints: desired.size,
+            });
             log(
                 `built ${answerCount} tag_answer points + ${questionCount} tag_question points = ${desired.size} total`
             );
@@ -295,15 +334,26 @@ module.exports = class KnowledgeBase extends require('./Module') {
                     `~${summary.metaUpdated} meta, -${summary.deleted} delete, =${summary.unchanged} unchanged`
             );
 
-            if (dryRun) return summary;
+            if (dryRun) {
+                this.updateSyncProgress({ phase: 'complete' });
+                return summary;
+            }
 
+            this.updateSyncProgress({
+                phase: 'applying',
+                totalEmbeds: diff.toEmbed.length,
+                totalPayloadUpdates: diff.toUpdateMeta.length,
+                deletedPoints: diff.toDelete.length,
+            });
             await this.applyDiff(diff, log);
 
             this.lastSync = new Date();
             this.lastSyncSummary = summary;
+            this.updateSyncProgress({ phase: 'complete' });
             log('complete');
             return summary;
         } catch (err) {
+            this.updateSyncProgress({ phase: 'failed' });
             log(`failed: ${err.message}`);
             throw err;
         } finally {
@@ -416,6 +466,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
     async applyDiff({ toEmbed, toUpdateMeta, toDelete }, log) {
         if (toDelete.length) {
             await this.qdrant.deletePoints(this.collection, toDelete);
+            this.updateSyncProgress({ deletedPoints: toDelete.length });
             log(`deleted ${toDelete.length}`);
         }
 
@@ -432,12 +483,14 @@ module.exports = class KnowledgeBase extends require('./Module') {
                 payload: buildPayload(x),
             }));
             await this.qdrant.upsert(this.collection, points);
+            this.updateSyncProgress({ embeddedPoints: Math.min(i + EMBED_BATCH, toEmbed.length) });
             log(`embedded ${Math.min(i + EMBED_BATCH, toEmbed.length)}/${toEmbed.length}`);
         }
 
         for (let i = 0; i < toUpdateMeta.length; i++) {
             const x = toUpdateMeta[i];
             await this.qdrant.setPayload(this.collection, x.pointId, buildPayload(x));
+            this.updateSyncProgress({ updatedPayloads: i + 1 });
             if ((i + 1) % META_LOG_EVERY === 0 || i + 1 === toUpdateMeta.length) {
                 log(`payload updated ${i + 1}/${toUpdateMeta.length}`);
             }

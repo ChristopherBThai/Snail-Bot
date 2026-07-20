@@ -225,6 +225,64 @@ async function testReindexDoesNotReset() {
     assert.strictEqual(statusEdits[0].embed.title, 'Reindex Complete');
 }
 
+async function testStatusShowsSyncProgress() {
+    const command = loadKbCommand();
+    const sent = [];
+    const startedAt = new Date('2026-07-19T12:00:00.000Z');
+    const updatedAt = new Date('2026-07-19T12:01:00.000Z');
+    const context = {
+        message: { args: ['status'], author: { id: 'manager' }, channel: { id: 'channel' } },
+        bot: {
+            modules: {
+                knowledgebase: {
+                    enabled: true,
+                    collection: 'phase7_tags',
+                    chatModel: 'chat/model',
+                    embeddingModel: 'embed/model',
+                    syncing: true,
+                    qdrant: { count: async () => 42 },
+                    getSyncProgress() {
+                        return {
+                            dryRun: false,
+                            phase: 'planning',
+                            processedTags: 25,
+                            totalTags: 123,
+                            plannedPoints: 150,
+                            totalAnswers: 20,
+                            totalQuestions: 130,
+                            embeddedPoints: 0,
+                            totalEmbeds: 0,
+                            updatedPayloads: 0,
+                            totalPayloadUpdates: 0,
+                            deletedPoints: 0,
+                            startedAt,
+                            updatedAt,
+                        };
+                    },
+                },
+            },
+        },
+        config: { embedcolor: 0xabcdef },
+        async send(payload) {
+            sent.push(payload);
+        },
+        async error(message) {
+            throw new Error(message);
+        },
+    };
+
+    await command.execute.call(context);
+
+    assert.strictEqual(sent.length, 1);
+    const description = sent[0].embed.description;
+    assert.ok(description.includes('**Last Sync:** in progress'));
+    assert.ok(description.includes('**Current Sync Progress:**'));
+    assert.ok(description.includes(' - phase: planning'));
+    assert.ok(description.includes(' - tags: 25/123'));
+    assert.ok(description.includes(' - planned points: 150'));
+    assert.ok(description.includes('20 tag data + 130 generated questions'));
+}
+
 async function testQdrantResetHelperDeletesThenEnsuresCollection() {
     const calls = [];
     const fakeClient = {
@@ -266,6 +324,7 @@ async function main() {
     await testOwnerResetRecreatesCollectionThenSyncs();
     await testCommandResetIsExplicitAndOwnerOwned();
     await testReindexDoesNotReset();
+    await testStatusShowsSyncProgress();
     await testQdrantResetHelperDeletesThenEnsuresCollection();
     console.log('KB reset is explicit, owner-owned, recreates Qdrant collection, and reindex remains non-destructive.');
 }
