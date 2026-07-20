@@ -19,8 +19,8 @@ module.exports = new Command({
         '- `snail kb reset confirm`\n - Destructively recreate the Qdrant collection, then sync Mongo tags. Remote resets require backup through `ssh hub.corg.network` first.\n' +
         '- `snail kb find {query}`\n - Search matching tags for manager/debug review\n' +
         '- `snail kb questions {tag}`\n - Show generated retrieval questions cached in Mongo for a tag\n' +
-        '- `snail kb exclude {tag}`\n - Exclude a tag from KB retrieval and delete its Qdrant points\n' +
-        '- `snail kb include {tag}`\n - Include a tag in KB retrieval and sync its Qdrant points\n' +
+        '- `snail kb exclude {tag...}`\n - Exclude one or more tags from KB retrieval and delete their Qdrant points\n' +
+        '- `snail kb include {tag...}`\n - Include one or more tags in KB retrieval and sync their Qdrant points\n' +
         '- `snail kb excluded`\n - List tags excluded from KB retrieval\n' +
         '- `snail kb model {modelSlug}`\n - Set the chat model (OpenRouter slug)\n',
 
@@ -31,8 +31,8 @@ module.exports = new Command({
         'snail kb reset confirm',
         'snail kb find how do gems expire',
         'snail kb questions gems',
-        'snail kb exclude newtr',
-        'snail kb include newtr',
+        'snail kb exclude newtr trstart',
+        'snail kb include newtr trstart',
         'snail kb excluded',
         'snail kb model anthropic/claude-haiku-4.5',
     ],
@@ -326,34 +326,57 @@ async function showQuestions(KB) {
 }
 
 async function setTagExcluded(KB, excluded) {
-    const tagId = this.message.args.shift();
-    if (!tagId) {
-        await this.error(`please provide a tag id! Example: \`snail kb ${excluded ? 'exclude' : 'include'} gems\``);
-        return;
-    }
-
-    let result;
-    try {
-        result = await KB.setTagKbExcluded(tagId, excluded);
-    } catch (err) {
-        console.error(`[KB] ${excluded ? 'exclude' : 'include'} tag failed:`, err);
-        await this.error(`failed to ${excluded ? 'exclude' : 'include'} tag: \`${err.message}\``);
-        return;
-    }
-
-    if (!result) {
-        await this.error(`I could not find tag \`${tagId}\`.`);
-        return;
-    }
-
-    if (excluded) {
-        await this.send(
-            `I excluded \`${result.tagId}\` from the knowledge base and deleted its Qdrant tag/question points.`
+    const tagIds = [...new Set(this.message.args.map((tagId) => tagId.trim()).filter(Boolean))];
+    if (!tagIds.length) {
+        await this.error(
+            `please provide at least one tag id! Example: \`snail kb ${
+                excluded ? 'exclude' : 'include'
+            } taga tagb tagc\``
         );
         return;
     }
 
-    await this.send(`I included \`${result.tagId}\` in the knowledge base and synced its Qdrant points.`);
+    const changed = [];
+    const missing = [];
+    const failed = [];
+    for (const tagId of tagIds) {
+        try {
+            const result = await KB.setTagKbExcluded(tagId, excluded);
+            if (!result) {
+                missing.push(tagId);
+                continue;
+            }
+            changed.push(result.tagId);
+        } catch (err) {
+            console.error(`[KB] ${excluded ? 'exclude' : 'include'} tag '${tagId}' failed:`, err);
+            failed.push({ tagId, message: err.message });
+        }
+    }
+
+    const action = excluded ? 'Excluded' : 'Included';
+    const effect = excluded
+        ? 'Deleted Qdrant tag/question points for matched tags.'
+        : 'Synced Qdrant points for matched tags.';
+    const lines = [`**${action}:** ${formatTagList(changed)}`, `**Missing:** ${formatTagList(missing)}`];
+    if (failed.length) lines.push(`**Failed:** ${formatFailedTags(failed)}`);
+    lines.push(effect);
+
+    await this.send({
+        embed: {
+            title: `KB ${action} Tags`,
+            color: failed.length ? this.config.color?.orange || this.config.embedcolor : this.config.embedcolor,
+            description: lines.join('\n'),
+        },
+    });
+}
+
+function formatTagList(tagIds) {
+    if (!tagIds.length) return 'none';
+    return tagIds.map((tagId) => `\`${tagId}\``).join(', ');
+}
+
+function formatFailedTags(failed) {
+    return failed.map(({ tagId, message }) => `\`${tagId}\` (${message})`).join(', ');
 }
 
 async function listExcludedTags(KB) {

@@ -323,12 +323,17 @@ async function testKbExcludeIncludeAndExcludedCommands() {
     const errors = [];
     const calls = [];
     const context = {
-        message: { args: ['exclude', 'newtr'], author: { id: 'manager' }, channel: { id: 'channel' } },
+        message: {
+            args: ['exclude', 'newtr', 'trstart', 'missing'],
+            author: { id: 'manager' },
+            channel: { id: 'channel' },
+        },
         bot: {
             modules: {
                 knowledgebase: {
                     async setTagKbExcluded(tagId, excluded) {
                         calls.push(['setTagKbExcluded', tagId, excluded]);
+                        if (tagId === 'missing') return null;
                         return { tagId, excluded, deleted: excluded };
                     },
                     async listKbExcludedTags() {
@@ -348,24 +353,38 @@ async function testKbExcludeIncludeAndExcludedCommands() {
     };
 
     await command.execute.call(context);
-    assert.deepStrictEqual(normalize(calls.pop()), ['setTagKbExcluded', 'newtr', true]);
+    assert.deepStrictEqual(normalize(calls.splice(0, 3)), [
+        ['setTagKbExcluded', 'newtr', true],
+        ['setTagKbExcluded', 'trstart', true],
+        ['setTagKbExcluded', 'missing', true],
+    ]);
     assert.strictEqual(errors.length, 0);
-    assert.ok(sent.pop().includes('deleted its Qdrant tag/question points'));
+    let embed = sent.pop().embed;
+    assert.strictEqual(embed.title, 'KB Excluded Tags');
+    assert.ok(embed.description.includes('`newtr`, `trstart`'));
+    assert.ok(embed.description.includes('`missing`'));
+    assert.ok(embed.description.includes('Deleted Qdrant tag/question points'));
 
-    context.message.args = ['include', 'newtr'];
+    context.message.args = ['include', 'newtr', 'trstart'];
     await command.execute.call(context);
-    assert.deepStrictEqual(normalize(calls.pop()), ['setTagKbExcluded', 'newtr', false]);
-    assert.ok(sent.pop().includes('synced its Qdrant points'));
+    assert.deepStrictEqual(normalize(calls.splice(0, 2)), [
+        ['setTagKbExcluded', 'newtr', false],
+        ['setTagKbExcluded', 'trstart', false],
+    ]);
+    embed = sent.pop().embed;
+    assert.strictEqual(embed.title, 'KB Included Tags');
+    assert.ok(embed.description.includes('`newtr`, `trstart`'));
+    assert.ok(embed.description.includes('Synced Qdrant points'));
 
     context.message.args = ['excluded'];
     await command.execute.call(context);
     assert.deepStrictEqual(normalize(calls.pop()), ['listKbExcludedTags']);
-    const embed = sent.pop().embed;
+    embed = sent.pop().embed;
     assert.strictEqual(embed.title, 'KB Excluded Tags');
     assert.ok(embed.description.includes('`newtr`'));
     assert.ok(embed.description.includes('`trstart`'));
-    assert.ok(command.description.includes('snail kb exclude {tag}'));
-    assert.ok(command.description.includes('snail kb include {tag}'));
+    assert.ok(command.description.includes('snail kb exclude {tag...}'));
+    assert.ok(command.description.includes('snail kb include {tag...}'));
     assert.ok(command.description.includes('snail kb excluded'));
 }
 
