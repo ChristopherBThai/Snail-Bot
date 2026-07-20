@@ -14,10 +14,11 @@ const EMBED_BATCH = 64;
 const META_LOG_EVERY = 50;
 const TAG_SYNC_LOG_EVERY = 25;
 const RAW_GENERATION_RESPONSE_LOG_CHARS = 4000;
-const TAG_QUESTION_PROMPT_VERSION = 'tag-question-v1';
+const TAG_QUESTION_PROMPT_VERSION = 'tag-question-v2';
 const TAG_QUESTION_SYSTEM_PROMPT =
     'You generate retrieval scaffolding questions for OwO Discord bot support tags. ' +
-    'Return only a JSON array of strings. Do not include explanations, markdown, or answer facts.';
+    'Return only a raw JSON array of English strings. Do not include explanations, markdown, code fences, or answer facts. ' +
+    'Write the questions the way a user would ask them; do not prefix every question with the bot name.';
 const TAG_QUESTION_PROMPT_SOURCE = `${TAG_QUESTION_PROMPT_VERSION}:${TAG_QUESTION_SYSTEM_PROMPT}`;
 
 module.exports = class KnowledgeBase extends require('./Module') {
@@ -456,6 +457,20 @@ module.exports = class KnowledgeBase extends require('./Module') {
         await this.qdrant.deleteByFilter(this.collection, tagFilter(tagId));
     }
 
+    async getTagQuestionCache(tagId) {
+        const normalizedTagId = String(tagId);
+        const tag = await leanQuery(this.Tag.findById(normalizedTagId));
+        if (!tag) return null;
+        return {
+            tagId: normalizedTagId,
+            dataHash: tag.kb?.dataHash,
+            promptVersion: tag.kb?.promptVersion,
+            generationHash: tag.kb?.generationHash,
+            generatedAt: tag.kb?.generatedAt,
+            questions: Array.isArray(tag.kb?.questions) ? tag.kb.questions : [],
+        };
+    }
+
     async resetQdrantAndSync() {
         if (!this.qdrant) await this.initQdrant();
         await this.qdrant.resetCollection(this.collection, this.embeddingSize);
@@ -582,7 +597,8 @@ function buildTagQuestionMessages(tag) {
         {
             role: 'user',
             content:
-                'Generate 5 to 8 concise user questions that this support tag would help retrieve.\n' +
+                'Generate 5 to 8 concise English user questions that this support tag would help retrieve.\n' +
+                'Use natural user wording and vary the phrasing. Do not start every question with "OwO bot" or the tag name.\n' +
                 'The questions are retrieval scaffolding only and must not add facts beyond the tag data.\n' +
                 `Tag id: ${tagId}\n` +
                 `Tag data:\n${data}`,
@@ -598,10 +614,16 @@ function truncateForLog(value) {
     } chars]`;
 }
 
+function unwrapJsonResponse(content) {
+    const text = String(content ?? '').trim();
+    const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+    return fenced ? fenced[1].trim() : text;
+}
+
 function parseGeneratedQuestionArray(content) {
     let parsed;
     try {
-        parsed = JSON.parse(String(content ?? '').trim());
+        parsed = JSON.parse(unwrapJsonResponse(content));
     } catch (err) {
         throw new Error('Tag question generation must return a JSON array of strings');
     }

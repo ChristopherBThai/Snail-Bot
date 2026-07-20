@@ -114,6 +114,9 @@ async function main() {
         chatImpl: async ({ messages }) => {
             staleChatCalls += 1;
             assert.ok(messages[0].content.includes('JSON array'));
+            assert.ok(messages[0].content.includes('English strings'));
+            assert.ok(messages[0].content.includes('do not prefix every question'));
+            assert.ok(messages[1].content.includes('Do not start every question'));
             assert.ok(messages[1].content.includes('Tag id: gems'));
             assert.ok(messages[1].content.includes('Gems now also improve loot.'));
             return { content: JSON.stringify([...generatedTexts, generatedTexts[0], '   ']) };
@@ -188,6 +191,25 @@ async function main() {
     assert.deepStrictEqual(normalize(updateArgs), [{ _id: 'gems' }, { $set: { kb: normalize(leanRefreshed) } }]);
     assert.strictEqual(malformedLeanTag.kb, leanRefreshed);
     assert.deepStrictEqual(normalize(leanRefreshed.questions.map((q) => q.text)), generatedTexts.slice(0, 8));
+
+    let fencedChatCalls = 0;
+    const fencedHelpers = loadKnowledgeBase({
+        chatImpl: async () => {
+            fencedChatCalls += 1;
+            return { content: `\`\`\`json\n${JSON.stringify(generatedTexts.slice(0, 5))}\n\`\`\`` };
+        },
+    });
+    const fencedKb = new fencedHelpers.KnowledgeBase({
+        config: { kb: {} },
+        snail_db: { Tag: { updateOne: async () => {} } },
+    });
+    fencedKb.openrouterApiKey = 'test-api-key';
+    const fencedRefreshed = await fencedKb.ensureTagKbCache({
+        _id: 'gems',
+        data: 'Gems can be equipped before hunting.',
+    });
+    assert.strictEqual(fencedChatCalls, 1);
+    assert.deepStrictEqual(normalize(fencedRefreshed.questions.map((q) => q.text)), generatedTexts.slice(0, 5));
 
     const loggedErrors = [];
     const invalidHelpers = loadKnowledgeBase({

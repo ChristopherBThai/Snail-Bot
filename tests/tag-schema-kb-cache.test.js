@@ -10,7 +10,7 @@ const tag = new TagModel({
     data: 'Gems can be equipped before hunting.',
     kb: {
         dataHash: '064c4f0012bc743005d310f04908e62713be347b',
-        promptVersion: 'tag-question-v1',
+        promptVersion: 'tag-question-v2',
         generationHash: '2ee307f0e9e8e9cbe75a58d57bd5661e7b578b34',
         questions: [
             {
@@ -27,7 +27,7 @@ const serialized = tag.toObject();
 assert.strictEqual(serialized._id, 'gems');
 assert.strictEqual(serialized.data, 'Gems can be equipped before hunting.');
 assert.strictEqual(serialized.kb.dataHash, '064c4f0012bc743005d310f04908e62713be347b');
-assert.strictEqual(serialized.kb.promptVersion, 'tag-question-v1');
+assert.strictEqual(serialized.kb.promptVersion, 'tag-question-v2');
 assert.strictEqual(serialized.kb.generationHash, '2ee307f0e9e8e9cbe75a58d57bd5661e7b578b34');
 assert.strictEqual(serialized.kb.questions[0].text, 'How do gems work in OwO?');
 assert.strictEqual(serialized.kb.questions[0].hash, 'f0ee0e055ff09c490d1cbb60ea0a7f3841dd5a28');

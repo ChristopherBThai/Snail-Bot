@@ -39,7 +39,7 @@ function loadKnowledgeBase({ chatImpl, embedImpl, consoleImpl = console }) {
     };
 
     vm.runInNewContext(
-        `${source}\nmodule.exports.__phase4 = { KnowledgeBase: module.exports, tagDataHash, tagQuestionGenerationHash, sha1 };`,
+        `${source}\nmodule.exports.__phase4 = { KnowledgeBase: module.exports, TAG_QUESTION_PROMPT_VERSION, tagDataHash, tagQuestionGenerationHash, sha1 };`,
         sandbox,
         { filename: modulePath }
     );
@@ -50,7 +50,7 @@ function currentKb(helpers, tag) {
     const dataHash = helpers.tagDataHash(tag.data);
     return {
         dataHash,
-        promptVersion: 'tag-question-v1',
+        promptVersion: helpers.TAG_QUESTION_PROMPT_VERSION,
         generationHash: helpers.tagQuestionGenerationHash(tag, dataHash),
         questions: [
             'How do gems work in OwO?',

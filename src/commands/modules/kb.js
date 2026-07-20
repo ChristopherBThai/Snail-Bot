@@ -18,6 +18,7 @@ module.exports = new Command({
         '- `snail kb reindex dry`\n - Show what a reindex would do without making changes\n' +
         '- `snail kb reset confirm`\n - Destructively recreate the Qdrant collection, then sync Mongo tags. Remote resets require backup through `ssh hub.corg.network` first.\n' +
         '- `snail kb find {query}`\n - Search matching tags for manager/debug review\n' +
+        '- `snail kb questions {tag}`\n - Show generated retrieval questions cached in Mongo for a tag\n' +
         '- `snail kb model {modelSlug}`\n - Set the chat model (OpenRouter slug)\n',
 
     examples: [
@@ -26,6 +27,7 @@ module.exports = new Command({
         'snail kb reindex dry',
         'snail kb reset confirm',
         'snail kb find how do gems expire',
+        'snail kb questions gems',
         'snail kb model anthropic/claude-haiku-4.5',
     ],
 
@@ -47,6 +49,8 @@ module.exports = new Command({
                 return runReset.call(this, KB);
             case 'find':
                 return runFind.call(this, KB);
+            case 'questions':
+                return showQuestions.call(this, KB);
             case 'add':
                 await this.error(
                     '`snail kb add` has been removed. Add support content with `snail tag add {name} {data}`.'
@@ -56,7 +60,7 @@ module.exports = new Command({
                 return setModel.call(this, KB);
             default:
                 await this.error(
-                    'that is not a valid subcommand! Use `snail kb [status|reindex|reset|find|model] {...arguments}`'
+                    'that is not a valid subcommand! Use `snail kb [status|reindex|reset|find|questions|model] {...arguments}`'
                 );
         }
     },
@@ -260,6 +264,48 @@ async function runFind(KB) {
                 'Results are tag-backed. Add or change support content with `snail tag add/edit/delete`.',
             color: this.config.embedcolor,
             fields,
+        },
+    });
+}
+
+async function showQuestions(KB) {
+    const tagId = this.message.args.shift();
+    if (!tagId) {
+        await this.error('please provide a tag id! Example: `snail kb questions gems`');
+        return;
+    }
+
+    let cache;
+    try {
+        cache = await KB.getTagQuestionCache(tagId);
+    } catch (err) {
+        console.error('[KB] getTagQuestionCache failed:', err);
+        await this.error(`failed to read cached questions: \`${err.message}\``);
+        return;
+    }
+
+    if (!cache) {
+        await this.error(`I could not find tag \`${tagId}\`.`);
+        return;
+    }
+
+    const renderedQuestions = cache.questions.map((q, i) => `${i + 1}. ${q.text}`).join('\n');
+    const questions = cache.questions.length
+        ? renderedQuestions.slice(0, 3500)
+        : 'No generated questions are cached for this tag yet. Run `snail kb reindex` to generate them.';
+    const generatedAt = cache.generatedAt
+        ? `<t:${Math.floor(new Date(cache.generatedAt).getTime() / 1000)}:R>`
+        : 'never';
+
+    await this.send({
+        embed: {
+            title: `KB Generated Questions — ${cache.tagId}`,
+            color: this.config.embedcolor,
+            description:
+                `**Prompt Version:** \`${cache.promptVersion || 'none'}\`\n` +
+                `**Generated:** ${generatedAt}\n` +
+                `**Question Count:** ${cache.questions.length}\n\n` +
+                questions,
         },
     });
 }

@@ -246,9 +246,60 @@ async function testKbFindIsTagShapedAndAddIsRejected() {
     assert.ok(!command.examples.some((example) => example.includes('kb add')));
 }
 
+async function testKbQuestionsShowsMongoCachedQuestions() {
+    const command = loadKbCommand({
+        renderPanel() {
+            throw new Error('questions must not render legacy panel');
+        },
+        attachPanel() {
+            throw new Error('questions must not attach legacy panel');
+        },
+    });
+    const sent = [];
+    const errors = [];
+    const context = {
+        message: { args: ['questions', 'gems'], author: { id: 'manager' }, channel: { id: 'channel' } },
+        bot: {
+            modules: {
+                knowledgebase: {
+                    async getTagQuestionCache(tagId) {
+                        assert.strictEqual(tagId, 'gems');
+                        return {
+                            tagId: 'gems',
+                            promptVersion: 'tag-question-v2',
+                            generatedAt: new Date('2026-07-15T05:00:00.000Z'),
+                            questions: [
+                                { text: 'How do gems work?' },
+                                { text: 'Should I equip a gem before hunting?' },
+                            ],
+                        };
+                    },
+                },
+            },
+        },
+        config: { embedcolor: 0xabcdef, color: { orange: 0xff9900 } },
+        async send(payload) {
+            sent.push(payload);
+        },
+        async error(payload) {
+            errors.push(payload);
+        },
+    };
+
+    await command.execute.call(context);
+
+    assert.strictEqual(errors.length, 0);
+    assert.strictEqual(sent.length, 1);
+    assert.strictEqual(sent[0].embed.title, 'KB Generated Questions — gems');
+    assert.ok(sent[0].embed.description.includes('tag-question-v2'));
+    assert.ok(sent[0].embed.description.includes('1. How do gems work?'));
+    assert.ok(sent[0].embed.description.includes('2. Should I equip a gem before hunting?'));
+}
+
 async function main() {
     await testAskAndDebugUseAuthoritativeTags();
     await testKbFindIsTagShapedAndAddIsRejected();
+    await testKbQuestionsShowsMongoCachedQuestions();
     console.log(
         'Phase 6 retrieval uses grouped tag hits, authoritative Tag.data, tag-shaped debug/find, and rejects kb add.'
     );
