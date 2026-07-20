@@ -4,6 +4,8 @@ const QDRANT_TIMEOUT = 15000;
 const EMBED_TIMEOUT = 30000;
 const CHAT_TIMEOUT = 60000;
 const SCROLL_BATCH = 256;
+const RETRY_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 500;
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
 
 class Qdrant {
@@ -17,21 +19,25 @@ class Qdrant {
 
     async ensureCollection(name, vectorSize) {
         try {
-            await this.client.get(`/collections/${name}`);
+            await requestWithRetry(() => this.client.get(`/collections/${name}`));
         } catch (err) {
             if (err.response?.status !== 404) throw err;
-            await this.client.put(`/collections/${name}`, {
-                vectors: { size: vectorSize, distance: 'Cosine' },
-            });
+            await requestWithRetry(() =>
+                this.client.put(`/collections/${name}`, {
+                    vectors: { size: vectorSize, distance: 'Cosine' },
+                })
+            );
         }
 
         // Payload indexes — safe to retry; Qdrant errors on duplicate which we ignore
         for (const field of ['tag_id', 'kind']) {
             try {
-                await this.client.put(`/collections/${name}/index`, {
-                    field_name: field,
-                    field_schema: 'keyword',
-                });
+                await requestWithRetry(() =>
+                    this.client.put(`/collections/${name}/index`, {
+                        field_name: field,
+                        field_schema: 'keyword',
+                    })
+                );
             } catch (err) {
                 // Index may already exist
                 if (err.response?.status !== 400 && err.response?.status !== 409) throw err;
@@ -41,7 +47,7 @@ class Qdrant {
 
     async resetCollection(name, vectorSize) {
         try {
-            await this.client.delete(`/collections/${name}`);
+            await requestWithRetry(() => this.client.delete(`/collections/${name}`));
         } catch (err) {
             if (err.response?.status !== 404) throw err;
         }
@@ -57,25 +63,29 @@ class Qdrant {
         if (scoreThreshold != null) body.score_threshold = scoreThreshold;
         if (filter) body.filter = filter;
 
-        const res = await this.client.post(`/collections/${name}/points/search`, body);
+        const res = await requestWithRetry(() => this.client.post(`/collections/${name}/points/search`, body));
         return res.data.result;
     }
 
     async upsert(name, points) {
-        await this.client.put(`/collections/${name}/points?wait=true`, { points });
+        await requestWithRetry(() => this.client.put(`/collections/${name}/points?wait=true`, { points }));
     }
 
     async setPayload(name, pointId, payload) {
-        await this.client.post(`/collections/${name}/points/payload?wait=true`, {
-            payload,
-            points: [pointId],
-        });
+        await requestWithRetry(() =>
+            this.client.post(`/collections/${name}/points/payload?wait=true`, {
+                payload,
+                points: [pointId],
+            })
+        );
     }
 
     async deletePoints(name, ids) {
-        await this.client.post(`/collections/${name}/points/delete?wait=true`, {
-            points: ids,
-        });
+        await requestWithRetry(() =>
+            this.client.post(`/collections/${name}/points/delete?wait=true`, {
+                points: ids,
+            })
+        );
     }
 
     async scrollAll(name, payloadFields, filter) {
@@ -91,7 +101,7 @@ class Qdrant {
             if (offset != null) body.offset = offset;
             if (filter) body.filter = filter;
 
-            const res = await this.client.post(`/collections/${name}/points/scroll`, body);
+            const res = await requestWithRetry(() => this.client.post(`/collections/${name}/points/scroll`, body));
             const data = res.data.result;
             results.push(...data.points);
             offset = data.next_page_offset;
@@ -101,26 +111,54 @@ class Qdrant {
     }
 
     async deleteByFilter(name, filter) {
-        await this.client.post(`/collections/${name}/points/delete?wait=true`, { filter });
+        await requestWithRetry(() => this.client.post(`/collections/${name}/points/delete?wait=true`, { filter }));
     }
 
     async count(name) {
-        const res = await this.client.post(`/collections/${name}/points/count`, { exact: true });
+        const res = await requestWithRetry(() =>
+            this.client.post(`/collections/${name}/points/count`, { exact: true })
+        );
         return res.data.result.count;
     }
+}
+
+async function requestWithRetry(fn) {
+    let lastErr;
+    for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
+        try {
+            return await fn();
+        } catch (err) {
+            lastErr = err;
+            if (attempt === RETRY_ATTEMPTS || !isRetryableError(err)) throw err;
+            await delay(RETRY_DELAY_MS * attempt);
+        }
+    }
+    throw lastErr;
+}
+
+function isRetryableError(err) {
+    const status = err.response?.status;
+    if ([408, 409, 425, 429, 500, 502, 503, 504].includes(status)) return true;
+    return ['EPIPE', 'ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED'].includes(err.code);
+}
+
+function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function embed({ apiKey, model, inputs }) {
     if (!apiKey) throw new Error('Missing OPENROUTER_API_KEY');
     if (!inputs.length) return [];
 
-    const res = await axios.post(
-        `${OPENROUTER_BASE}/embeddings`,
-        { model, input: inputs },
-        {
-            headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-            timeout: EMBED_TIMEOUT,
-        }
+    const res = await requestWithRetry(() =>
+        axios.post(
+            `${OPENROUTER_BASE}/embeddings`,
+            { model, input: inputs },
+            {
+                headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+                timeout: EMBED_TIMEOUT,
+            }
+        )
     );
     return res.data.data.map((d) => d.embedding);
 }
@@ -128,18 +166,20 @@ async function embed({ apiKey, model, inputs }) {
 async function chat({ apiKey, model, messages, maxTokens, temperature }) {
     if (!apiKey) throw new Error('Missing OPENROUTER_API_KEY');
 
-    const res = await axios.post(
-        `${OPENROUTER_BASE}/chat/completions`,
-        {
-            model,
-            messages,
-            max_tokens: maxTokens,
-            temperature,
-        },
-        {
-            headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-            timeout: CHAT_TIMEOUT,
-        }
+    const res = await requestWithRetry(() =>
+        axios.post(
+            `${OPENROUTER_BASE}/chat/completions`,
+            {
+                model,
+                messages,
+                max_tokens: maxTokens,
+                temperature,
+            },
+            {
+                headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+                timeout: CHAT_TIMEOUT,
+            }
+        )
     );
     return {
         content: String(res.data?.choices?.[0]?.message?.content ?? '').trim(),
