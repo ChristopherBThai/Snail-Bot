@@ -122,7 +122,7 @@ async function testAskAndDebugUseAuthoritativeTags() {
 
     const tagFindQueries = [];
     const bot = {
-        config: { kb: { collection: 'phase6_tags' } },
+        config: { embedcolor: 0xabcdef, kb: { collection: 'phase6_tags' } },
         snail_db: {
             Tag: {
                 find(query) {
@@ -171,7 +171,10 @@ async function testAskAndDebugUseAuthoritativeTags() {
     );
     assert.ok(chatSystemPrompt.includes('friendly helper'));
     assert.ok(chatSystemPrompt.includes("Answer the user's question directly"));
+    assert.ok(chatSystemPrompt.includes('Only answer questions related to the OwO bot or this support server'));
+    assert.ok(chatSystemPrompt.includes('you can only help with OwO bot or server questions'));
     assert.ok(chatSystemPrompt.includes('Do not mention the knowledge base'));
+    assert.ok(chatSystemPrompt.includes('Do not include source tags or links'));
     assert.ok(chatSystemPrompt.includes('phrases like "based on"'));
     assert.ok(chatUserContext.startsWith('Support notes:'));
     assert.ok(chatUserContext.includes('[Tag: gems]'));
@@ -181,6 +184,21 @@ async function testAskAndDebugUseAuthoritativeTags() {
     assert.ok(!chatUserContext.includes('Stale Qdrant answer payload'));
     assert.ok(!chatUserContext.includes('Qdrant payload data must not be used'));
     assert.ok(!chatUserContext.includes('Excluded duplicate'));
+
+    const sentMessages = [];
+    await kb.sendAnswer(
+        {
+            id: 'question-message',
+            channel: {
+                createMessage: async (payload) => sentMessages.push(payload),
+            },
+        },
+        { answer: 'Direct helper answer.', sources: ['gems', 'rules'] }
+    );
+    assert.strictEqual(sentMessages.length, 1);
+    assert.strictEqual(sentMessages[0].embed.description, 'Direct helper answer.');
+    assert.strictEqual(sentMessages[0].embed.fields, undefined);
+    assert.deepStrictEqual(normalize(sentMessages[0].embed.footer), { text: 'Tags: `gems`, `rules`' });
 
     tagFindQueries.length = 0;
     const debug = await kb.debugSearch('gems', { limit: 5, includeBelowThreshold: true });

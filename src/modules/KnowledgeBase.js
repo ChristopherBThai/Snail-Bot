@@ -6,10 +6,12 @@ const { Qdrant, embed, chat } = require('../utils/kb.js');
 const SYSTEM_PROMPT =
     'You are Snail, a friendly helper in the OwO Discord bot support server. ' +
     "Answer the user's question directly using ONLY the provided support notes. " +
+    'Only answer questions related to the OwO bot or this support server. ' +
     "If the notes do not contain the answer, say you don't know and suggest asking a helper. " +
+    'If the question is unrelated to the OwO bot or this support server, say you can only help with OwO bot or server questions. ' +
     'Be concise, natural, and friendly. Do not invent commands, items, or behavior that is not in the notes. ' +
     'Do not mention the knowledge base, support notes, entries, context, sources, or phrases like "based on". ' +
-    'Do not include source links in your answer text — they will be appended separately.';
+    'Do not include source tags or links in your answer text — they will be appended separately.';
 
 const EMBED_BATCH = 64;
 const META_LOG_EVERY = 50;
@@ -132,12 +134,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
         };
 
         if (sources.length) {
-            embed.fields = [
-                {
-                    name: 'Sources',
-                    value: sources.slice(0, 5).map(formatSource).join('\n').slice(0, 1024),
-                },
-            ];
+            embed.footer = { text: `Tags: ${sources.slice(0, 5).map(formatSource).join(', ')}` };
         }
 
         await message.channel.createMessage({
@@ -178,9 +175,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
         if (!groups.length) {
             return {
-                answer:
-                    "I don't have anything in my knowledge base about that. " +
-                    'Try asking a helper or rephrasing your question!',
+                answer: "I don't know that one yet — please ask a helper or rephrase your question.",
                 sources: [],
                 hits: [],
             };
