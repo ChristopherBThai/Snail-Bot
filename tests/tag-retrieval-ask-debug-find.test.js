@@ -74,6 +74,7 @@ const normalize = (value) => JSON.parse(JSON.stringify(value));
 
 async function testAskAndDebugUseAuthoritativeTags() {
     let chatUserContext = null;
+    let chatSystemPrompt = null;
     const rawHits = [
         {
             score: 0.91,
@@ -113,6 +114,7 @@ async function testAskAndDebugUseAuthoritativeTags() {
     const KnowledgeBase = loadKnowledgeBase({
         embedImpl: async ({ inputs }) => inputs.map(() => [1, 2, 3]),
         chatImpl: async ({ messages }) => {
+            chatSystemPrompt = messages.find((message) => message.role === 'system').content;
             chatUserContext = messages.find((message) => message.role === 'user').content;
             return { content: 'Use a gem before hunting if you want improved rewards.' };
         },
@@ -167,6 +169,11 @@ async function testAskAndDebugUseAuthoritativeTags() {
         { _id: { $in: ['gems', 'rules', 'newtr'] } },
         'ask should fetch current Mongo tags by grouped tag ids'
     );
+    assert.ok(chatSystemPrompt.includes('friendly helper'));
+    assert.ok(chatSystemPrompt.includes("Answer the user's question directly"));
+    assert.ok(chatSystemPrompt.includes('Do not mention the knowledge base'));
+    assert.ok(chatSystemPrompt.includes('phrases like "based on"'));
+    assert.ok(chatUserContext.startsWith('Support notes:'));
     assert.ok(chatUserContext.includes('[Tag: gems]'));
     assert.ok(chatUserContext.includes('Authoritative Mongo data: gems improve hunt rewards.'));
     assert.ok(!chatUserContext.includes('Generated scaffolding'));

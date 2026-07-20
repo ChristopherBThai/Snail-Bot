@@ -4,10 +4,11 @@ const { v5: uuidv5 } = require('uuid');
 const { Qdrant, embed, chat } = require('../utils/kb.js');
 
 const SYSTEM_PROMPT =
-    'You are Snail, a helpful assistant in the OwO Discord bot support server. ' +
-    "Answer the user's question using ONLY the provided knowledge base entries. " +
-    "If the entries do not contain the answer, say you don't know and suggest asking a helper. " +
-    'Be concise and friendly. Do not invent commands, items, or behavior that is not in the entries. ' +
+    'You are Snail, a friendly helper in the OwO Discord bot support server. ' +
+    "Answer the user's question directly using ONLY the provided support notes. " +
+    "If the notes do not contain the answer, say you don't know and suggest asking a helper. " +
+    'Be concise, natural, and friendly. Do not invent commands, items, or behavior that is not in the notes. ' +
+    'Do not mention the knowledge base, support notes, entries, context, sources, or phrases like "based on". ' +
     'Do not include source links in your answer text — they will be appended separately.';
 
 const EMBED_BATCH = 64;
@@ -194,7 +195,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
             temperature: this.temperature,
             messages: [
                 { role: 'system', content: SYSTEM_PROMPT },
-                { role: 'user', content: `Support tag entries:\n${context}\n\nUser question:\n${question}` },
+                { role: 'user', content: `Support notes:\n${context}\n\nUser question:\n${question}` },
             ],
         });
 
