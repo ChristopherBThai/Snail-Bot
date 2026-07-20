@@ -248,6 +248,8 @@ async function testStatusShowsSyncProgress() {
                             processedTags: 25,
                             totalTags: 123,
                             plannedPoints: 150,
+                            tagsWithQuestions: 25,
+                            tagsWithQuestionsInQdrant: 20,
                             totalAnswers: 20,
                             totalQuestions: 130,
                             embeddedPoints: 0,
@@ -279,6 +281,8 @@ async function testStatusShowsSyncProgress() {
     assert.ok(description.includes('**Current Sync Progress:**'));
     assert.ok(description.includes(' - phase: planning'));
     assert.ok(description.includes(' - tags: 25/123'));
+    assert.ok(description.includes(' - tags with question cache: 25/123'));
+    assert.ok(description.includes(' - tags with current Qdrant questions: 20/123'));
     assert.ok(description.includes(' - planned points: 150'));
     assert.ok(description.includes('20 tag data + 130 generated questions'));
 }

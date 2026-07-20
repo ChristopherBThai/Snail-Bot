@@ -146,6 +146,9 @@ async function main() {
     assert.strictEqual(fullSummary.totalAnswers, 1);
     assert.strictEqual(fullSummary.totalQuestions, tag.kb.questions.length);
     assert.strictEqual(fullSummary.totalPoints, 1 + tag.kb.questions.length);
+    const firstProgress = kb.getSyncProgress();
+    assert.strictEqual(firstProgress.tagsWithQuestions, 1);
+    assert.strictEqual(firstProgress.tagsWithQuestionsInQdrant, 0);
 
     const fullScroll = calls.find((call) => call[0] === 'scrollAll');
     assert.deepStrictEqual(normalize(fullScroll[2]), ['tag_id', 'kind', 'data_hash', 'question_hash', 'question']);

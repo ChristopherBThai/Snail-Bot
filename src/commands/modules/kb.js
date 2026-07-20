@@ -118,6 +118,8 @@ function formatSyncProgress(progress) {
         ` - mode: ${progress.dryRun ? 'dry run' : 'live sync'}`,
         ` - phase: ${progress.phase}`,
         ` - tags: ${progress.processedTags}/${progress.totalTags}`,
+        ` - tags with question cache: ${progress.tagsWithQuestions}/${progress.totalTags}`,
+        ` - tags with current Qdrant questions: ${progress.tagsWithQuestionsInQdrant}/${progress.totalTags}`,
         ` - planned points: ${progress.plannedPoints}`,
     ];
 

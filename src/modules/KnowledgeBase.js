@@ -256,6 +256,8 @@ module.exports = class KnowledgeBase extends require('./Module') {
             processedTags: 0,
             totalTags: 0,
             plannedPoints: 0,
+            tagsWithQuestions: 0,
+            tagsWithQuestionsInQdrant: 0,
             totalAnswers: 0,
             totalQuestions: 0,
             embeddedPoints: 0,
@@ -292,11 +294,18 @@ module.exports = class KnowledgeBase extends require('./Module') {
             log(`loaded ${tags.length} tags from Mongo`);
 
             const desired = new Map();
+            let tagsWithQuestions = 0;
             for (let i = 0; i < tags.length; i++) {
                 const tag = tags[i];
                 if (!dryRun) await this.ensureTagKbCache(tag);
-                for (const [pointId, point] of this.buildDesiredTagPoints(tag)) desired.set(pointId, point);
-                this.updateSyncProgress({ processedTags: i + 1, plannedPoints: desired.size });
+                const tagPoints = this.buildDesiredTagPoints(tag);
+                if (hasQuestionPoint(tagPoints)) tagsWithQuestions += 1;
+                for (const [pointId, point] of tagPoints) desired.set(pointId, point);
+                this.updateSyncProgress({
+                    processedTags: i + 1,
+                    plannedPoints: desired.size,
+                    tagsWithQuestions,
+                });
                 if ((i + 1) % TAG_SYNC_LOG_EVERY === 0 || i + 1 === tags.length) {
                     log(`processed ${i + 1}/${tags.length} tags; planned ${desired.size} points so far`);
                 }
@@ -315,6 +324,8 @@ module.exports = class KnowledgeBase extends require('./Module') {
             );
 
             const existing = await this.qdrant.scrollAll(this.collection, tagPayloadFields());
+            const tagsWithQuestionsInQdrant = countTagsWithCurrentQuestionPoints(desired, existing);
+            this.updateSyncProgress({ tagsWithQuestionsInQdrant });
             log(`scrolled ${existing.length} existing points in '${this.collection}'`);
 
             const diff = computeDiff(desired, existing);
@@ -689,6 +700,50 @@ function countByKind(desired, kind) {
     let n = 0;
     for (const d of desired.values()) if (d.kind === kind) n++;
     return n;
+}
+
+function hasQuestionPoint(points) {
+    for (const point of points.values()) {
+        if (point.kind === 'tag_question') return true;
+    }
+    return false;
+}
+
+function countTagsWithCurrentQuestionPoints(desired, existingPoints) {
+    const desiredQuestionsByTag = new Map();
+    for (const [pointId, desc] of desired) {
+        if (desc.kind !== 'tag_question') continue;
+        if (!desiredQuestionsByTag.has(desc.tagId)) desiredQuestionsByTag.set(desc.tagId, new Set());
+        desiredQuestionsByTag.get(desc.tagId).add(String(pointId));
+    }
+
+    if (!desiredQuestionsByTag.size) return 0;
+
+    const desiredById = new Map(desired);
+    const currentQuestionsByTag = new Map();
+    for (const point of existingPoints) {
+        const pointId = String(point.id);
+        const desc = desiredById.get(pointId);
+        if (!desc || desc.kind !== 'tag_question') continue;
+        if (!payloadMatches(point.payload || {}, buildPayload(desc))) continue;
+        if (!currentQuestionsByTag.has(desc.tagId)) currentQuestionsByTag.set(desc.tagId, new Set());
+        currentQuestionsByTag.get(desc.tagId).add(pointId);
+    }
+
+    let current = 0;
+    for (const [tagId, desiredIds] of desiredQuestionsByTag) {
+        const currentIds = currentQuestionsByTag.get(tagId);
+        if (!currentIds) continue;
+        let allCurrent = true;
+        for (const pointId of desiredIds) {
+            if (!currentIds.has(pointId)) {
+                allCurrent = false;
+                break;
+            }
+        }
+        if (allCurrent) current += 1;
+    }
+    return current;
 }
 
 // Diff desired tag points against existing Qdrant points. existingPoints is only
