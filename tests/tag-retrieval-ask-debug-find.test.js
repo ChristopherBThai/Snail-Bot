@@ -381,11 +381,12 @@ async function testKbExcludeIncludeAndExcludedCommands() {
     assert.deepStrictEqual(normalize(calls.pop()), ['listKbExcludedTags']);
     embed = sent.pop().embed;
     assert.strictEqual(embed.title, 'KB Excluded Tags');
-    assert.ok(embed.description.includes('`newtr`'));
-    assert.ok(embed.description.includes('`trstart`'));
+    assert.ok(embed.description.includes('`newtr`, `trstart`'));
+    assert.ok(!embed.description.includes('- `newtr`'));
     assert.ok(command.description.includes('snail kb exclude {tag...}'));
     assert.ok(command.description.includes('snail kb include {tag...}'));
     assert.ok(command.description.includes('snail kb excluded'));
+    assert.ok(command.description.includes('`snail kb status`\n  - Show'));
 }
 
 async function main() {

@@ -13,16 +13,16 @@ module.exports = new Command({
     usage: 'snail kb {...arguments}',
 
     description:
-        '- `snail kb status`\n - Show tag-backed knowledge base sync status and collection info\n' +
-        '- `snail kb reindex`\n - Sync Mongo tags to Qdrant (only changed tag points are re-embedded)\n' +
-        '- `snail kb reindex dry`\n - Show what a reindex would do without making changes\n' +
-        '- `snail kb reset confirm`\n - Destructively recreate the Qdrant collection, then sync Mongo tags. Remote resets require backup through `ssh hub.corg.network` first.\n' +
-        '- `snail kb find {query}`\n - Search matching tags for manager/debug review\n' +
-        '- `snail kb questions {tag}`\n - Show generated retrieval questions cached in Mongo for a tag\n' +
-        '- `snail kb exclude {tag...}`\n - Exclude one or more tags from KB retrieval and delete their Qdrant points\n' +
-        '- `snail kb include {tag...}`\n - Include one or more tags in KB retrieval and sync their Qdrant points\n' +
-        '- `snail kb excluded`\n - List tags excluded from KB retrieval\n' +
-        '- `snail kb model {modelSlug}`\n - Set the chat model (OpenRouter slug)\n',
+        '- `snail kb status`\n  - Show tag-backed knowledge base sync status and collection info\n' +
+        '- `snail kb reindex`\n  - Sync Mongo tags to Qdrant (only changed tag points are re-embedded)\n' +
+        '- `snail kb reindex dry`\n  - Show what a reindex would do without making changes\n' +
+        '- `snail kb reset confirm`\n  - Destructively recreate the Qdrant collection, then sync Mongo tags. Remote resets require backup through `ssh hub.corg.network` first.\n' +
+        '- `snail kb find {query}`\n  - Search matching tags for manager/debug review\n' +
+        '- `snail kb questions {tag}`\n  - Show generated retrieval questions cached in Mongo for a tag\n' +
+        '- `snail kb exclude {tag...}`\n  - Exclude one or more tags from KB retrieval and delete their Qdrant points\n' +
+        '- `snail kb include {tag...}`\n  - Include one or more tags in KB retrieval and sync their Qdrant points\n' +
+        '- `snail kb excluded`\n  - List tags excluded from KB retrieval\n' +
+        '- `snail kb model {modelSlug}`\n  - Set the chat model (OpenRouter slug)\n',
 
     examples: [
         'snail kb status',
@@ -129,9 +129,8 @@ function formatSyncProgress(progress) {
         '**Current Sync Progress:**',
         ` - mode: ${progress.dryRun ? 'dry run' : 'live sync'}`,
         ` - phase: ${progress.phase}`,
-        ` - tags: ${progress.processedTags}/${progress.totalTags}`,
-        ` - tags with question cache: ${progress.tagsWithQuestions}/${progress.totalTags}`,
-        ` - tags with current Qdrant questions: ${progress.tagsWithQuestionsInQdrant}/${progress.totalTags}`,
+        ` - questions generated: ${progress.processedTags}/${progress.totalTags}`,
+        ` - qdrant sync: ${progress.tagsWithQuestionsInQdrant}/${progress.totalTags}`,
         ` - planned points: ${progress.plannedPoints}`,
     ];
 
@@ -389,7 +388,7 @@ async function listExcludedTags(KB) {
         return;
     }
 
-    const listedTags = tags.map((tagId) => `- \`${tagId}\``).join('\n');
+    const listedTags = formatTagList(tags);
     const description = tags.length ? listedTags.slice(0, 3500) : 'No tags are excluded from the knowledge base.';
 
     await this.send({
