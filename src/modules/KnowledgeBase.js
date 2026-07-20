@@ -240,7 +240,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
         return groups
             .map((group) => {
                 const tag = tagById.get(group.tagId);
-                if (!tag) return null;
+                if (!tag || isTagKbExcluded(tag)) return null;
                 const dataPreview = previewText(tag.data, 220);
                 return { ...group, tag, doc: tag, dataPreview };
             })
@@ -297,10 +297,12 @@ module.exports = class KnowledgeBase extends require('./Module') {
             let tagsWithQuestions = 0;
             for (let i = 0; i < tags.length; i++) {
                 const tag = tags[i];
-                if (!dryRun) await this.ensureTagKbCache(tag);
-                const tagPoints = this.buildDesiredTagPoints(tag);
-                if (hasQuestionPoint(tagPoints)) tagsWithQuestions += 1;
-                for (const [pointId, point] of tagPoints) desired.set(pointId, point);
+                if (!isTagKbExcluded(tag)) {
+                    if (!dryRun) await this.ensureTagKbCache(tag);
+                    const tagPoints = this.buildDesiredTagPoints(tag);
+                    if (hasQuestionPoint(tagPoints)) tagsWithQuestions += 1;
+                    for (const [pointId, point] of tagPoints) desired.set(pointId, point);
+                }
                 this.updateSyncProgress({
                     processedTags: i + 1,
                     plannedPoints: desired.size,
@@ -441,6 +443,10 @@ module.exports = class KnowledgeBase extends require('./Module') {
             await this.deleteTagById(normalizedTagId);
             return { deleted: true, tagId: normalizedTagId };
         }
+        if (isTagKbExcluded(tag)) {
+            await this.deleteTagById(normalizedTagId);
+            return { excluded: true, deleted: true, tagId: normalizedTagId };
+        }
         if (!this.openrouterApiKey) throw new Error('Missing OPENROUTER_API_KEY');
 
         await this.ensureTagKbCache(tag);
@@ -468,12 +474,47 @@ module.exports = class KnowledgeBase extends require('./Module') {
         await this.qdrant.deleteByFilter(this.collection, tagFilter(tagId));
     }
 
+    async setTagKbExcluded(tagId, excluded) {
+        const normalizedTagId = String(tagId);
+        const tag = await this.Tag.findById(normalizedTagId);
+        if (!tag) return null;
+
+        const knowledgeBase = { ...(tag.knowledgeBase?.toObject ? tag.knowledgeBase.toObject() : tag.knowledgeBase) };
+        knowledgeBase.excluded = Boolean(excluded);
+
+        if (typeof tag.set === 'function') tag.set('knowledgeBase', knowledgeBase);
+        else tag.knowledgeBase = knowledgeBase;
+
+        if (typeof tag.save === 'function') {
+            await tag.save();
+        } else {
+            await this.Tag.updateOne(
+                { _id: normalizedTagId },
+                { $set: { 'knowledgeBase.excluded': Boolean(excluded) } }
+            );
+        }
+
+        if (excluded) {
+            await this.deleteTagById(normalizedTagId);
+            return { tagId: normalizedTagId, excluded: true, deleted: true };
+        }
+
+        const summary = await this.syncTagById(normalizedTagId);
+        return { tagId: normalizedTagId, excluded: false, ...summary };
+    }
+
+    async listKbExcludedTags() {
+        const docs = await leanQuery(this.Tag.find({ 'knowledgeBase.excluded': true }));
+        return docs.map((tag) => String(tag._id)).sort((a, b) => a.localeCompare(b));
+    }
+
     async getTagQuestionCache(tagId) {
         const normalizedTagId = String(tagId);
         const tag = await leanQuery(this.Tag.findById(normalizedTagId));
         if (!tag) return null;
         return {
             tagId: normalizedTagId,
+            excluded: isTagKbExcluded(tag),
             dataHash: tag.kb?.dataHash,
             promptVersion: tag.kb?.promptVersion,
             generationHash: tag.kb?.generationHash,
@@ -548,6 +589,10 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
 function tagFilter(tagId) {
     return { must: [{ key: 'tag_id', match: { value: String(tagId) } }] };
+}
+
+function isTagKbExcluded(tag) {
+    return tag?.knowledgeBase?.excluded === true;
 }
 
 function tagPayloadFields() {

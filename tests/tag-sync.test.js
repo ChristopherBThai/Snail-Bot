@@ -82,6 +82,12 @@ async function main() {
         data: 'Gems can be equipped before hunting.',
     };
     tag.kb = currentKb(helpers, tag);
+    const excludedTag = {
+        _id: 'newtr',
+        data: 'Turkish duplicate beginner tag.',
+        knowledgeBase: { excluded: true },
+    };
+    excludedTag.kb = currentKb(helpers, excludedTag);
 
     const calls = [];
     let nextScrollAllPoints = [];
@@ -106,17 +112,24 @@ async function main() {
 
     let tagFindCalled = 0;
     let knowledgeFindCalled = 0;
+    const tagUpdates = [];
     const bot = {
         config: { kb: { collection: 'test_tags', namespace: '1b671a64-40d5-491e-99b0-da01ff1f3341' } },
         snail_db: {
             Tag: {
                 find() {
                     tagFindCalled += 1;
-                    return [tag];
+                    return [tag, excludedTag];
                 },
                 async findById(id) {
-                    assert.strictEqual(id, 'gems');
-                    return tag;
+                    if (id === 'gems') return tag;
+                    if (id === 'newtr') return excludedTag;
+                    throw new Error(`unexpected tag id ${id}`);
+                },
+                async updateOne(...args) {
+                    tagUpdates.push(args);
+                    if (args[0]?._id === 'newtr')
+                        excludedTag.knowledgeBase.excluded = args[1]?.$set?.['knowledgeBase.excluded'];
                 },
             },
             Knowledge: {
@@ -142,7 +155,7 @@ async function main() {
     assert.strictEqual(ensureCalls, 1);
     assert.strictEqual(tagFindCalled, 1);
     assert.strictEqual(knowledgeFindCalled, 0);
-    assert.strictEqual(fullSummary.totalTags, 1);
+    assert.strictEqual(fullSummary.totalTags, 2);
     assert.strictEqual(fullSummary.totalAnswers, 1);
     assert.strictEqual(fullSummary.totalQuestions, tag.kb.questions.length);
     assert.strictEqual(fullSummary.totalPoints, 1 + tag.kb.questions.length);
@@ -183,6 +196,34 @@ async function main() {
         ['tag_id', 'kind', 'data_hash', 'question_hash', 'question'],
         { must: [{ key: 'tag_id', match: { value: 'gems' } }] },
     ]);
+
+    calls.length = 0;
+    embedCalls.length = 0;
+    const excludedSummary = await kb.syncTagById('newtr');
+    assert.deepStrictEqual(normalize(calls), [
+        ['deleteByFilter', 'test_tags', { must: [{ key: 'tag_id', match: { value: 'newtr' } }] }],
+    ]);
+    assert.deepStrictEqual(normalize(excludedSummary), { excluded: true, deleted: true, tagId: 'newtr' });
+    assert.strictEqual(embedCalls.flat().length, 0);
+
+    calls.length = 0;
+    tagUpdates.length = 0;
+    const excludeResult = await kb.setTagKbExcluded('newtr', true);
+    assert.deepStrictEqual(normalize(tagUpdates), [[{ _id: 'newtr' }, { $set: { 'knowledgeBase.excluded': true } }]]);
+    assert.deepStrictEqual(normalize(calls), [
+        ['deleteByFilter', 'test_tags', { must: [{ key: 'tag_id', match: { value: 'newtr' } }] }],
+    ]);
+    assert.deepStrictEqual(normalize(excludeResult), { deleted: true, excluded: true, tagId: 'newtr' });
+
+    calls.length = 0;
+    tagUpdates.length = 0;
+    embedCalls.length = 0;
+    const includeResult = await kb.setTagKbExcluded('newtr', false);
+    assert.deepStrictEqual(normalize(tagUpdates), [[{ _id: 'newtr' }, { $set: { 'knowledgeBase.excluded': false } }]]);
+    assert.strictEqual(includeResult.excluded, false);
+    assert.strictEqual(includeResult.tagId, 'newtr');
+    assert.strictEqual(includeResult.totalTags, 1);
+    assert.ok(embedCalls.flat().length > 0);
 
     calls.length = 0;
     await kb.deleteTagById('gems');

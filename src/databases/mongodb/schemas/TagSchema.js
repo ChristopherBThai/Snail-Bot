@@ -16,6 +16,9 @@ const TagSchema = new mongoose.Schema({
         ],
         generatedAt: Date,
     },
+    knowledgeBase: {
+        excluded: Boolean,
+    },
 });
 
 module.exports = { name: 'Tag', schema: TagSchema };

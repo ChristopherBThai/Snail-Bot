@@ -20,6 +20,9 @@ const tag = new TagModel({
         ],
         generatedAt,
     },
+    knowledgeBase: {
+        excluded: true,
+    },
 });
 
 const serialized = tag.toObject();
@@ -32,5 +35,6 @@ assert.strictEqual(serialized.kb.generationHash, '2ee307f0e9e8e9cbe75a58d57bd566
 assert.strictEqual(serialized.kb.questions[0].text, 'How do gems work in OwO?');
 assert.strictEqual(serialized.kb.questions[0].hash, 'f0ee0e055ff09c490d1cbb60ea0a7f3841dd5a28');
 assert.deepStrictEqual(serialized.kb.generatedAt, generatedAt);
+assert.strictEqual(serialized.knowledgeBase.excluded, true);
 
-console.log('TagSchema stores authored tag fields and derived KB cache questions.');
+console.log('TagSchema stores authored tag fields, KB exclusion state, and derived KB cache questions.');

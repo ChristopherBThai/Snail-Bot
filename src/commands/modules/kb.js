@@ -19,6 +19,9 @@ module.exports = new Command({
         '- `snail kb reset confirm`\n - Destructively recreate the Qdrant collection, then sync Mongo tags. Remote resets require backup through `ssh hub.corg.network` first.\n' +
         '- `snail kb find {query}`\n - Search matching tags for manager/debug review\n' +
         '- `snail kb questions {tag}`\n - Show generated retrieval questions cached in Mongo for a tag\n' +
+        '- `snail kb exclude {tag}`\n - Exclude a tag from KB retrieval and delete its Qdrant points\n' +
+        '- `snail kb include {tag}`\n - Include a tag in KB retrieval and sync its Qdrant points\n' +
+        '- `snail kb excluded`\n - List tags excluded from KB retrieval\n' +
         '- `snail kb model {modelSlug}`\n - Set the chat model (OpenRouter slug)\n',
 
     examples: [
@@ -28,6 +31,9 @@ module.exports = new Command({
         'snail kb reset confirm',
         'snail kb find how do gems expire',
         'snail kb questions gems',
+        'snail kb exclude newtr',
+        'snail kb include newtr',
+        'snail kb excluded',
         'snail kb model anthropic/claude-haiku-4.5',
     ],
 
@@ -51,6 +57,12 @@ module.exports = new Command({
                 return runFind.call(this, KB);
             case 'questions':
                 return showQuestions.call(this, KB);
+            case 'exclude':
+                return setTagExcluded.call(this, KB, true);
+            case 'include':
+                return setTagExcluded.call(this, KB, false);
+            case 'excluded':
+                return listExcludedTags.call(this, KB);
             case 'add':
                 await this.error(
                     '`snail kb add` has been removed. Add support content with `snail tag add {name} {data}`.'
@@ -60,7 +72,7 @@ module.exports = new Command({
                 return setModel.call(this, KB);
             default:
                 await this.error(
-                    'that is not a valid subcommand! Use `snail kb [status|reindex|reset|find|questions|model] {...arguments}`'
+                    'that is not a valid subcommand! Use `snail kb [status|reindex|reset|find|questions|exclude|include|excluded|model] {...arguments}`'
                 );
         }
     },
@@ -304,10 +316,64 @@ async function showQuestions(KB) {
             title: `KB Generated Questions — ${cache.tagId}`,
             color: this.config.embedcolor,
             description:
+                `**Excluded:** ${cache.excluded ? 'yes' : 'no'}\n` +
                 `**Prompt Version:** \`${cache.promptVersion || 'none'}\`\n` +
                 `**Generated:** ${generatedAt}\n` +
                 `**Question Count:** ${cache.questions.length}\n\n` +
                 questions,
+        },
+    });
+}
+
+async function setTagExcluded(KB, excluded) {
+    const tagId = this.message.args.shift();
+    if (!tagId) {
+        await this.error(`please provide a tag id! Example: \`snail kb ${excluded ? 'exclude' : 'include'} gems\``);
+        return;
+    }
+
+    let result;
+    try {
+        result = await KB.setTagKbExcluded(tagId, excluded);
+    } catch (err) {
+        console.error(`[KB] ${excluded ? 'exclude' : 'include'} tag failed:`, err);
+        await this.error(`failed to ${excluded ? 'exclude' : 'include'} tag: \`${err.message}\``);
+        return;
+    }
+
+    if (!result) {
+        await this.error(`I could not find tag \`${tagId}\`.`);
+        return;
+    }
+
+    if (excluded) {
+        await this.send(
+            `I excluded \`${result.tagId}\` from the knowledge base and deleted its Qdrant tag/question points.`
+        );
+        return;
+    }
+
+    await this.send(`I included \`${result.tagId}\` in the knowledge base and synced its Qdrant points.`);
+}
+
+async function listExcludedTags(KB) {
+    let tags;
+    try {
+        tags = await KB.listKbExcludedTags();
+    } catch (err) {
+        console.error('[KB] list excluded tags failed:', err);
+        await this.error(`failed to list excluded tags: \`${err.message}\``);
+        return;
+    }
+
+    const listedTags = tags.map((tagId) => `- \`${tagId}\``).join('\n');
+    const description = tags.length ? listedTags.slice(0, 3500) : 'No tags are excluded from the knowledge base.';
+
+    await this.send({
+        embed: {
+            title: 'KB Excluded Tags',
+            color: this.config.embedcolor,
+            description,
         },
     });
 }

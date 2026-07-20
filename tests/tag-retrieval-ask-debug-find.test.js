@@ -100,6 +100,14 @@ async function testAskAndDebugUseAuthoritativeTags() {
                 question: 'Generated scaffolding: can I appeal punishments?',
             },
         },
+        {
+            score: 0.7,
+            payload: {
+                tag_id: 'newtr',
+                kind: 'tag_question',
+                question: 'Excluded duplicate should not reach answer context.',
+            },
+        },
     ];
 
     const KnowledgeBase = loadKnowledgeBase({
@@ -125,6 +133,11 @@ async function testAskAndDebugUseAuthoritativeTags() {
                                 kb: { questions: [{ text: 'cached question should not be a fact' }] },
                             },
                             { _id: 'rules', data: 'Authoritative Mongo data: follow server rules.' },
+                            {
+                                _id: 'newtr',
+                                data: 'Excluded duplicate Turkish content.',
+                                knowledgeBase: { excluded: true },
+                            },
                         ],
                     };
                 },
@@ -151,7 +164,7 @@ async function testAskAndDebugUseAuthoritativeTags() {
     assert.deepStrictEqual(answer.sources, ['gems', 'rules']);
     assert.deepStrictEqual(
         normalize(tagFindQueries[0]),
-        { _id: { $in: ['gems', 'rules'] } },
+        { _id: { $in: ['gems', 'rules', 'newtr'] } },
         'ask should fetch current Mongo tags by grouped tag ids'
     );
     assert.ok(chatUserContext.includes('[Tag: gems]'));
@@ -160,6 +173,7 @@ async function testAskAndDebugUseAuthoritativeTags() {
     assert.ok(!chatUserContext.includes('cached question should not be a fact'));
     assert.ok(!chatUserContext.includes('Stale Qdrant answer payload'));
     assert.ok(!chatUserContext.includes('Qdrant payload data must not be used'));
+    assert.ok(!chatUserContext.includes('Excluded duplicate'));
 
     tagFindQueries.length = 0;
     const debug = await kb.debugSearch('gems', { limit: 5, includeBelowThreshold: true });
@@ -172,7 +186,7 @@ async function testAskAndDebugUseAuthoritativeTags() {
     ]);
     assert.strictEqual(debug.groups[0].tag.data, 'Authoritative Mongo data: gems improve hunt rewards.');
     assert.strictEqual(debug.groups[0].dataPreview, 'Authoritative Mongo data: gems improve hunt rewards.');
-    assert.deepStrictEqual(normalize(tagFindQueries[0]), { _id: { $in: ['gems', 'rules'] } });
+    assert.deepStrictEqual(normalize(tagFindQueries[0]), { _id: { $in: ['gems', 'rules', 'newtr'] } });
 
     const similar = await kb.findSimilar('gems', { limit: 1 });
     assert.strictEqual(similar.length, 1);
@@ -296,10 +310,70 @@ async function testKbQuestionsShowsMongoCachedQuestions() {
     assert.ok(sent[0].embed.description.includes('2. Should I equip a gem before hunting?'));
 }
 
+async function testKbExcludeIncludeAndExcludedCommands() {
+    const command = loadKbCommand({
+        renderPanel() {
+            throw new Error('exclude commands must not render legacy panel');
+        },
+        attachPanel() {
+            throw new Error('exclude commands must not attach legacy panel');
+        },
+    });
+    const sent = [];
+    const errors = [];
+    const calls = [];
+    const context = {
+        message: { args: ['exclude', 'newtr'], author: { id: 'manager' }, channel: { id: 'channel' } },
+        bot: {
+            modules: {
+                knowledgebase: {
+                    async setTagKbExcluded(tagId, excluded) {
+                        calls.push(['setTagKbExcluded', tagId, excluded]);
+                        return { tagId, excluded, deleted: excluded };
+                    },
+                    async listKbExcludedTags() {
+                        calls.push(['listKbExcludedTags']);
+                        return ['newtr', 'trstart'];
+                    },
+                },
+            },
+        },
+        config: { embedcolor: 0xabcdef, color: { orange: 0xff9900 } },
+        async send(payload) {
+            sent.push(payload);
+        },
+        async error(payload) {
+            errors.push(payload);
+        },
+    };
+
+    await command.execute.call(context);
+    assert.deepStrictEqual(normalize(calls.pop()), ['setTagKbExcluded', 'newtr', true]);
+    assert.strictEqual(errors.length, 0);
+    assert.ok(sent.pop().includes('deleted its Qdrant tag/question points'));
+
+    context.message.args = ['include', 'newtr'];
+    await command.execute.call(context);
+    assert.deepStrictEqual(normalize(calls.pop()), ['setTagKbExcluded', 'newtr', false]);
+    assert.ok(sent.pop().includes('synced its Qdrant points'));
+
+    context.message.args = ['excluded'];
+    await command.execute.call(context);
+    assert.deepStrictEqual(normalize(calls.pop()), ['listKbExcludedTags']);
+    const embed = sent.pop().embed;
+    assert.strictEqual(embed.title, 'KB Excluded Tags');
+    assert.ok(embed.description.includes('`newtr`'));
+    assert.ok(embed.description.includes('`trstart`'));
+    assert.ok(command.description.includes('snail kb exclude {tag}'));
+    assert.ok(command.description.includes('snail kb include {tag}'));
+    assert.ok(command.description.includes('snail kb excluded'));
+}
+
 async function main() {
     await testAskAndDebugUseAuthoritativeTags();
     await testKbFindIsTagShapedAndAddIsRejected();
     await testKbQuestionsShowsMongoCachedQuestions();
+    await testKbExcludeIncludeAndExcludedCommands();
     console.log(
         'Phase 6 retrieval uses grouped tag hits, authoritative Tag.data, tag-shaped debug/find, and rejects kb add.'
     );
