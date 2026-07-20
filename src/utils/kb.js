@@ -142,7 +142,7 @@ async function chat({ apiKey, model, messages, maxTokens, temperature }) {
         }
     );
     return {
-        content: res.data.choices[0].message.content.trim(),
+        content: String(res.data?.choices?.[0]?.message?.content ?? '').trim(),
         usage: res.data.usage,
     };
 }
