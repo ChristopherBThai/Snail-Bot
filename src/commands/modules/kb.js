@@ -1,7 +1,8 @@
 const Command = require('../Command.js');
 
-const FIND_PREVIEW_LEN = 220;
-const FIND_QUESTION_LEN = 120;
+const FIND_PREVIEW_LEN = 180;
+const FIND_QUESTION_LEN = 90;
+const FIELD_VALUE_LIMIT = 1000;
 
 module.exports = new Command({
     alias: ['kb'],
@@ -259,13 +260,14 @@ async function runFind(KB) {
         const questions = matchedQuestions.length ? matchedQuestions.join('\n') : '—';
         const preview = (group.dataPreview || '').slice(0, FIND_PREVIEW_LEN);
         const ellipsis = (group.dataPreview || '').length > FIND_PREVIEW_LEN ? '…' : '';
+        const value =
+            `**Matched kinds:** ${kinds}\n` +
+            `**Generated-question matches:**\n${questions}\n` +
+            `**Tag data preview:** ${preview}${ellipsis}\n` +
+            `**Manage:** \`snail tag edit ${group.tagId} {data}\` or \`snail tag delete ${group.tagId}\``;
         return {
             name: `${index + 1}. \`${group.tagId}\` — top score ${group.topScore.toFixed(4)}`,
-            value:
-                `**Matched kinds:** ${kinds}\n` +
-                `**Generated-question matches:**\n${questions}\n` +
-                `**Tag data preview:** ${preview}${ellipsis}\n` +
-                `**Manage:** \`snail tag edit ${group.tagId} {data}\` or \`snail tag delete ${group.tagId}\``,
+            value: truncateFieldValue(value),
         };
     });
 
@@ -376,6 +378,11 @@ function formatTagList(tagIds) {
 
 function formatFailedTags(failed) {
     return failed.map(({ tagId, message }) => `\`${tagId}\` (${message})`).join(', ');
+}
+
+function truncateFieldValue(value) {
+    if (value.length <= FIELD_VALUE_LIMIT) return value;
+    return `${value.slice(0, FIELD_VALUE_LIMIT - 1)}…`;
 }
 
 async function listExcludedTags(KB) {

@@ -22,11 +22,15 @@ class Qdrant {
             await requestWithRetry(() => this.client.get(`/collections/${name}`));
         } catch (err) {
             if (err.response?.status !== 404) throw err;
-            await requestWithRetry(() =>
-                this.client.put(`/collections/${name}`, {
-                    vectors: { size: vectorSize, distance: 'Cosine' },
-                })
-            );
+            try {
+                await requestWithRetry(() =>
+                    this.client.put(`/collections/${name}`, {
+                        vectors: { size: vectorSize, distance: 'Cosine' },
+                    })
+                );
+            } catch (createErr) {
+                if (createErr.response?.status !== 409) throw createErr;
+            }
         }
 
         // Payload indexes — safe to retry; Qdrant errors on duplicate which we ignore
@@ -54,7 +58,7 @@ class Qdrant {
         await this.ensureCollection(name, vectorSize);
     }
 
-    async search(name, { vector, limit, scoreThreshold, filter }) {
+    async search(name, { vector, limit, scoreThreshold, filter, timeout = QDRANT_TIMEOUT, attempts = RETRY_ATTEMPTS }) {
         const body = {
             vector,
             limit,
@@ -63,7 +67,10 @@ class Qdrant {
         if (scoreThreshold != null) body.score_threshold = scoreThreshold;
         if (filter) body.filter = filter;
 
-        const res = await requestWithRetry(() => this.client.post(`/collections/${name}/points/search`, body));
+        const res = await requestWithRetry(
+            () => this.client.post(`/collections/${name}/points/search`, body, { timeout }),
+            { attempts }
+        );
         return res.data.result;
     }
 
@@ -138,7 +145,7 @@ async function requestWithRetry(fn, { attempts = RETRY_ATTEMPTS, retryDelayMs = 
 
 function isRetryableError(err) {
     const status = err.response?.status;
-    if ([408, 409, 425, 429, 500, 502, 503, 504].includes(status)) return true;
+    if ([408, 425, 429, 500, 502, 503, 504].includes(status)) return true;
     return ['EPIPE', 'ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED'].includes(err.code);
 }
 

@@ -17,9 +17,11 @@ const SYSTEM_PROMPT =
 
 const EMBED_BATCH = 64;
 const META_LOG_EVERY = 50;
+const ASK_DEADLINE_MS = 90000;
 const ASK_EMBED_TIMEOUT = 15000;
 const ASK_CHAT_TIMEOUT = 30000;
 const ASK_RETRY_ATTEMPTS = 2;
+const ASK_RETRY_DELAY_MS = 500;
 const ASK_SLOW_STAGE_MS = 3000;
 const TAG_SYNC_LOG_EVERY = 25;
 const RAW_GENERATION_RESPONSE_LOG_CHARS = 4000;
@@ -64,6 +66,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
         this.qdrant = null;
         this.syncing = false;
         this.syncProgress = null;
+        this.syncQueue = Promise.resolve();
         this.lastSync = null;
         this.lastSyncSummary = null;
 
@@ -173,21 +176,23 @@ module.exports = class KnowledgeBase extends require('./Module') {
         const askStartedAt = Date.now();
         let stageStartedAt = askStartedAt;
         const vector = await this.embedQuery(question, {
-            timeout: ASK_EMBED_TIMEOUT,
-            attempts: ASK_RETRY_ATTEMPTS,
+            ...remainingAskRequestOptions(askStartedAt, ASK_EMBED_TIMEOUT, ASK_RETRY_ATTEMPTS),
         });
         logAskStage('embed', stageStartedAt, question);
 
+        assertAskBudget(askStartedAt);
         stageStartedAt = Date.now();
         const rawHits = await this.qdrant.search(this.collection, {
             vector,
             limit: this.topK * 3,
             scoreThreshold: this.scoreThreshold,
+            ...remainingAskRequestOptions(askStartedAt, ASK_EMBED_TIMEOUT, ASK_RETRY_ATTEMPTS),
         });
         logAskStage('qdrant_search', stageStartedAt, question);
 
+        assertAskBudget(askStartedAt);
         stageStartedAt = Date.now();
-        const groups = await this.materializeTagGroups(groupHitsByTag(rawHits).slice(0, this.topK));
+        const groups = (await this.materializeTagGroups(groupHitsByTag(rawHits))).slice(0, this.topK);
         logAskStage('mongo_tags', stageStartedAt, question);
         const hits = groups.flatMap((group) => group.hits);
 
@@ -200,6 +205,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
             };
         }
 
+        assertAskBudget(askStartedAt);
         const context = groups.map(formatTagAnswerContext).join('\n\n');
 
         stageStartedAt = Date.now();
@@ -208,8 +214,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
             model: this.chatModel,
             maxTokens: this.maxTokens,
             temperature: this.temperature,
-            timeout: ASK_CHAT_TIMEOUT,
-            attempts: ASK_RETRY_ATTEMPTS,
+            ...remainingAskRequestOptions(askStartedAt, ASK_CHAT_TIMEOUT, ASK_RETRY_ATTEMPTS),
             messages: [
                 { role: 'system', content: SYSTEM_PROMPT },
                 { role: 'user', content: `Support notes:\n${context}\n\nUser question:\n${question}` },
@@ -219,7 +224,11 @@ module.exports = class KnowledgeBase extends require('./Module') {
         logAskStage('total', askStartedAt, question);
 
         const sources = groups.map((group) => group.tagId);
-        return { answer: content, sources, hits };
+        return {
+            answer: content || "I don't know that one yet — please ask a helper or rephrase your question.",
+            sources,
+            hits,
+        };
     }
 
     async debugSearch(question, { limit, includeBelowThreshold = true } = {}) {
@@ -232,7 +241,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
             limit: wantEntries * 5,
             scoreThreshold: includeBelowThreshold ? undefined : this.scoreThreshold,
         });
-        const groups = await this.materializeTagGroups(groupHitsByTag(hits).slice(0, wantEntries));
+        const groups = (await this.materializeTagGroups(groupHitsByTag(hits))).slice(0, wantEntries);
 
         return { hits, groups, threshold: this.scoreThreshold };
     }
@@ -248,7 +257,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
             limit: limit * 5,
         });
 
-        return this.materializeTagGroups(groupHitsByTag(rawHits).slice(0, limit));
+        return (await this.materializeTagGroups(groupHitsByTag(rawHits))).slice(0, limit);
     }
 
     async materializeTagGroups(groups) {
@@ -301,6 +310,10 @@ module.exports = class KnowledgeBase extends require('./Module') {
     }
 
     async sync({ dryRun = false } = {}) {
+        return this.enqueueSyncOperation(() => this.syncUnlocked({ dryRun }));
+    }
+
+    async syncUnlocked({ dryRun = false } = {}) {
         if (this.syncing) throw new Error('A sync is already in progress');
         if (!this.qdrant) await this.initQdrant();
         if (!dryRun && !this.openrouterApiKey) throw new Error('Missing OPENROUTER_API_KEY');
@@ -314,14 +327,20 @@ module.exports = class KnowledgeBase extends require('./Module') {
             log(`loaded ${tags.length} tags from Mongo`);
 
             const desired = new Map();
+            const skippedTagIds = new Set();
             let tagsWithQuestions = 0;
             for (let i = 0; i < tags.length; i++) {
                 const tag = tags[i];
                 if (!isTagKbExcluded(tag)) {
-                    if (!dryRun) await this.ensureTagKbCache(tag);
-                    const tagPoints = this.buildDesiredTagPoints(tag);
-                    if (hasQuestionPoint(tagPoints)) tagsWithQuestions += 1;
-                    for (const [pointId, point] of tagPoints) desired.set(pointId, point);
+                    try {
+                        if (!dryRun) await this.ensureTagKbCache(tag);
+                        const tagPoints = this.buildDesiredTagPoints(tag);
+                        if (hasQuestionPoint(tagPoints)) tagsWithQuestions += 1;
+                        for (const [pointId, point] of tagPoints) desired.set(pointId, point);
+                    } catch (err) {
+                        skippedTagIds.add(String(tag._id));
+                        log(`tag '${String(tag._id)}' skipped: ${err.message}`);
+                    }
                 }
                 this.updateSyncProgress({
                     processedTags: i + 1,
@@ -346,11 +365,14 @@ module.exports = class KnowledgeBase extends require('./Module') {
             );
 
             const existing = await this.qdrant.scrollAll(this.collection, tagPayloadFields());
-            const tagsWithQuestionsInQdrant = countTagsWithCurrentQuestionPoints(desired, existing);
+            const existingForDiff = skippedTagIds.size
+                ? existing.filter((point) => !skippedTagIds.has(String(point.payload?.tag_id)))
+                : existing;
+            const tagsWithQuestionsInQdrant = countTagsWithCurrentQuestionPoints(desired, existingForDiff);
             this.updateSyncProgress({ tagsWithQuestionsInQdrant });
             log(`scrolled ${existing.length} existing points in '${this.collection}'`);
 
-            const diff = computeDiff(desired, existing);
+            const diff = computeDiff(desired, existingForDiff);
             const summary = {
                 added: diff.toEmbed.filter((x) => x.op === 'add').length,
                 vectorUpdated: diff.toEmbed.filter((x) => x.op === 'vector').length,
@@ -393,6 +415,12 @@ module.exports = class KnowledgeBase extends require('./Module') {
         } finally {
             this.syncing = false;
         }
+    }
+
+    enqueueSyncOperation(fn) {
+        const run = this.syncQueue.catch(() => {}).then(fn);
+        this.syncQueue = run.catch(() => {});
+        return run;
     }
 
     buildDesiredTagPoints(tag) {
@@ -455,16 +483,20 @@ module.exports = class KnowledgeBase extends require('./Module') {
     }
 
     async syncTagById(tagId) {
+        return this.enqueueSyncOperation(() => this.syncTagByIdUnlocked(tagId));
+    }
+
+    async syncTagByIdUnlocked(tagId) {
         if (!this.qdrant) await this.initQdrant();
 
         const normalizedTagId = String(tagId);
         const tag = await this.Tag.findById(normalizedTagId);
         if (!tag) {
-            await this.deleteTagById(normalizedTagId);
+            await this.deleteTagByIdUnlocked(normalizedTagId);
             return { deleted: true, tagId: normalizedTagId };
         }
         if (isTagKbExcluded(tag)) {
-            await this.deleteTagById(normalizedTagId);
+            await this.deleteTagByIdUnlocked(normalizedTagId);
             return { excluded: true, deleted: true, tagId: normalizedTagId };
         }
         if (!this.openrouterApiKey) throw new Error('Missing OPENROUTER_API_KEY');
@@ -490,11 +522,19 @@ module.exports = class KnowledgeBase extends require('./Module') {
     }
 
     async deleteTagById(tagId) {
+        return this.enqueueSyncOperation(() => this.deleteTagByIdUnlocked(tagId));
+    }
+
+    async deleteTagByIdUnlocked(tagId) {
         if (!this.qdrant) await this.initQdrant();
         await this.qdrant.deleteByFilter(this.collection, tagFilter(tagId));
     }
 
     async setTagKbExcluded(tagId, excluded) {
+        return this.enqueueSyncOperation(() => this.setTagKbExcludedUnlocked(tagId, excluded));
+    }
+
+    async setTagKbExcludedUnlocked(tagId, excluded) {
         const normalizedTagId = String(tagId);
         const tag = await this.Tag.findById(normalizedTagId);
         if (!tag) return null;
@@ -515,11 +555,11 @@ module.exports = class KnowledgeBase extends require('./Module') {
         }
 
         if (excluded) {
-            await this.deleteTagById(normalizedTagId);
+            await this.deleteTagByIdUnlocked(normalizedTagId);
             return { tagId: normalizedTagId, excluded: true, deleted: true };
         }
 
-        const summary = await this.syncTagById(normalizedTagId);
+        const summary = await this.syncTagByIdUnlocked(normalizedTagId);
         return { tagId: normalizedTagId, excluded: false, ...summary };
     }
 
@@ -544,10 +584,12 @@ module.exports = class KnowledgeBase extends require('./Module') {
     }
 
     async resetQdrantAndSync() {
-        if (!this.qdrant) await this.initQdrant();
-        await this.qdrant.resetCollection(this.collection, this.embeddingSize);
-        const summary = await this.sync();
-        return { collection: this.collection, ...summary };
+        return this.enqueueSyncOperation(async () => {
+            if (!this.qdrant) await this.initQdrant();
+            await this.qdrant.resetCollection(this.collection, this.embeddingSize);
+            const summary = await this.syncUnlocked();
+            return { collection: this.collection, ...summary };
+        });
     }
 
     async applyDiff({ toEmbed, toUpdateMeta, toDelete }, log) {
@@ -615,10 +657,25 @@ function isTagKbExcluded(tag) {
     return tag?.knowledgeBase?.excluded === true;
 }
 
+function assertAskBudget(startedAt) {
+    if (Date.now() - startedAt >= ASK_DEADLINE_MS) {
+        throw new Error('Knowledge base answer timed out. Please try again.');
+    }
+}
+
+function remainingAskRequestOptions(startedAt, preferredMs, preferredAttempts) {
+    const remaining = ASK_DEADLINE_MS - (Date.now() - startedAt);
+    if (remaining <= 0) throw new Error('Knowledge base answer timed out. Please try again.');
+    const attempts = remaining > ASK_RETRY_DELAY_MS + preferredAttempts ? preferredAttempts : 1;
+    const retryDelayBudget = ASK_RETRY_DELAY_MS * Math.max(0, attempts - 1);
+    const perAttemptBudget = Math.floor(Math.max(1, remaining - retryDelayBudget) / attempts);
+    return { timeout: Math.max(1, Math.min(preferredMs, perAttemptBudget)), attempts };
+}
+
 function logAskStage(stage, startedAt, question) {
     const elapsedMs = Date.now() - startedAt;
     if (elapsedMs < ASK_SLOW_STAGE_MS) return;
-    console.warn(`[KB] ask slow: stage=${stage} ms=${elapsedMs} question="${previewText(question, 120)}"`);
+    console.warn(`[KB] ask slow: stage=${stage} ms=${elapsedMs} questionLength=${String(question ?? '').length}`);
 }
 
 function tagPayloadFields() {
@@ -734,7 +791,7 @@ function normalizeGeneratedQuestions(questions) {
 function buildDesiredTagPoints(tag, namespace) {
     const tagId = String(tag._id);
     const data = String(tag.data ?? '').trim();
-    const dataHash = tag.kb?.dataHash || sha1(data);
+    const dataHash = tag.kb?.dataHash || tagDataHash(data);
     const questions = Array.isArray(tag.kb?.questions) ? tag.kb.questions : [];
     const desired = new Map();
 

@@ -1,8 +1,9 @@
 const Command = require('../Command.js');
 
-const PREVIEW_LEN = 180;
-const Q_TEXT_LEN = 100;
-const MAX_VARIANTS_PER_GROUP = 6;
+const PREVIEW_LEN = 140;
+const Q_TEXT_LEN = 80;
+const FIELD_VALUE_LIMIT = 1000;
+const MAX_VARIANTS_PER_GROUP = 4;
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 20;
 
@@ -105,13 +106,15 @@ module.exports = new Command({
             const preview = group.dataPreview.slice(0, PREVIEW_LEN);
             const ellipsis = group.dataPreview.length > PREVIEW_LEN ? '…' : '';
 
+            const value =
+                `**Matched kinds:** ${kinds}\n` +
+                `**Matched hits:**\n${matched}${more}\n` +
+                `**Generated-question matches:**\n${questions}\n` +
+                `**Tag data preview:** ${preview}${ellipsis}`;
+
             return {
                 name: `${i + 1}. ${passes} \`${group.tagId}\` — top score ${group.topScore.toFixed(4)}`,
-                value:
-                    `**Matched kinds:** ${kinds}\n` +
-                    `**Matched hits:**\n${matched}${more}\n` +
-                    `**Generated-question matches:**\n${questions}\n` +
-                    `**Tag data preview:** ${preview}${ellipsis}`,
+                value: truncateFieldValue(value),
             };
         });
 
@@ -136,3 +139,8 @@ module.exports = new Command({
         await this.send({ embed });
     },
 });
+
+function truncateFieldValue(value) {
+    if (value.length <= FIELD_VALUE_LIMIT) return value;
+    return `${value.slice(0, FIELD_VALUE_LIMIT - 1)}…`;
+}
