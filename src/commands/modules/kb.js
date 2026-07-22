@@ -1,8 +1,13 @@
 const Command = require('../Command.js');
+const { ephemeralInteractionResponse } = require('../../utils/sender');
 
 const FIND_PREVIEW_LEN = 180;
 const FIND_QUESTION_LEN = 90;
 const FIELD_VALUE_LIMIT = 1000;
+const QUESTION_MODAL_INPUT_ID = 'kb_questions_bulk_text';
+const QUESTIONS_EDIT_ID = 'kb_questions_edit';
+const QUESTIONS_REFRESH_ID = 'kb_questions_refresh';
+const QUESTIONS_CLOSE_ID = 'kb_questions_close';
 
 module.exports = new Command({
     alias: ['kb'],
@@ -19,7 +24,7 @@ module.exports = new Command({
         '- `snail kb reindex dry`\n  - Show what a reindex would do without making changes\n' +
         '- `snail kb reset confirm`\n  - Destructively recreate the Qdrant collection, then sync Mongo tags. Remote resets require backup through `ssh hub.corg.network` first.\n' +
         '- `snail kb find {query}`\n  - Search matching tags for manager/debug review\n' +
-        '- `snail kb questions {tag}`\n  - Show generated retrieval questions cached in Mongo for a tag\n' +
+        '- `snail kb questions {tag}`\n  - Show/edit retrieval questions cached in Mongo for a tag\n' +
         '- `snail kb exclude {tag...}`\n  - Exclude one or more tags from KB retrieval and delete their Qdrant points\n' +
         '- `snail kb include {tag...}`\n  - Include one or more tags in KB retrieval and sync their Qdrant points\n' +
         '- `snail kb excluded`\n  - List tags excluded from KB retrieval\n' +
@@ -137,7 +142,7 @@ function formatSyncProgress(progress) {
 
     if (progress.totalAnswers || progress.totalQuestions) {
         lines.push(
-            ` - point types: ${progress.totalAnswers} tag data + ${progress.totalQuestions} generated questions`
+            ` - point types: ${progress.totalAnswers} tag data + ${progress.totalQuestions} retrieval questions`
         );
     }
     if (progress.totalEmbeds) lines.push(` - embedded: ${progress.embeddedPoints}/${progress.totalEmbeds}`);
@@ -173,7 +178,7 @@ async function runReindex(KB) {
                 `**Unchanged:** ${summary.unchanged}\n` +
                 `**Tags:** ${summary.totalTags}\n` +
                 `**Points:** ${summary.totalPoints} ` +
-                `(${summary.totalQuestions} generated questions + ${summary.totalAnswers} tag data points)`,
+                `(${summary.totalQuestions} retrieval questions + ${summary.totalAnswers} tag data points)`,
         };
         await status.edit({ content: '', embed });
     } catch (err) {
@@ -211,7 +216,7 @@ async function runReset(KB) {
                 `**Collection:** \`${summary.collection || KB.collection}\`\n` +
                 `**Tags:** ${summary.totalTags}\n` +
                 `**Points:** ${summary.totalPoints} ` +
-                `(${summary.totalQuestions} generated questions + ${summary.totalAnswers} tag data points)\n\n` +
+                `(${summary.totalQuestions} retrieval questions + ${summary.totalAnswers} tag data points)\n\n` +
                 `**Backup reminder:** ${backupReminder}`,
         };
         await status.edit({ content: '', embed });
@@ -262,7 +267,7 @@ async function runFind(KB) {
         const ellipsis = (group.dataPreview || '').length > FIND_PREVIEW_LEN ? '…' : '';
         const value =
             `**Matched kinds:** ${kinds}\n` +
-            `**Generated-question matches:**\n${questions}\n` +
+            `**Retrieval-question matches:**\n${questions}\n` +
             `**Tag data preview:** ${preview}${ellipsis}\n` +
             `**Manage:** \`snail tag edit ${group.tagId} {data}\` or \`snail tag delete ${group.tagId}\``;
         return {
@@ -290,40 +295,165 @@ async function showQuestions(KB) {
         return;
     }
 
-    let cache;
+    let editor;
     try {
-        cache = await KB.getTagQuestionCache(tagId);
+        editor = await KB.getTagQuestionEditor(tagId);
     } catch (err) {
-        console.error('[KB] getTagQuestionCache failed:', err);
+        console.error('[KB] getTagQuestionEditor failed:', err);
         await this.error(`failed to read cached questions: \`${err.message}\``);
         return;
     }
 
-    if (!cache) {
+    if (!editor) {
         await this.error(`I could not find tag \`${tagId}\`.`);
         return;
     }
 
-    const renderedQuestions = cache.questions.map((q, i) => `${i + 1}. ${q.text}`).join('\n');
-    const questions = cache.questions.length
-        ? renderedQuestions.slice(0, 3500)
-        : 'No generated questions are cached for this tag yet. Run `snail kb reindex` to generate them.';
-    const generatedAt = cache.generatedAt
-        ? `<t:${Math.floor(new Date(cache.generatedAt).getTime() / 1000)}:R>`
-        : 'never';
+    let content = renderQuestionEditor(this, editor);
+    const message = await this.send(content);
+    const collectorModule = this.bot.modules['interactioncollector'];
+    if (!collectorModule?.create) return;
 
-    await this.send({
-        embed: {
-            title: `KB Generated Questions — ${cache.tagId}`,
-            color: this.config.embedcolor,
-            description:
-                `**Excluded:** ${cache.excluded ? 'yes' : 'no'}\n` +
-                `**Prompt Version:** \`${cache.promptVersion || 'none'}\`\n` +
-                `**Generated:** ${generatedAt}\n` +
-                `**Question Count:** ${cache.questions.length}\n\n` +
-                questions,
-        },
+    const filter = (user) => this.message.author.id === user.id;
+    const collector = collectorModule.create(message, filter, { idle: 120000 });
+    collector.on('collect', async (data, interaction) => {
+        let acknowledged = false;
+        try {
+            if (data.isModal) {
+                const rawText = getModalInputValue(data, QUESTION_MODAL_INPUT_ID);
+                await interaction.acknowledge();
+                acknowledged = true;
+                const result = await KB.updateTagQuestions(editor.tagId, rawText);
+                if (!result) {
+                    await message.edit({ content: '🚫 **|** That tag no longer exists.', components: [] });
+                    collector.stop('missing');
+                    return;
+                }
+                editor = result.editor;
+                content = renderQuestionEditor(this, editor, summarizeSyncResult('Saved questions', result));
+                await message.edit(content);
+                return;
+            }
+
+            switch (data.custom_id) {
+                case QUESTIONS_EDIT_ID:
+                    await interaction.createModal(getQuestionsModal(editor, message.id));
+                    return;
+                case QUESTIONS_REFRESH_ID:
+                    editor = await KB.getTagQuestionEditor(editor.tagId);
+                    if (!editor) {
+                        await interaction.editParent({ content: '🚫 **|** That tag no longer exists.', components: [] });
+                        collector.stop('missing');
+                        return;
+                    }
+                    content = renderQuestionEditor(this, editor, 'Refreshed.');
+                    await interaction.editParent(content);
+                    return;
+                case QUESTIONS_CLOSE_ID:
+                    await interaction.acknowledge();
+                    collector.stop('closed');
+                    return;
+            }
+        } catch (err) {
+            console.error(`[KB] questions editor failed for '${editor?.tagId || tagId}':`, err);
+            if (acknowledged) {
+                content = renderQuestionEditor(this, editor, `🚫 ${err.message}`);
+                await message.edit(content).catch(() => {});
+            } else {
+                await interaction.createMessage(ephemeralInteractionResponse(`🚫 **|** ${err.message}`)).catch(() => {});
+            }
+        }
     });
+
+    collector.on('end', async () => {
+        disableComponents(content);
+        await message.edit(content).catch(() => {});
+    });
+}
+
+function renderQuestionEditor(command, editor, notice = '') {
+    const renderedQuestions = editor.questions.map((q, i) => `${i + 1}. ${q.text}`).join('\n');
+    const questions = editor.questions.length
+        ? renderedQuestions.slice(0, 3000)
+        : 'No retrieval questions are cached for this tag. Use **Edit Questions** to add retrieval questions, or leave it empty to index only the tag answer.';
+    const generatedAt = editor.generatedAt ? `<t:${Math.floor(new Date(editor.generatedAt).getTime() / 1000)}:R>` : 'never';
+    const status = [
+        `**Excluded:** ${editor.excluded ? 'yes (Qdrant tag points are deleted)' : 'no'}`,
+        `**Prompt Version:** \`${editor.promptVersion || 'none'}\``,
+        `**Generated:** ${generatedAt}`,
+        `**Question Count:** ${editor.questions.length}`,
+    ];
+    if (!editor.cacheCurrent) status.push('**Cache:** metadata will be refreshed on next sync.');
+    if (notice) status.push('', notice);
+
+    return {
+        embed: {
+            title: `KB Retrieval Questions — ${editor.tagId}`,
+            color: command.config.embedcolor,
+            description: `${status.join('\n')}\n\n${questions}`,
+            footer: { text: 'Edit one retrieval question per line. Tag answers still use only tag data.' },
+        },
+        components: [
+            {
+                type: 1,
+                components: [
+                    { type: 2, custom_id: QUESTIONS_EDIT_ID, style: 1, label: 'Edit Questions' },
+                    { type: 2, custom_id: QUESTIONS_REFRESH_ID, style: 2, label: 'Refresh' },
+                    { type: 2, custom_id: QUESTIONS_CLOSE_ID, style: 4, label: 'Close' },
+                ],
+            },
+        ],
+    };
+}
+
+function getQuestionsModal(editor, modalId) {
+    return {
+        title: `Edit KB questions: ${editor.tagId}`.slice(0, 45),
+        custom_id: modalId,
+        components: [
+            {
+                type: 1,
+                components: [
+                    {
+                        type: 4,
+                        custom_id: QUESTION_MODAL_INPUT_ID,
+                        label: 'One retrieval question per line',
+                        style: 2,
+                        max_length: 4000,
+                        required: false,
+                        value: editor.rawText || editor.questions.map((question) => question.text).join('\n'),
+                        placeholder: 'How do gems work?\nWhen do gems expire?',
+                    },
+                ],
+            },
+        ],
+    };
+}
+
+function getModalInputValue(data, customId) {
+    for (const row of data.components || []) {
+        for (const component of row.components || []) {
+            if (component.custom_id === customId) return component.value || '';
+        }
+    }
+    return '';
+}
+
+function summarizeSyncResult(label, result) {
+    if (result.excluded) return `${label}. Tag is excluded, so Qdrant tag points were deleted.`;
+    return (
+        `${label}. Qdrant sync: ` +
+        `+${result.added || 0}, ~${result.vectorUpdated || 0} vectors, ` +
+        `~${result.metaUpdated || 0} payloads, -${result.deleted || 0}.`
+    );
+}
+
+function disableComponents(content) {
+    for (const row of content.components || []) {
+        for (const component of row.components || []) {
+            component.disabled = true;
+        }
+    }
 }
 
 async function setTagExcluded(KB, excluded) {
