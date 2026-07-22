@@ -6,8 +6,6 @@ const FIND_QUESTION_LEN = 90;
 const FIELD_VALUE_LIMIT = 1000;
 const QUESTION_MODAL_INPUT_ID = 'kb_questions_bulk_text';
 const QUESTIONS_EDIT_ID = 'kb_questions_edit';
-const QUESTIONS_REFRESH_ID = 'kb_questions_refresh';
-const QUESTIONS_CLOSE_ID = 'kb_questions_close';
 
 module.exports = new Command({
     alias: ['kb'],
@@ -339,20 +337,6 @@ async function showQuestions(KB) {
                 case QUESTIONS_EDIT_ID:
                     await interaction.createModal(getQuestionsModal(editor, message.id));
                     return;
-                case QUESTIONS_REFRESH_ID:
-                    editor = await KB.getTagQuestionEditor(editor.tagId);
-                    if (!editor) {
-                        await interaction.editParent({ content: '🚫 **|** That tag no longer exists.', components: [] });
-                        collector.stop('missing');
-                        return;
-                    }
-                    content = renderQuestionEditor(this, editor, 'Refreshed.');
-                    await interaction.editParent(content);
-                    return;
-                case QUESTIONS_CLOSE_ID:
-                    await interaction.acknowledge();
-                    collector.stop('closed');
-                    return;
             }
         } catch (err) {
             console.error(`[KB] questions editor failed for '${editor?.tagId || tagId}':`, err);
@@ -398,8 +382,6 @@ function renderQuestionEditor(command, editor, notice = '') {
                 type: 1,
                 components: [
                     { type: 2, custom_id: QUESTIONS_EDIT_ID, style: 1, label: 'Edit Questions' },
-                    { type: 2, custom_id: QUESTIONS_REFRESH_ID, style: 2, label: 'Refresh' },
-                    { type: 2, custom_id: QUESTIONS_CLOSE_ID, style: 4, label: 'Close' },
                 ],
             },
         ],
@@ -421,7 +403,7 @@ function getQuestionsModal(editor, modalId) {
                         style: 2,
                         max_length: 4000,
                         required: false,
-                        value: editor.rawText || editor.questions.map((question) => question.text).join('\n'),
+                        value: editor.questions.map((question) => question.text).join('\n'),
                         placeholder: 'How do gems work?\nWhen do gems expire?',
                     },
                 ],

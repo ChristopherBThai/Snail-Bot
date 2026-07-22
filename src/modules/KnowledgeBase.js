@@ -498,13 +498,10 @@ module.exports = class KnowledgeBase extends require('./Module') {
         return {
             tagId: normalizedTagId,
             excluded: isTagKbExcluded(tag),
-            dataHash,
             promptVersion: tag.kb?.promptVersion,
-            generationHash: tag.kb?.generationHash,
             cacheCurrent: isCurrentTagKbCache(tag.kb, dataHash, generationHash),
             generatedAt: tag.kb?.generatedAt,
             questions,
-            rawText: questions.map((question) => question.text).join('\n'),
         };
     }
 
@@ -759,17 +756,12 @@ function isCurrentTagKbCache(kb, dataHash, generationHash) {
         kb?.dataHash === dataHash &&
         kb?.promptVersion === TAG_QUESTION_PROMPT_VERSION &&
         kb?.generationHash === generationHash &&
-        hasValidQuestionCacheEntries(activeQuestionCacheEntries(kb.questions))
+        hasValidQuestionCacheEntries(kb.questions)
     );
 }
 
 function hasInitializedQuestionCache(kb) {
     return Array.isArray(kb?.questions);
-}
-
-function activeQuestionCacheEntries(questions) {
-    if (!Array.isArray(questions)) return [];
-    return questions.filter((question) => question?.disabled !== true && question?.enabled !== false);
 }
 
 function hasValidQuestionCacheEntries(questions) {
@@ -879,7 +871,7 @@ function toQuestionCacheEntries(questions) {
 function normalizeExistingQuestions(questions) {
     const out = [];
     const seen = new Set();
-    for (const question of activeQuestionCacheEntries(questions)) {
+    for (const question of questions || []) {
         if (typeof question?.text !== 'string' || typeof question?.hash !== 'string') continue;
         const text = question.text.replace(/\s+/g, ' ').trim();
         if (!text || question.hash !== sha1(text)) continue;
