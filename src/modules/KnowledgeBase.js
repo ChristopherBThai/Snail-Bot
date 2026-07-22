@@ -17,6 +17,10 @@ const SYSTEM_PROMPT =
 
 const EMBED_BATCH = 64;
 const META_LOG_EVERY = 50;
+const ASK_EMBED_TIMEOUT = 15000;
+const ASK_CHAT_TIMEOUT = 30000;
+const ASK_RETRY_ATTEMPTS = 2;
+const ASK_SLOW_STAGE_MS = 3000;
 const TAG_SYNC_LOG_EVERY = 25;
 const RAW_GENERATION_RESPONSE_LOG_CHARS = 4000;
 const TAG_QUESTION_PROMPT_VERSION = 'tag-question-v2';
@@ -152,12 +156,13 @@ module.exports = class KnowledgeBase extends require('./Module') {
         return `Instruct: ${this.queryInstruction}\nQuery: ${question}`;
     }
 
-    async embedQuery(question) {
+    async embedQuery(question, options = {}) {
         if (!this.openrouterApiKey) throw new Error('Missing OPENROUTER_API_KEY');
         const [vector] = await embed({
             apiKey: this.openrouterApiKey,
             model: this.embeddingModel,
             inputs: [this.formatQuery(question)],
+            ...options,
         });
         return vector;
     }
@@ -165,17 +170,29 @@ module.exports = class KnowledgeBase extends require('./Module') {
     async ask(question) {
         if (!this.qdrant) await this.initQdrant();
 
-        const vector = await this.embedQuery(question);
+        const askStartedAt = Date.now();
+        let stageStartedAt = askStartedAt;
+        const vector = await this.embedQuery(question, {
+            timeout: ASK_EMBED_TIMEOUT,
+            attempts: ASK_RETRY_ATTEMPTS,
+        });
+        logAskStage('embed', stageStartedAt, question);
+
+        stageStartedAt = Date.now();
         const rawHits = await this.qdrant.search(this.collection, {
             vector,
             limit: this.topK * 3,
             scoreThreshold: this.scoreThreshold,
         });
+        logAskStage('qdrant_search', stageStartedAt, question);
 
+        stageStartedAt = Date.now();
         const groups = await this.materializeTagGroups(groupHitsByTag(rawHits).slice(0, this.topK));
+        logAskStage('mongo_tags', stageStartedAt, question);
         const hits = groups.flatMap((group) => group.hits);
 
         if (!groups.length) {
+            logAskStage('total_no_hits', askStartedAt, question);
             return {
                 answer: "I don't know that one yet — please ask a helper or rephrase your question.",
                 sources: [],
@@ -185,16 +202,21 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
         const context = groups.map(formatTagAnswerContext).join('\n\n');
 
+        stageStartedAt = Date.now();
         const { content } = await chat({
             apiKey: this.openrouterApiKey,
             model: this.chatModel,
             maxTokens: this.maxTokens,
             temperature: this.temperature,
+            timeout: ASK_CHAT_TIMEOUT,
+            attempts: ASK_RETRY_ATTEMPTS,
             messages: [
                 { role: 'system', content: SYSTEM_PROMPT },
                 { role: 'user', content: `Support notes:\n${context}\n\nUser question:\n${question}` },
             ],
         });
+        logAskStage('chat', stageStartedAt, question);
+        logAskStage('total', askStartedAt, question);
 
         const sources = groups.map((group) => group.tagId);
         return { answer: content, sources, hits };
@@ -591,6 +613,12 @@ function tagFilter(tagId) {
 
 function isTagKbExcluded(tag) {
     return tag?.knowledgeBase?.excluded === true;
+}
+
+function logAskStage(stage, startedAt, question) {
+    const elapsedMs = Date.now() - startedAt;
+    if (elapsedMs < ASK_SLOW_STAGE_MS) return;
+    console.warn(`[KB] ask slow: stage=${stage} ms=${elapsedMs} question="${previewText(question, 120)}"`);
 }
 
 function tagPayloadFields() {

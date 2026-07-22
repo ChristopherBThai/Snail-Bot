@@ -122,15 +122,15 @@ class Qdrant {
     }
 }
 
-async function requestWithRetry(fn) {
+async function requestWithRetry(fn, { attempts = RETRY_ATTEMPTS, retryDelayMs = RETRY_DELAY_MS } = {}) {
     let lastErr;
-    for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
+    for (let attempt = 1; attempt <= attempts; attempt++) {
         try {
             return await fn();
         } catch (err) {
             lastErr = err;
-            if (attempt === RETRY_ATTEMPTS || !isRetryableError(err)) throw err;
-            await delay(RETRY_DELAY_MS * attempt);
+            if (attempt === attempts || !isRetryableError(err)) throw err;
+            await delay(retryDelayMs * attempt);
         }
     }
     throw lastErr;
@@ -146,40 +146,52 @@ function delay(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function embed({ apiKey, model, inputs }) {
+async function embed({ apiKey, model, inputs, timeout = EMBED_TIMEOUT, attempts = RETRY_ATTEMPTS }) {
     if (!apiKey) throw new Error('Missing OPENROUTER_API_KEY');
     if (!inputs.length) return [];
 
-    const res = await requestWithRetry(() =>
-        axios.post(
-            `${OPENROUTER_BASE}/embeddings`,
-            { model, input: inputs },
-            {
-                headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-                timeout: EMBED_TIMEOUT,
-            }
-        )
+    const res = await requestWithRetry(
+        () =>
+            axios.post(
+                `${OPENROUTER_BASE}/embeddings`,
+                { model, input: inputs },
+                {
+                    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+                    timeout,
+                }
+            ),
+        { attempts }
     );
     return res.data.data.map((d) => d.embedding);
 }
 
-async function chat({ apiKey, model, messages, maxTokens, temperature }) {
+async function chat({
+    apiKey,
+    model,
+    messages,
+    maxTokens,
+    temperature,
+    timeout = CHAT_TIMEOUT,
+    attempts = RETRY_ATTEMPTS,
+}) {
     if (!apiKey) throw new Error('Missing OPENROUTER_API_KEY');
 
-    const res = await requestWithRetry(() =>
-        axios.post(
-            `${OPENROUTER_BASE}/chat/completions`,
-            {
-                model,
-                messages,
-                max_tokens: maxTokens,
-                temperature,
-            },
-            {
-                headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-                timeout: CHAT_TIMEOUT,
-            }
-        )
+    const res = await requestWithRetry(
+        () =>
+            axios.post(
+                `${OPENROUTER_BASE}/chat/completions`,
+                {
+                    model,
+                    messages,
+                    max_tokens: maxTokens,
+                    temperature,
+                },
+                {
+                    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+                    timeout,
+                }
+            ),
+        { attempts }
     );
     return {
         content: String(res.data?.choices?.[0]?.message?.content ?? '').trim(),
