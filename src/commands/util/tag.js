@@ -1,6 +1,17 @@
 const Command = require('../Command.js');
 const { hasManagerPerms } = require('../../utils/permissions.js');
 
+async function syncTagKnowledgeBase(command, action, method, name) {
+    const knowledgebase = command.bot.modules?.knowledgebase;
+    if (!knowledgebase?.enabled || typeof knowledgebase[method] !== 'function') return;
+
+    try {
+        await knowledgebase[method](name);
+    } catch (err) {
+        console.error(`[KB] tag ${action} sync hook failed for '${name}':`, err.message);
+    }
+}
+
 module.exports = new Command({
     alias: ['tag', 'tags'],
 
@@ -81,16 +92,19 @@ module.exports = new Command({
                 switch (subcommand) {
                     case 'add': {
                         await this.snail_db.Tag.create({ _id: name, data });
+                        await syncTagKnowledgeBase(this, 'add', 'syncTagById', name);
                         await this.send(`I created the tag \`${name}\`!`);
                         break;
                     }
                     case 'edit': {
                         await this.snail_db.Tag.updateOne({ _id: name }, { data });
+                        await syncTagKnowledgeBase(this, 'edit', 'syncTagById', name);
                         await this.send(`I updated the tag \`${name}\`!`);
                         break;
                     }
                     case 'delete': {
                         await this.snail_db.Tag.deleteOne({ _id: name });
+                        await syncTagKnowledgeBase(this, 'delete', 'deleteTagById', name);
                         await this.send(`I deleted the tag \`${name}\`!`);
                         break;
                     }
