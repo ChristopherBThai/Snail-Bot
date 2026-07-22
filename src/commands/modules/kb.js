@@ -263,8 +263,7 @@ async function runFind(KB) {
         const value =
             `**Matched kinds:** ${kinds}\n` +
             `**Generated-question matches:**\n${questions}\n` +
-            `**Tag data preview:** ${preview}${ellipsis}\n` +
-            `**Manage:** \`snail tag edit ${group.tagId} {data}\` or \`snail tag delete ${group.tagId}\``;
+            `**Tag data preview:** ${preview}${ellipsis}\n`;
         return {
             name: `${index + 1}. \`${group.tagId}\` — top score ${group.topScore.toFixed(4)}`,
             value: truncateFieldValue(value),
