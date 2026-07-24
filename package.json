@@ -1,9 +1,9 @@
 {
-    "name": "snail-bot",
-    "version": "0.1.0",
+    "name": "snail",
+    "version": "0.0.1",
     "private": true,
     "type": "module",
-    "description": "Interaction-first Discord utility bot for the OwO Bot Support server.",
+    "description": "Utility bot for the OwO Bot Support Discord server",
     "scripts": {
         "start": "node src/index.js",
         "check": "biome check .",

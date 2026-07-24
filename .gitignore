@@ -108,8 +108,3 @@ dist
 
 .swp
 *.swp
-
-# Temp
-reference live
-reference static
-reference old
