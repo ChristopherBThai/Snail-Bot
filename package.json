@@ -8,8 +8,6 @@
         "start": "node src/index.js",
         "check": "biome check .",
         "check:fix": "biome check --write .",
-        "format": "biome format .",
-        "format:fix": "biome format --write .",
         "test": "vitest run"
     },
     "dependencies": {
