@@ -59,9 +59,6 @@ class Client extends require('eris').Client {
             }
         });
 
-        // Realtime OwO-Snail websocket
-        this.socket = new (require('./src/socket'))(this);
-
         // Snail's own mongo database for snail stuff
         this.snail_db = new (require('./src/databases/mongodb/mongo.js'))();
 
