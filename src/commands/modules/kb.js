@@ -4,6 +4,10 @@ const { ephemeralInteractionResponse } = require('../../utils/sender');
 const FIND_PREVIEW_LEN = 180;
 const FIND_QUESTION_LEN = 90;
 const FIELD_VALUE_LIMIT = 1000;
+const EMBED_TOTAL_LIMIT = 6000;
+const EMBED_DESCRIPTION_LIMIT = 4096;
+const EMBED_FIELD_VALUE_LIMIT = 1024;
+const ANSWER_CHUNK_LIMIT = 1000;
 const QUESTION_MODAL_INPUT_ID = 'kb_questions_bulk_text';
 const QUESTIONS_EDIT_ID = 'kb_questions_edit';
 
@@ -306,8 +310,10 @@ async function showQuestions(KB) {
         return;
     }
 
-    let content = renderQuestionEditor(this, editor);
+    let rendered = renderQuestionEditorMessages(this, editor);
+    let content = rendered.content;
     const message = await this.send(content);
+    let answerMessage = rendered.answerContent ? await this.send(rendered.answerContent) : null;
     const collectorModule = this.bot.modules['interactioncollector'];
     if (!collectorModule?.create) return;
 
@@ -327,8 +333,16 @@ async function showQuestions(KB) {
                     return;
                 }
                 editor = result.editor;
-                content = renderQuestionEditor(this, editor, summarizeSyncResult('Saved questions', result));
+                rendered = renderQuestionEditorMessages(this, editor, summarizeSyncResult('Saved questions', result));
+                content = rendered.content;
                 await message.edit(content);
+                if (rendered.answerContent) {
+                    if (answerMessage) await answerMessage.edit(rendered.answerContent);
+                    else answerMessage = await this.send(rendered.answerContent);
+                } else if (answerMessage) {
+                    await answerMessage.delete().catch(() => {});
+                    answerMessage = null;
+                }
                 return;
             }
 
@@ -340,7 +354,8 @@ async function showQuestions(KB) {
         } catch (err) {
             console.error(`[KB] questions editor failed for '${editor?.tagId || tagId}':`, err);
             if (acknowledged) {
-                content = renderQuestionEditor(this, editor, `🚫 ${err.message}`);
+                rendered = renderQuestionEditorMessages(this, editor, `🚫 ${err.message}`);
+                content = rendered.content;
                 await message.edit(content).catch(() => {});
             } else {
                 await interaction.createMessage(ephemeralInteractionResponse(`🚫 **|** ${err.message}`)).catch(() => {});
@@ -354,7 +369,7 @@ async function showQuestions(KB) {
     });
 }
 
-function renderQuestionEditor(command, editor, notice = '') {
+function renderQuestionEditorMessages(command, editor, notice = '') {
     const renderedQuestions = editor.questions.map((q, i) => `${i + 1}. ${q.text}`).join('\n');
     const questions = editor.questions.length
         ? renderedQuestions.slice(0, 3000)
@@ -369,11 +384,26 @@ function renderQuestionEditor(command, editor, notice = '') {
     if (!editor.cacheCurrent) status.push('**Cache:** metadata will be refreshed on next sync.');
     if (notice) status.push('', notice);
 
+    const answer = String(editor.answer || '').trim() || 'No answer text is stored for this tag.';
+    const combinedDescription = `${status.join('\n')}\n\n${questions}\n\n**Answer:**\n${answer}`;
+    const combinedContent = buildQuestionContent(command, editor, combinedDescription);
+
+    if (canSendSingleEditorEmbed(combinedContent.embed)) {
+        return { content: combinedContent, answerContent: null };
+    }
+
+    return {
+        content: buildQuestionContent(command, editor, `${status.join('\n')}\n\n${questions}`),
+        answerContent: buildAnswerContent(command, editor, answer),
+    };
+}
+
+function buildQuestionContent(command, editor, description) {
     return {
         embed: {
             title: `KB Retrieval Questions — ${editor.tagId}`,
             color: command.config.embedcolor,
-            description: `${status.join('\n')}\n\n${questions}`,
+            description,
             footer: { text: 'Edit one retrieval question per line. Tag answers still use only tag data.' },
         },
         components: [
@@ -385,6 +415,54 @@ function renderQuestionEditor(command, editor, notice = '') {
             },
         ],
     };
+}
+
+function buildAnswerContent(command, editor, answer) {
+    const chunks = chunkAnswer(answer, EMBED_TOTAL_LIMIT - `KB Tag Answer — ${editor.tagId}`.length);
+    return {
+        embed: {
+            title: `KB Tag Answer — ${editor.tagId}`,
+            color: command.config.embedcolor,
+            fields: chunks.map((chunk, index) => ({
+                name: chunks.length === 1 ? 'Answer' : `Answer ${index + 1}/${chunks.length}`,
+                value: chunk,
+            })),
+        },
+    };
+}
+
+function canSendSingleEditorEmbed(embed) {
+    return embed.description.length <= EMBED_DESCRIPTION_LIMIT && getEmbedTextLength(embed) <= EMBED_TOTAL_LIMIT;
+}
+
+function getEmbedTextLength(embed) {
+    const fields = embed.fields || [];
+    return (
+        String(embed.title || '').length +
+        String(embed.description || '').length +
+        String(embed.footer?.text || '').length +
+        fields.reduce((total, field) => total + String(field.name || '').length + String(field.value || '').length, 0)
+    );
+}
+
+function chunkAnswer(answer, remainingLimit) {
+    const chunks = [];
+    let remaining = String(answer || '');
+    let available = Math.max(EMBED_FIELD_VALUE_LIMIT, remainingLimit - 50);
+
+    while (remaining.length && chunks.length < 6 && available > 0) {
+        const maxChunk = Math.min(ANSWER_CHUNK_LIMIT, available);
+        chunks.push(remaining.slice(0, maxChunk));
+        remaining = remaining.slice(maxChunk);
+        available -= maxChunk + 16;
+    }
+
+    if (remaining.length && chunks.length) {
+        const last = chunks[chunks.length - 1];
+        chunks[chunks.length - 1] = `${last.slice(0, Math.max(0, last.length - 24))}…\n(truncated)`;
+    }
+
+    return chunks.length ? chunks : ['No answer text is stored for this tag.'];
 }
 
 function getQuestionsModal(editor, modalId) {

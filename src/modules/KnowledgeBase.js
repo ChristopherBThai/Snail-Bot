@@ -497,6 +497,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
         return {
             tagId: normalizedTagId,
+            answer: String(tag.data || ''),
             excluded: isTagKbExcluded(tag),
             promptVersion: tag.kb?.promptVersion,
             cacheCurrent: isCurrentTagKbCache(tag.kb, dataHash, generationHash),
