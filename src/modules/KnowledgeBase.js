@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { v5: uuidv5 } = require('uuid');
 
+const { ephemeralInteractionResponse } = require('../utils/sender.js');
 const { Qdrant, embed, chat } = require('../utils/kb.js');
 
 const SYSTEM_PROMPT =
@@ -12,7 +13,7 @@ const SYSTEM_PROMPT =
     "If the notes do not contain the answer, say you don't know and suggest asking a helper. " +
     'If the question is unrelated to the OwO bot or this support server, say you can only help with OwO bot or server questions. ' +
     'You may use Discord markdown when it makes the answer easier to read, such as bullets, bold text, headers, or short code spans. ' +
-    'You may reuse emojis, including custom Discord emoji tokens, exactly as they appear in the provided support notes. Do not invent custom emojis. '
+    'You may reuse emojis, including custom Discord emoji tokens, exactly as they appear in the provided support notes. Do not invent custom emojis. ' +
     'Do not mention the knowledge base, support notes, entries, context, sources, or phrases like "based on". ' +
     'Do not include source tags or links in your answer text — they will be appended separately.';
 
@@ -24,6 +25,10 @@ const ASK_CHAT_TIMEOUT = 30000;
 const ASK_RETRY_ATTEMPTS = 2;
 const ASK_RETRY_DELAY_MS = 500;
 const ASK_SLOW_STAGE_MS = 3000;
+const ASK_FEEDBACK_IDLE_MS = 30 * 60 * 1000;
+const ASK_FEEDBACK_HELPFUL_ID = 'kb_ask_feedback_helpful';
+const ASK_FEEDBACK_NEEDS_FIX_ID = 'kb_ask_feedback_needs_fix';
+const EMBED_FIELD_VALUE_LIMIT = 1024;
 const TAG_SYNC_LOG_EVERY = 25;
 const RAW_GENERATION_RESPONSE_LOG_CHARS = 4000;
 const TAG_QUESTION_PROMPT_VERSION = 'tag-question-v2';
@@ -63,6 +68,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
         this.dupeThreshold = kbConfig.dupeThreshold ?? 0.75;
         this.maxTokens = kbConfig.maxTokens ?? 500;
         this.temperature = kbConfig.temperature ?? 0.2;
+        this.askFeedbackChannel = kbConfig.askFeedbackChannel;
 
         this.qdrant = null;
         this.syncing = false;
@@ -83,6 +89,9 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
         const persisted = await this.bot.getConfiguration(`${this.id}_chat_model`);
         if (persisted) this.chatModel = persisted;
+
+        const persistedFeedbackChannel = await this.bot.getConfiguration(`${this.id}_ask_feedback_channel`);
+        if (persistedFeedbackChannel) this.askFeedbackChannel = persistedFeedbackChannel;
 
         if (this.enabled) {
             await this.initQdrant().catch((err) => {
@@ -124,7 +133,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
         try {
             const result = await this.ask(stripped);
-            await this.sendAnswer(message, result);
+            await this.sendAnswer(message, result, { question: stripped });
         } catch (err) {
             console.error('[KB] mention ask failed:', err.message);
             await message.channel
@@ -137,7 +146,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
         }
     }
 
-    async sendAnswer(message, { answer, sources }) {
+    async sendAnswer(message, { answer, sources }, { question } = {}) {
         const embed = {
             color: this.bot.config.embedcolor,
             description: answer,
@@ -147,10 +156,84 @@ module.exports = class KnowledgeBase extends require('./Module') {
             embed.footer = { text: `Tags: ${sources.slice(0, 5).map(formatSource).join(', ')}` };
         }
 
-        await message.channel.createMessage({
-            embed,
+        const collectorModule = this.bot.modules['interactioncollector'];
+        const content = {
+            embeds: [embed],
+            components: this.askFeedbackChannel && collectorModule?.create ? buildAskFeedbackComponents() : [],
             messageReference: { messageID: message.id },
             allowedMentions: { repliedUser: false, everyone: false, roles: false, users: false },
+        };
+        const answerMessage = await message.channel.createMessage(content);
+
+        if (this.askFeedbackChannel && collectorModule?.create) {
+            this.collectAskFeedback(collectorModule, answerMessage, content, {
+                originalMessage: message,
+                question,
+                answer,
+                sources,
+            });
+        }
+    }
+
+    collectAskFeedback(collectorModule, answerMessage, content, feedback) {
+        let submitted = false;
+        const filter = (user) => user?.id === feedback.originalMessage.author?.id;
+        const collector = collectorModule.create(answerMessage, filter, { idle: ASK_FEEDBACK_IDLE_MS });
+
+        collector.on('collect', async (data, interaction) => {
+            const rating = getAskFeedbackRating(data.custom_id);
+            if (!rating) return;
+
+            try {
+                await this.forwardAskFeedback(answerMessage, feedback, rating);
+                submitted = true;
+                content.components = buildAskFeedbackComponents(rating.id);
+                await answerMessage.edit(content).catch(() => {});
+                await interaction.createMessage(
+                    ephemeralInteractionResponse(`✅ **|** Thanks! I sent this as \`${rating.label}\` feedback.`)
+                );
+                collector.stop('submitted');
+            } catch (err) {
+                console.error('[KB] ask feedback forward failed:', err.message);
+                await interaction
+                    .createMessage(ephemeralInteractionResponse('🚫 **|** I could not forward that feedback.'))
+                    .catch(() => {});
+            }
+        });
+
+        collector.on('end', async () => {
+            if (submitted) return;
+            content.components = disableComponents(content.components);
+            await answerMessage.edit(content).catch(() => {});
+        });
+    }
+
+    async forwardAskFeedback(answerMessage, { originalMessage, question, answer, sources }, rating) {
+        const channel = this.bot.getChannel(this.askFeedbackChannel);
+        if (!channel) throw new Error(`Missing ask feedback channel: ${this.askFeedbackChannel}`);
+
+        const answerLink = buildDiscordMessageLink(answerMessage);
+        const originalLink = buildDiscordMessageLink(originalMessage);
+        const fields = [
+            { name: 'Asked By', value: `<@${originalMessage.author.id}> (\`${originalMessage.author.id}\`)` },
+            { name: 'Question', value: truncateEmbedField(question || originalMessage.content || 'Unknown question') },
+            { name: 'Answer', value: truncateEmbedField(answer || 'No answer text') },
+        ];
+
+        if (sources?.length) {
+            fields.push({ name: 'Tags', value: sources.slice(0, 10).map(formatSource).join(', ') });
+        }
+
+        if (answerLink) fields.push({ name: 'Snail Answer', value: answerLink });
+        if (originalLink) fields.push({ name: 'Original Question', value: originalLink });
+
+        await channel.createMessage({
+            embed: {
+                title: `Snail Ask Feedback: ${rating.label}`,
+                color: rating.color,
+                fields,
+                timestamp: new Date().toISOString(),
+            },
         });
     }
 
@@ -524,13 +607,17 @@ module.exports = class KnowledgeBase extends require('./Module') {
         });
 
         await this.persistTagKb(tag, kb);
-        const summary = isTagKbExcluded(tag)
-            ? await this.deleteTagByIdUnlocked(normalizedTagId).then(() => ({
+        let summary;
+        if (isTagKbExcluded(tag)) {
+            await this.deleteTagByIdUnlocked(normalizedTagId);
+            summary = {
                 tagId: normalizedTagId,
                 excluded: true,
                 deleted: true,
-            }))
-            : await this.syncTagByIdUnlocked(normalizedTagId);
+            };
+        } else {
+            summary = await this.syncTagByIdUnlocked(normalizedTagId);
+        }
 
         return { ...summary, editor: await this.getTagQuestionEditor(normalizedTagId) };
     }
@@ -1065,6 +1152,57 @@ async function leanQuery(query) {
     if (!query) return [];
     if (typeof query.lean === 'function') return query.lean();
     return query;
+}
+
+function buildAskFeedbackComponents(selectedId) {
+    return [
+        {
+            type: 1,
+            components: [
+                {
+                    type: 2,
+                    custom_id: ASK_FEEDBACK_HELPFUL_ID,
+                    style: selectedId === ASK_FEEDBACK_HELPFUL_ID ? 3 : 2,
+                    label: selectedId === ASK_FEEDBACK_HELPFUL_ID ? 'Helpful ✓' : 'Helpful',
+                    disabled: Boolean(selectedId),
+                },
+                {
+                    type: 2,
+                    custom_id: ASK_FEEDBACK_NEEDS_FIX_ID,
+                    style: selectedId === ASK_FEEDBACK_NEEDS_FIX_ID ? 4 : 2,
+                    label: selectedId === ASK_FEEDBACK_NEEDS_FIX_ID ? 'Needs Fix ✓' : 'Needs Fix',
+                    disabled: Boolean(selectedId),
+                },
+            ],
+        },
+    ];
+}
+
+function getAskFeedbackRating(customId) {
+    switch (customId) {
+        case ASK_FEEDBACK_HELPFUL_ID:
+            return { id: ASK_FEEDBACK_HELPFUL_ID, label: 'Helpful', color: 10412190 };
+        case ASK_FEEDBACK_NEEDS_FIX_ID:
+            return { id: ASK_FEEDBACK_NEEDS_FIX_ID, label: 'Needs Fix', color: 16737891 };
+    }
+}
+
+function disableComponents(components) {
+    return components.map((row) => ({
+        ...row,
+        components: row.components.map((component) => ({ ...component, disabled: true })),
+    }));
+}
+
+function buildDiscordMessageLink(message) {
+    const guildId = message.guildID || message.channel?.guild?.id;
+    if (!guildId || !message.channel?.id || !message.id) return;
+    return `https://discord.com/channels/${guildId}/${message.channel.id}/${message.id}`;
+}
+
+function truncateEmbedField(text) {
+    const value = String(text ?? '').trim() || '—';
+    return value.length > EMBED_FIELD_VALUE_LIMIT ? `${value.slice(0, EMBED_FIELD_VALUE_LIMIT - 1)}…` : value;
 }
 
 function previewText(text, max) {

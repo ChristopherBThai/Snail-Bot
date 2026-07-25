@@ -39,6 +39,7 @@
         "collection": "owo_knowledge_v2",
         "namespace": "1b671a64-40d5-491e-99b0-da01ff1f3341",
         "embeddingModel": "qwen/qwen3-embedding-8b",
+        "askFeedbackChannel": "420713232265641985",
         "embeddingSize": 4096,
         "chatModel": "deepseek/deepseek-v3.2",
         "queryInstruction": "Given a user question about the OwO Discord bot, retrieve a matching knowledge base entry that answers it.",
