@@ -11,7 +11,8 @@ const SYSTEM_PROMPT =
     'If the notes only contain related info but not the exact answer, say the exact answer is not specified. ' +
     "If the notes do not contain the answer, say you don't know and suggest asking a helper. " +
     'If the question is unrelated to the OwO bot or this support server, say you can only help with OwO bot or server questions. ' +
-    'Keep the answer concise and natural. ' +
+    'You may use Discord markdown when it makes the answer easier to read, such as bullets, bold text, headers, or short code spans. ' +
+    'You may reuse emojis, including custom Discord emoji tokens, exactly as they appear in the provided support notes. Do not invent custom emojis. '
     'Do not mention the knowledge base, support notes, entries, context, sources, or phrases like "based on". ' +
     'Do not include source tags or links in your answer text — they will be appended separately.';
 
