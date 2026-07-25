@@ -36,7 +36,7 @@
     "embedcolor": 15844367,
     "kb": {
         "qdrantUrl": "http://localhost:6333",
-        "collection": "owo_knowledge_v2",
+        "collection": "owo_knowledge",
         "namespace": "1b671a64-40d5-491e-99b0-da01ff1f3341",
         "embeddingModel": "qwen/qwen3-embedding-8b",
         "askFeedbackChannel": "420713232265641985",
