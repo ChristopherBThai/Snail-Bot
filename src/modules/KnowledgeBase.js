@@ -435,6 +435,24 @@ module.exports = class KnowledgeBase extends require('./Module') {
             return tag.kb;
         }
 
+        if (hasInitializedQuestionCache(tag.kb)) {
+            const kb = buildTagKbCache(tag, normalizeExistingQuestions(tag.kb.questions), dataHash, generationHash, {
+                generatedAt: tag.kb?.generatedAt,
+            });
+            await this.persistTagKb(tag, kb);
+            return tag.kb;
+        }
+
+        if (!this.openrouterApiKey) throw new Error('Missing OPENROUTER_API_KEY');
+
+        const questions = await this.generateTagQuestions(tag);
+        const kb = buildTagKbCache(tag, questions, dataHash, generationHash);
+
+        await this.persistTagKb(tag, kb);
+        return tag.kb;
+    }
+
+    async generateTagQuestions(tag) {
         if (!this.openrouterApiKey) throw new Error('Missing OPENROUTER_API_KEY');
 
         const { content } = await chat({
@@ -455,19 +473,10 @@ module.exports = class KnowledgeBase extends require('./Module') {
             throw err;
         }
 
-        const questions = normalizeGeneratedQuestions(generatedQuestions).map((text) => ({
-            text,
-            hash: sha1(text),
-        }));
+        return toQuestionCacheEntries(normalizeGeneratedQuestions(generatedQuestions));
+    }
 
-        const kb = {
-            dataHash,
-            promptVersion: TAG_QUESTION_PROMPT_VERSION,
-            generationHash,
-            questions,
-            generatedAt: new Date(),
-        };
-
+    async persistTagKb(tag, kb) {
         tag.kb = kb;
         if (typeof tag.set === 'function') tag.set('kb', kb);
         if (typeof tag.save === 'function') {
@@ -475,7 +484,54 @@ module.exports = class KnowledgeBase extends require('./Module') {
         } else {
             await this.Tag.updateOne({ _id: String(tag._id) }, { $set: { kb } });
         }
-        return tag.kb;
+    }
+
+    async getTagQuestionEditor(tagId) {
+        const normalizedTagId = String(tagId);
+        const tag = await leanQuery(this.Tag.findById(normalizedTagId));
+        if (!tag) return null;
+
+        const dataHash = tagDataHash(tag.data);
+        const generationHash = tagQuestionGenerationHash(tag, dataHash);
+        const questions = hasInitializedQuestionCache(tag.kb) ? normalizeExistingQuestions(tag.kb.questions) : [];
+
+        return {
+            tagId: normalizedTagId,
+            answer: String(tag.data || ''),
+            excluded: isTagKbExcluded(tag),
+            promptVersion: tag.kb?.promptVersion,
+            cacheCurrent: isCurrentTagKbCache(tag.kb, dataHash, generationHash),
+            generatedAt: tag.kb?.generatedAt,
+            questions,
+        };
+    }
+
+    async updateTagQuestions(tagId, rawText) {
+        return this.enqueueSyncOperation(() => this.updateTagQuestionsUnlocked(tagId, rawText));
+    }
+
+    async updateTagQuestionsUnlocked(tagId, rawText) {
+        const normalizedTagId = String(tagId);
+        const tag = await this.Tag.findById(normalizedTagId);
+        if (!tag) return null;
+
+        const dataHash = tagDataHash(tag.data);
+        const generationHash = tagQuestionGenerationHash(tag, dataHash);
+        const questions = toQuestionCacheEntries(normalizeManualQuestions(rawText));
+        const kb = buildTagKbCache(tag, questions, dataHash, generationHash, {
+            generatedAt: tag.kb?.generatedAt,
+        });
+
+        await this.persistTagKb(tag, kb);
+        const summary = isTagKbExcluded(tag)
+            ? await this.deleteTagByIdUnlocked(normalizedTagId).then(() => ({
+                tagId: normalizedTagId,
+                excluded: true,
+                deleted: true,
+            }))
+            : await this.syncTagByIdUnlocked(normalizedTagId);
+
+        return { ...summary, editor: await this.getTagQuestionEditor(normalizedTagId) };
     }
 
     tagFilter(tagId) {
@@ -566,21 +622,6 @@ module.exports = class KnowledgeBase extends require('./Module') {
     async listKbExcludedTags() {
         const docs = await leanQuery(this.Tag.find({ 'knowledgeBase.excluded': true }));
         return docs.map((tag) => String(tag._id)).sort((a, b) => a.localeCompare(b));
-    }
-
-    async getTagQuestionCache(tagId) {
-        const normalizedTagId = String(tagId);
-        const tag = await leanQuery(this.Tag.findById(normalizedTagId));
-        if (!tag) return null;
-        return {
-            tagId: normalizedTagId,
-            excluded: isTagKbExcluded(tag),
-            dataHash: tag.kb?.dataHash,
-            promptVersion: tag.kb?.promptVersion,
-            generationHash: tag.kb?.generationHash,
-            generatedAt: tag.kb?.generatedAt,
-            questions: Array.isArray(tag.kb?.questions) ? tag.kb.questions : [],
-        };
     }
 
     async resetQdrantAndSync() {
@@ -712,20 +753,47 @@ function tagQuestionGenerationHash(tag, dataHash = tagDataHash(tag.data)) {
 
 function isCurrentTagKbCache(kb, dataHash, generationHash) {
     return (
+        hasInitializedQuestionCache(kb) &&
         kb?.dataHash === dataHash &&
         kb?.promptVersion === TAG_QUESTION_PROMPT_VERSION &&
         kb?.generationHash === generationHash &&
-        hasValidGeneratedQuestionCache(kb.questions)
+        hasValidQuestionCacheEntries(kb.questions)
     );
 }
 
-function hasValidGeneratedQuestionCache(questions) {
-    if (!Array.isArray(questions) || questions.length < 5 || questions.length > 8) return false;
+function hasInitializedQuestionCache(kb) {
+    return (
+        Array.isArray(kb?.questions) &&
+        (typeof kb?.dataHash === 'string' ||
+            typeof kb?.promptVersion === 'string' ||
+            typeof kb?.generationHash === 'string' ||
+            Boolean(kb?.generatedAt))
+    );
+}
+
+function hasValidQuestionCacheEntries(questions) {
+    if (!Array.isArray(questions) || questions.length > 8) return false;
     return questions.every((question) => {
         if (typeof question?.text !== 'string' || typeof question?.hash !== 'string') return false;
         const text = question.text.replace(/\s+/g, ' ').trim();
         return Boolean(text) && question.text === text && question.hash === sha1(text);
     });
+}
+
+function buildTagKbCache(
+    tag,
+    questions,
+    dataHash = tagDataHash(tag.data),
+    generationHash = tagQuestionGenerationHash(tag, dataHash),
+    options = {}
+) {
+    return {
+        dataHash,
+        promptVersion: TAG_QUESTION_PROMPT_VERSION,
+        generationHash,
+        questions,
+        generatedAt: options.generatedAt || new Date(),
+    };
 }
 
 function buildTagQuestionMessages(tag) {
@@ -788,11 +856,46 @@ function normalizeGeneratedQuestions(questions) {
     return out;
 }
 
+function normalizeManualQuestions(rawText) {
+    const out = [];
+    const seen = new Set();
+    for (const line of String(rawText ?? '').split(/\r?\n/)) {
+        const text = line.replace(/\s+/g, ' ').trim().slice(0, 180);
+        if (!text) continue;
+        const key = text.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(text);
+        if (out.length > 8) throw new Error('Please keep retrieval questions to 8 lines or fewer.');
+    }
+    return out;
+}
+
+function toQuestionCacheEntries(questions) {
+    return questions.map((text) => ({ text, hash: sha1(text) }));
+}
+
+function normalizeExistingQuestions(questions) {
+    const out = [];
+    const seen = new Set();
+    for (const question of questions || []) {
+        if (typeof question?.text !== 'string' || typeof question?.hash !== 'string') continue;
+        const text = question.text.replace(/\s+/g, ' ').trim();
+        if (!text || question.hash !== sha1(text)) continue;
+        const key = text.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(text);
+        if (out.length === 8) break;
+    }
+    return toQuestionCacheEntries(out);
+}
+
 function buildDesiredTagPoints(tag, namespace) {
     const tagId = String(tag._id);
     const data = String(tag.data ?? '').trim();
     const dataHash = tag.kb?.dataHash || tagDataHash(data);
-    const questions = Array.isArray(tag.kb?.questions) ? tag.kb.questions : [];
+    const questions = hasInitializedQuestionCache(tag.kb) ? normalizeExistingQuestions(tag.kb.questions) : [];
     const desired = new Map();
 
     const answerPointId = toPointId(namespace, `tag:${tagId}:tag_answer:${dataHash}`);
