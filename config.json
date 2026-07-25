@@ -49,7 +49,7 @@
         "chatModel": "deepseek/deepseek-v3.2",
         "maxTokens": 500,
         "temperature": 0.2,
-        "excludedProviders": ["deepinfra"]
+        "excludedProviders": ["deepinfra", "novita", "gmicloud", "atlas-cloud", "siliconflow"]
     },
     "eris": {
         "allowMentions": {
