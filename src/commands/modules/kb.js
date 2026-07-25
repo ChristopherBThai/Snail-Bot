@@ -47,8 +47,13 @@ module.exports = new Command({
 
     execute: async function () {
         const KB = this.bot.modules['knowledgebase'];
+        const openrouter = this.bot.modules.openrouter;
         if (!KB) {
             await this.error('the Knowledge Base module is not loaded.');
+            return;
+        }
+        if (!openrouter) {
+            await this.error('the OpenRouter module is not loaded.');
             return;
         }
 
@@ -56,7 +61,7 @@ module.exports = new Command({
 
         switch (subcommand) {
             case 'status':
-                return showStatus.call(this, KB);
+                return showStatus.call(this, KB, openrouter);
             case 'reindex':
                 return runReindex.call(this, KB);
             case 'reset':
@@ -77,7 +82,7 @@ module.exports = new Command({
                 );
                 return;
             case 'model':
-                return setModel.call(this, KB);
+                return setModel.call(this, openrouter);
             default:
                 await this.error(
                     'that is not a valid subcommand! Use `snail kb [status|reindex|reset|find|questions|exclude|include|excluded|model] {...arguments}`'
@@ -86,7 +91,7 @@ module.exports = new Command({
     },
 });
 
-async function showStatus(KB) {
+async function showStatus(KB, openrouter) {
     let pointCount = null;
     try {
         if (!KB.qdrant) await KB.initQdrant();
@@ -118,8 +123,8 @@ async function showStatus(KB) {
             `**Enabled:** ${KB.enabled}\n` +
             `**Collection:** \`${KB.collection}\`\n` +
             `**Points in Qdrant:** ${pointCount}\n` +
-            `**Chat Model:** \`${KB.chatModel}\`\n` +
-            `**Embedding Model:** \`${KB.embeddingModel}\`\n` +
+            `**Chat Model:** \`${openrouter.chatModel}\`\n` +
+            `**Embedding Model:** \`${openrouter.embeddingModel}\`\n` +
             `**Last Sync:** ${last}${lastSummary}${progressSummary}`,
     };
     await this.send({ embed });
@@ -601,12 +606,12 @@ async function listExcludedTags(KB) {
     });
 }
 
-async function setModel(KB) {
+async function setModel(openrouter) {
     const model = this.message.args.shift();
     if (!model) {
         await this.error('please provide a model slug! Example: `snail kb model anthropic/claude-haiku-4.5`');
         return;
     }
-    await KB.setChatModel(model);
+    await openrouter.setChatModel(model);
     await this.send(`I have set the chat model to \`${model}\`!`);
 }

@@ -1,12 +1,9 @@
 const axios = require('axios');
 
 const QDRANT_TIMEOUT = 15000;
-const EMBED_TIMEOUT = 30000;
-const CHAT_TIMEOUT = 60000;
 const SCROLL_BATCH = 256;
 const RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 500;
-const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
 
 class Qdrant {
     constructor({ url, apiKey }) {
@@ -153,57 +150,4 @@ function delay(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function embed({ apiKey, model, inputs, timeout = EMBED_TIMEOUT, attempts = RETRY_ATTEMPTS }) {
-    if (!apiKey) throw new Error('Missing OPENROUTER_API_KEY');
-    if (!inputs.length) return [];
-
-    const res = await requestWithRetry(
-        () =>
-            axios.post(
-                `${OPENROUTER_BASE}/embeddings`,
-                { model, input: inputs },
-                {
-                    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-                    timeout,
-                }
-            ),
-        { attempts }
-    );
-    return res.data.data.map((d) => d.embedding);
-}
-
-async function chat({
-    apiKey,
-    model,
-    messages,
-    maxTokens,
-    temperature,
-    timeout = CHAT_TIMEOUT,
-    attempts = RETRY_ATTEMPTS,
-}) {
-    if (!apiKey) throw new Error('Missing OPENROUTER_API_KEY');
-
-    const res = await requestWithRetry(
-        () =>
-            axios.post(
-                `${OPENROUTER_BASE}/chat/completions`,
-                {
-                    model,
-                    messages,
-                    max_tokens: maxTokens,
-                    temperature,
-                },
-                {
-                    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-                    timeout,
-                }
-            ),
-        { attempts }
-    );
-    return {
-        content: String(res.data?.choices?.[0]?.message?.content ?? '').trim(),
-        usage: res.data.usage,
-    };
-}
-
-module.exports = { Qdrant, embed, chat };
+module.exports = { Qdrant };

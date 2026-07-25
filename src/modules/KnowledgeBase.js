@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const { v5: uuidv5 } = require('uuid');
 
 const { ephemeralInteractionResponse } = require('../utils/sender.js');
-const { Qdrant, embed, chat } = require('../utils/kb.js');
+const { Qdrant } = require('../utils/kb.js');
 
 const SYSTEM_PROMPT =
     'You are Snail, a friendly helper in the OwO Discord bot support server. ' +
@@ -20,9 +20,8 @@ const SYSTEM_PROMPT =
 const EMBED_BATCH = 64;
 const META_LOG_EVERY = 50;
 const ASK_DEADLINE_MS = 90000;
-const ASK_EMBED_TIMEOUT = 15000;
-const ASK_CHAT_TIMEOUT = 30000;
-const ASK_RETRY_ATTEMPTS = 2;
+const ASK_QDRANT_TIMEOUT = 15000;
+const ASK_QDRANT_RETRY_ATTEMPTS = 2;
 const ASK_RETRY_DELAY_MS = 500;
 const ASK_SLOW_STAGE_MS = 3000;
 const ASK_FEEDBACK_IDLE_MS = 30 * 60 * 1000;
@@ -53,21 +52,16 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
         this.qdrantUrl = process.env.QDRANT_URL || kbConfig.qdrantUrl || 'http://localhost:6333';
         this.qdrantApiKey = process.env.QDRANT_API_KEY;
-        this.openrouterApiKey = process.env.OPENROUTER_API_KEY;
 
         this.collection = kbConfig.collection || 'owo_knowledge';
         this.namespace = kbConfig.namespace || '1b671a64-40d5-491e-99b0-da01ff1f3341';
-        this.embeddingModel = kbConfig.embeddingModel || 'openai/text-embedding-3-small';
         this.embeddingSize = kbConfig.embeddingSize || 1536;
-        this.chatModel = kbConfig.chatModel || 'deepseek/deepseek-chat-v3.1';
         this.queryInstruction =
             kbConfig.queryInstruction ||
             'Given a user question about the OwO Discord bot, retrieve a matching knowledge base entry that answers it.';
         this.topK = kbConfig.topK ?? 6;
         this.scoreThreshold = kbConfig.scoreThreshold ?? 0.3;
         this.dupeThreshold = kbConfig.dupeThreshold ?? 0.75;
-        this.maxTokens = kbConfig.maxTokens ?? 500;
-        this.temperature = kbConfig.temperature ?? 0.2;
         this.askFeedbackChannel = kbConfig.askFeedbackChannel;
 
         this.qdrant = null;
@@ -84,14 +78,16 @@ module.exports = class KnowledgeBase extends require('./Module') {
         return this.bot.snail_db.Tag;
     }
 
+    get openrouter() {
+        return this.bot.modules.openrouter;
+    }
+
     async onceReady() {
         await super.onceReady();
 
-        const persisted = await this.bot.getConfiguration(`${this.id}_chat_model`);
-        if (persisted) this.chatModel = persisted;
-
         const persistedFeedbackChannel = await this.bot.getConfiguration(`${this.id}_ask_feedback_channel`);
         if (persistedFeedbackChannel) this.askFeedbackChannel = persistedFeedbackChannel;
+        await this.openrouter.loadPersistedConfiguration();
 
         if (this.enabled) {
             await this.initQdrant().catch((err) => {
@@ -243,14 +239,8 @@ module.exports = class KnowledgeBase extends require('./Module') {
         return `Instruct: ${this.queryInstruction}\nQuery: ${question}`;
     }
 
-    async embedQuery(question, options = {}) {
-        if (!this.openrouterApiKey) throw new Error('Missing OPENROUTER_API_KEY');
-        const [vector] = await embed({
-            apiKey: this.openrouterApiKey,
-            model: this.embeddingModel,
-            inputs: [this.formatQuery(question)],
-            ...options,
-        });
+    async embedQuery(question) {
+        const [vector] = await this.openrouter.embed([this.formatQuery(question)]);
         return vector;
     }
 
@@ -259,9 +249,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
         const askStartedAt = Date.now();
         let stageStartedAt = askStartedAt;
-        const vector = await this.embedQuery(question, {
-            ...remainingAskRequestOptions(askStartedAt, ASK_EMBED_TIMEOUT, ASK_RETRY_ATTEMPTS),
-        });
+        const vector = await this.embedQuery(question);
         logAskStage('embed', stageStartedAt, question);
 
         assertAskBudget(askStartedAt);
@@ -270,7 +258,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
             vector,
             limit: this.topK * 3,
             scoreThreshold: this.scoreThreshold,
-            ...remainingAskRequestOptions(askStartedAt, ASK_EMBED_TIMEOUT, ASK_RETRY_ATTEMPTS),
+            ...remainingAskRequestOptions(askStartedAt, ASK_QDRANT_TIMEOUT, ASK_QDRANT_RETRY_ATTEMPTS),
         });
         logAskStage('qdrant_search', stageStartedAt, question);
 
@@ -293,17 +281,10 @@ module.exports = class KnowledgeBase extends require('./Module') {
         const context = groups.map(formatTagAnswerContext).join('\n\n');
 
         stageStartedAt = Date.now();
-        const { content } = await chat({
-            apiKey: this.openrouterApiKey,
-            model: this.chatModel,
-            maxTokens: this.maxTokens,
-            temperature: this.temperature,
-            ...remainingAskRequestOptions(askStartedAt, ASK_CHAT_TIMEOUT, ASK_RETRY_ATTEMPTS),
-            messages: [
-                { role: 'system', content: SYSTEM_PROMPT },
-                { role: 'user', content: `Support notes:\n${context}\n\nUser question:\n${question}` },
-            ],
-        });
+        const { content } = await this.openrouter.chat(
+            SYSTEM_PROMPT,
+            `Support notes:\n${context}\n\nUser question:\n${question}`
+        );
         logAskStage('chat', stageStartedAt, question);
         logAskStage('total', askStartedAt, question);
 
@@ -400,7 +381,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
     async syncUnlocked({ dryRun = false } = {}) {
         if (this.syncing) throw new Error('A sync is already in progress');
         if (!this.qdrant) await this.initQdrant();
-        if (!dryRun && !this.openrouterApiKey) throw new Error('Missing OPENROUTER_API_KEY');
+        if (!dryRun) this.openrouter.assertConfigured();
 
         this.syncing = true;
         this.startSyncProgress(dryRun);
@@ -527,7 +508,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
             return tag.kb;
         }
 
-        if (!this.openrouterApiKey) throw new Error('Missing OPENROUTER_API_KEY');
+        this.openrouter.assertConfigured();
 
         const questions = await this.generateTagQuestions(tag);
         const kb = buildTagKbCache(tag, questions, dataHash, generationHash);
@@ -537,15 +518,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
     }
 
     async generateTagQuestions(tag) {
-        if (!this.openrouterApiKey) throw new Error('Missing OPENROUTER_API_KEY');
-
-        const { content } = await chat({
-            apiKey: this.openrouterApiKey,
-            model: this.chatModel,
-            maxTokens: 500,
-            temperature: 0.2,
-            messages: buildTagQuestionMessages(tag),
-        });
+        const { content } = await this.openrouter.chat(TAG_QUESTION_SYSTEM_PROMPT, buildTagQuestionPrompt(tag));
 
         let generatedQuestions;
         try {
@@ -643,7 +616,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
             await this.deleteTagByIdUnlocked(normalizedTagId);
             return { excluded: true, deleted: true, tagId: normalizedTagId };
         }
-        if (!this.openrouterApiKey) throw new Error('Missing OPENROUTER_API_KEY');
+        this.openrouter.assertConfigured();
 
         await this.ensureTagKbCache(tag);
         const desired = this.buildDesiredTagPoints(tag);
@@ -730,11 +703,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
         for (let i = 0; i < toEmbed.length; i += EMBED_BATCH) {
             const batch = toEmbed.slice(i, i + EMBED_BATCH);
-            const vectors = await embed({
-                apiKey: this.openrouterApiKey,
-                model: this.embeddingModel,
-                inputs: batch.map((x) => x.text),
-            });
+            const vectors = await this.openrouter.embed(batch.map((x) => x.text));
             const points = batch.map((x, j) => ({
                 id: x.pointId,
                 vector: vectors[j],
@@ -755,19 +724,13 @@ module.exports = class KnowledgeBase extends require('./Module') {
         }
     }
 
-    async setChatModel(model) {
-        this.chatModel = model;
-        await this.bot.setConfiguration(`${this.id}_chat_model`, model);
-    }
-
     getConfigurationOverview() {
         const last = this.syncing ? 'in progress' : this.lastSync ? this.lastSync.toISOString() : 'never';
         return (
             `${super.getConfigurationOverview()}\n` +
             `- Qdrant URL: ${this.qdrantUrl}\n` +
             `- Collection: ${this.collection}\n` +
-            `- Embedding Model: ${this.embeddingModel} (${this.embeddingSize}d)\n` +
-            `- Chat Model: ${this.chatModel}\n` +
+            `- Embedding Size: ${this.embeddingSize}d\n` +
             `- Top K: ${this.topK}\n` +
             `- Score Threshold: ${this.scoreThreshold}\n` +
             `- Dupe Threshold: ${this.dupeThreshold}\n` +
@@ -884,21 +847,16 @@ function buildTagKbCache(
     };
 }
 
-function buildTagQuestionMessages(tag) {
+function buildTagQuestionPrompt(tag) {
     const tagId = String(tag._id);
     const data = String(tag.data ?? '').trim();
-    return [
-        { role: 'system', content: TAG_QUESTION_SYSTEM_PROMPT },
-        {
-            role: 'user',
-            content:
-                'Generate 5 to 8 concise English user questions that this support tag would help retrieve.\n' +
-                'Use natural user wording and vary the phrasing. Do not start every question with "OwO bot" or the tag name.\n' +
-                'The questions are retrieval scaffolding only and must not add facts beyond the tag data.\n' +
-                `Tag id: ${tagId}\n` +
-                `Tag data:\n${data}`,
-        },
-    ];
+    return (
+        'Generate 5 to 8 concise English user questions that this support tag would help retrieve.\n' +
+        'Use natural user wording and vary the phrasing. Do not start every question with "OwO bot" or the tag name.\n' +
+        'The questions are retrieval scaffolding only and must not add facts beyond the tag data.\n' +
+        `Tag id: ${tagId}\n` +
+        `Tag data:\n${data}`
+    );
 }
 
 function truncateForLog(value) {

@@ -38,15 +38,18 @@
         "qdrantUrl": "http://localhost:6333",
         "collection": "owo_knowledge",
         "namespace": "1b671a64-40d5-491e-99b0-da01ff1f3341",
-        "embeddingModel": "qwen/qwen3-embedding-8b",
-        "askFeedbackChannel": "420713232265641985",
+        "askFeedbackChannel": "1530716788319326408",
         "embeddingSize": 4096,
-        "chatModel": "deepseek/deepseek-v3.2",
         "queryInstruction": "Given a user question about the OwO Discord bot, retrieve a matching knowledge base entry that answers it.",
         "topK": 6,
-        "scoreThreshold": 0.7,
+        "scoreThreshold": 0.7
+    },
+    "openrouter": {
+        "embeddingModel": "qwen/qwen3-embedding-8b",
+        "chatModel": "deepseek/deepseek-v3.2",
         "maxTokens": 500,
-        "temperature": 0.2
+        "temperature": 0.2,
+        "excludedProviders": ["deepinfra"]
     },
     "eris": {
         "allowMentions": {
