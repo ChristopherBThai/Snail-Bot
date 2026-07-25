@@ -328,7 +328,12 @@ async function showQuestions(KB) {
                 acknowledged = true;
                 const result = await KB.updateTagQuestions(editor.tagId, rawText);
                 if (!result) {
-                    await message.edit({ content: '🚫 **|** That tag no longer exists.', components: [] });
+                    content = { content: '🚫 **|** That tag no longer exists.', components: [] };
+                    await message.edit(content);
+                    if (answerMessage) {
+                        await answerMessage.delete().catch(() => {});
+                        answerMessage = null;
+                    }
                     collector.stop('missing');
                     return;
                 }

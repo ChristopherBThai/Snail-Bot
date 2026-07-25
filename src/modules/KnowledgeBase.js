@@ -762,7 +762,13 @@ function isCurrentTagKbCache(kb, dataHash, generationHash) {
 }
 
 function hasInitializedQuestionCache(kb) {
-    return Array.isArray(kb?.questions);
+    return (
+        Array.isArray(kb?.questions) &&
+        (typeof kb?.dataHash === 'string' ||
+            typeof kb?.promptVersion === 'string' ||
+            typeof kb?.generationHash === 'string' ||
+            Boolean(kb?.generatedAt))
+    );
 }
 
 function hasValidQuestionCacheEntries(questions) {
