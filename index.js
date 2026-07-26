@@ -1,5 +1,15 @@
 require('dotenv').config();
 
+// Start Elastic APM before anything else to capture all transactions, spans, and errors
+require('elastic-apm-node').start({
+    serviceName: 'snail-bot',
+    serverUrl: process.env.ELASTIC_AGENT_URL,
+    useElasticTraceparentHeader: true,
+    transactionSampleRate: 1.0,
+    environment: process.env.DEBUG ? 'development' : 'production',
+    logLevel: 'off',
+});
+
 let configPath;
 if (process.env.DEBUG) {
     configPath = './config.debug.json';

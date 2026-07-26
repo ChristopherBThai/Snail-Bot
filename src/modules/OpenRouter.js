@@ -39,6 +39,10 @@ module.exports = class OpenRouter extends require('./Module') {
         this.loadedPersistedConfiguration = true;
     }
 
+    get elasticapm() {
+        return this.bot.modules.elasticapm;
+    }
+
     assertConfigured() {
         if (!this.apiKey) throw new Error('Missing OPENROUTER_API_KEY');
     }
@@ -47,7 +51,7 @@ module.exports = class OpenRouter extends require('./Module') {
         this.assertConfigured();
         if (!inputs.length) return [];
 
-        const res = await requestWithRetry(() =>
+        const res = await this.#requestOpenRouter('embed', () =>
             axios.post(`${OPENROUTER_BASE}/embeddings`, this.buildBody({ model: this.embeddingModel, input: inputs }), {
                 headers: this.headers(),
                 timeout: EMBED_TIMEOUT,
@@ -59,7 +63,7 @@ module.exports = class OpenRouter extends require('./Module') {
     async chat(systemPrompt, userPrompt) {
         this.assertConfigured();
 
-        const res = await requestWithRetry(() =>
+        const res = await this.#requestOpenRouter('chat', () =>
             axios.post(
                 `${OPENROUTER_BASE}/chat/completions`,
                 this.buildBody({
@@ -112,6 +116,41 @@ module.exports = class OpenRouter extends require('./Module') {
             `- Chat Model: ${this.chatModel}\n` +
             `- Excluded Providers: ${this.excludedProviders.length ? this.excludedProviders.join(', ') : 'none'}`
         );
+    }
+
+    #requestOpenRouter(type, fn) {
+        const transaction = this.elasticapm.currentTransaction;
+        const span = this.elasticapm.startSpan(`openrouter.${type}`, 'external.openrouter');
+
+        return requestWithRetry(fn)
+            .then((res) => {
+                this.#addOpenRouterApmLabels(transaction, span, res, type);
+                span?.setOutcome('success');
+                return res;
+            })
+            .catch((err) => {
+                span?.setOutcome('failure');
+                throw err;
+            })
+            .finally(() => {
+                span?.end();
+            });
+    }
+
+    #addOpenRouterApmLabels(transaction, span, res, type) {
+        transaction?.setLabel(`openrouter.${type}.model`, res.data.model);
+        transaction?.setLabel(`openrouter.${type}.provider`, res.data.provider);
+        span?.setLabel('openrouter_model', res.data.model);
+        span?.setLabel('openrouter_provider', res.data.provider);
+
+        const customContext = {};
+        customContext[type] = {
+            prompt_tokens: res.data.usage.prompt_tokens,
+            completion_tokens: res.data.usage.completion_tokens,
+            total_tokens: res.data.usage.total_tokens,
+            cost: res.data.usage.cost,
+        };
+        this.elasticapm.apm?.setCustomContext(customContext);
     }
 };
 

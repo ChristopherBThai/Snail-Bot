@@ -82,6 +82,10 @@ module.exports = class KnowledgeBase extends require('./Module') {
         return this.bot.modules.openrouter;
     }
 
+    get elasticApm() {
+        return this.bot.modules.elasticapm;
+    }
+
     async onceReady() {
         await super.onceReady();
 
@@ -185,9 +189,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
                 submitted = true;
                 content.components = buildAskFeedbackComponents(rating.id);
                 await answerMessage.edit(content).catch(() => {});
-                await interaction.createMessage(
-                    ephemeralInteractionResponse(`✅ **|** Thank you for your feedback!`)
-                );
+                await interaction.createMessage(ephemeralInteractionResponse(`✅ **|** Thank you for your feedback!`));
                 collector.stop('submitted');
             } catch (err) {
                 console.error('[KB] ask feedback forward failed:', err.message);
@@ -245,31 +247,41 @@ module.exports = class KnowledgeBase extends require('./Module') {
     }
 
     async ask(question) {
+        const transaction = this.elasticApm.startTransaction('snail.ask.fetch', 'bot');
+
+        try {
+            transaction?.setLabel('question_length', question.length);
+            const result = await this.fetchAskAnswer(question);
+            transaction?.setOutcome('success');
+            return result;
+        } catch (err) {
+            transaction?.setOutcome('failure');
+            this.elasticApm.captureError(err);
+            throw err;
+        } finally {
+            transaction?.end();
+        }
+    }
+
+    async fetchAskAnswer(question) {
         if (!this.qdrant) await this.initQdrant();
 
         const askStartedAt = Date.now();
-        let stageStartedAt = askStartedAt;
         const vector = await this.embedQuery(question);
-        logAskStage('embed', stageStartedAt, question);
 
         assertAskBudget(askStartedAt);
-        stageStartedAt = Date.now();
         const rawHits = await this.qdrant.search(this.collection, {
             vector,
             limit: this.topK * 3,
             scoreThreshold: this.scoreThreshold,
             ...remainingAskRequestOptions(askStartedAt, ASK_QDRANT_TIMEOUT, ASK_QDRANT_RETRY_ATTEMPTS),
         });
-        logAskStage('qdrant_search', stageStartedAt, question);
 
         assertAskBudget(askStartedAt);
-        stageStartedAt = Date.now();
         const groups = (await this.materializeTagGroups(groupHitsByTag(rawHits))).slice(0, this.topK);
-        logAskStage('mongo_tags', stageStartedAt, question);
         const hits = groups.flatMap((group) => group.hits);
 
         if (!groups.length) {
-            logAskStage('total_no_hits', askStartedAt, question);
             return {
                 answer: "I don't know that one yet — please ask a helper or rephrase your question.",
                 sources: [],
@@ -280,13 +292,10 @@ module.exports = class KnowledgeBase extends require('./Module') {
         assertAskBudget(askStartedAt);
         const context = groups.map(formatTagAnswerContext).join('\n\n');
 
-        stageStartedAt = Date.now();
         const { content } = await this.openrouter.chat(
             SYSTEM_PROMPT,
             `Support notes:\n${context}\n\nUser question:\n${question}`
         );
-        logAskStage('chat', stageStartedAt, question);
-        logAskStage('total', askStartedAt, question);
 
         const sources = groups.map((group) => group.tagId);
         return {
@@ -762,12 +771,6 @@ function remainingAskRequestOptions(startedAt, preferredMs, preferredAttempts) {
     const retryDelayBudget = ASK_RETRY_DELAY_MS * Math.max(0, attempts - 1);
     const perAttemptBudget = Math.floor(Math.max(1, remaining - retryDelayBudget) / attempts);
     return { timeout: Math.max(1, Math.min(preferredMs, perAttemptBudget)), attempts };
-}
-
-function logAskStage(stage, startedAt, question) {
-    const elapsedMs = Date.now() - startedAt;
-    if (elapsedMs < ASK_SLOW_STAGE_MS) return;
-    console.warn(`[KB] ask slow: stage=${stage} ms=${elapsedMs} questionLength=${String(question ?? '').length}`);
 }
 
 function tagPayloadFields() {

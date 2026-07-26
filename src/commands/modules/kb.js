@@ -368,7 +368,9 @@ async function showQuestions(KB) {
                 content = rendered.content;
                 await message.edit(content).catch(() => {});
             } else {
-                await interaction.createMessage(ephemeralInteractionResponse(`🚫 **|** ${err.message}`)).catch(() => {});
+                await interaction
+                    .createMessage(ephemeralInteractionResponse(`🚫 **|** ${err.message}`))
+                    .catch(() => {});
             }
         }
     });
@@ -384,7 +386,9 @@ function renderQuestionEditorMessages(command, editor, notice = '') {
     const questions = editor.questions.length
         ? renderedQuestions.slice(0, 3000)
         : 'No retrieval questions are cached for this tag. Use **Edit Questions** to add retrieval questions, or leave it empty to index only the tag answer.';
-    const generatedAt = editor.generatedAt ? `<t:${Math.floor(new Date(editor.generatedAt).getTime() / 1000)}:R>` : 'never';
+    const generatedAt = editor.generatedAt
+        ? `<t:${Math.floor(new Date(editor.generatedAt).getTime() / 1000)}:R>`
+        : 'never';
     const status = [
         `**Excluded:** ${editor.excluded ? 'yes (Qdrant tag points are deleted)' : 'no'}`,
         `**Prompt Version:** \`${editor.promptVersion || 'none'}\``,
@@ -419,9 +423,7 @@ function buildQuestionContent(command, editor, description) {
         components: [
             {
                 type: 1,
-                components: [
-                    { type: 2, custom_id: QUESTIONS_EDIT_ID, style: 1, label: 'Edit Questions' },
-                ],
+                components: [{ type: 2, custom_id: QUESTIONS_EDIT_ID, style: 1, label: 'Edit Questions' }],
             },
         ],
     };
