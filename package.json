@@ -28,7 +28,7 @@
     "eris": "^0.18.0",
     "eventemitter3": "^5.0.1",
     "got": "^11.8.0",
-    "mongoose": "^5.9.24",
+    "mongoose": "^9.8.0",
     "mysql": "^2.18.1",
     "prettier": "^2.8.0",
     "require-dir": "^1.2.0",

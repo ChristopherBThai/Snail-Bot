@@ -4,11 +4,11 @@ const UserSchema = new mongoose.Schema({
     _id: String,
     friends: [{ type: String, ref: 'User' }],
     reminders: {
-        luck: { enabled: Boolean, default: false },
-        hunt: { enabled: Boolean, default: false },
-        battle: { enabled: Boolean, default: false },
+        luck: { enabled: Boolean },
+        hunt: { enabled: Boolean },
+        battle: { enabled: Boolean },
     },
-    snailRoles: { type: Boolean, default: false },
+    snailRoles: { type: Boolean },
 });
 
 module.exports = { name: 'User', schema: UserSchema };
