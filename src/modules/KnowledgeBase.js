@@ -186,7 +186,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
                 content.components = buildAskFeedbackComponents(rating.id);
                 await answerMessage.edit(content).catch(() => {});
                 await interaction.createMessage(
-                    ephemeralInteractionResponse(`✅ **|** Thanks! I sent this as \`${rating.label}\` feedback.`)
+                    ephemeralInteractionResponse(`✅ **|** Thank you for your feedback!`)
                 );
                 collector.stop('submitted');
             } catch (err) {
