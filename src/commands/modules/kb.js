@@ -30,6 +30,9 @@ module.exports = new Command({
         '- `snail kb delete {name}`\n  - Delete a KB-only/private support tag\n' +
         '- `snail kb list`\n  - List KB-only/private support tags\n' +
         '- `snail kb questions {tag}`\n  - Show/edit retrieval questions cached in Mongo for a tag\n' +
+        '- `snail kb term set {id} {meaning}`\n  - Add or update an OwO bot term appended to final ask prompts\n' +
+        '- `snail kb term delete {id}`\n  - Delete an OwO bot term\n' +
+        '- `snail kb term list`\n  - List stored OwO bot terms\n' +
         '- `snail kb exclude {tag...}`\n  - Exclude one or more tags from KB retrieval and delete their Qdrant points\n' +
         '- `snail kb include {tag...}`\n  - Include one or more tags in KB retrieval and sync their Qdrant points\n' +
         '- `snail kb excluded`\n  - List tags excluded from KB retrieval\n' +
@@ -46,6 +49,9 @@ module.exports = new Command({
         'snail kb delete privategems',
         'snail kb list',
         'snail kb questions gems',
+        'snail kb term set dt distorted pets',
+        'snail kb term delete dt',
+        'snail kb term list',
         'snail kb exclude newtr trstart',
         'snail kb include newtr trstart',
         'snail kb excluded',
@@ -86,6 +92,8 @@ module.exports = new Command({
                 return listKbOnlyTags.call(this);
             case 'questions':
                 return showQuestions.call(this, KB);
+            case 'term':
+                return runTerm.call(this, KB);
             case 'exclude':
                 return setTagExcluded.call(this, KB, true);
             case 'include':
@@ -96,7 +104,7 @@ module.exports = new Command({
                 return setModel.call(this, openrouter);
             default:
                 await this.error(
-                    'that is not a valid subcommand! Use `snail kb [status|reindex|reset|find|add|edit|delete|list|questions|exclude|include|excluded|model] {...arguments}`'
+                    'that is not a valid subcommand! Use `snail kb [status|reindex|reset|find|add|edit|delete|list|questions|term|exclude|include|excluded|model] {...arguments}`'
                 );
         }
     },
@@ -662,6 +670,78 @@ function disableComponents(content) {
             component.disabled = true;
         }
     }
+}
+
+async function runTerm(KB) {
+    const action = this.message.args.shift()?.toLowerCase();
+    switch (action) {
+        case 'set':
+            return setKnowledgeTerm.call(this, KB);
+        case 'delete':
+            return deleteKnowledgeTerm.call(this, KB);
+        case 'list':
+            return listKnowledgeTerms.call(this, KB);
+        default:
+            await this.error(
+                'please use `snail kb term set {id} {meaning}`, `snail kb term delete {id}`, or `snail kb term list`.'
+            );
+    }
+}
+
+async function setKnowledgeTerm(KB) {
+    const termId = this.message.args.shift();
+    const meaning = this.message.args.join(' ').trim();
+    if (!termId || !meaning) {
+        await this.error('please provide a term id and meaning! Example: `snail kb term set dt distorted pets`');
+        return;
+    }
+
+    try {
+        const term = await KB.setKnowledgeTerm(termId, meaning);
+        await this.send(`✅ **|** Set OwO bot term \`${term._id}\` = ${term.meaning}`);
+    } catch (err) {
+        console.error('[KB] set term failed:', err);
+        await this.error(`failed to set term: \`${err.message}\``);
+    }
+}
+
+async function deleteKnowledgeTerm(KB) {
+    const termId = this.message.args.shift();
+    if (!termId) {
+        await this.error('please provide a term id! Example: `snail kb term delete dt`');
+        return;
+    }
+
+    try {
+        const result = await KB.deleteKnowledgeTerm(termId);
+        const status = result.deleted ? 'Deleted' : 'No stored term found for';
+        await this.send(`✅ **|** ${status} OwO bot term \`${result._id}\`.`);
+    } catch (err) {
+        console.error('[KB] delete term failed:', err);
+        await this.error(`failed to delete term: \`${err.message}\``);
+    }
+}
+
+async function listKnowledgeTerms(KB) {
+    let terms;
+    try {
+        terms = await KB.listKnowledgeTerms();
+    } catch (err) {
+        console.error('[KB] list terms failed:', err);
+        await this.error(`failed to list terms: \`${err.message}\``);
+        return;
+    }
+
+    const termLines = terms.map((term) => `\`${term._id}\` = ${term.meaning}`).join('\n');
+    const description = terms.length ? termLines.slice(0, 3500) : 'No OwO bot terms are stored.';
+
+    await this.send({
+        embed: {
+            title: 'OwO Bot Terms',
+            color: this.config.embedcolor,
+            description,
+        },
+    });
 }
 
 async function setTagExcluded(KB, excluded) {
