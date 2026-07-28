@@ -643,6 +643,38 @@ module.exports = class KnowledgeBase extends require('./Module') {
         return this.enqueueSyncOperation(() => this.updateTagQuestionsUnlocked(tagId, rawText));
     }
 
+    async regenerateTagQuestions(tagId) {
+        return this.enqueueSyncOperation(() => this.regenerateTagQuestionsUnlocked(tagId));
+    }
+
+    async regenerateTagQuestionsUnlocked(tagId) {
+        const normalizedTagId = String(tagId);
+        const tag = await this.Tag.findById(normalizedTagId);
+        if (!tag) return null;
+
+        this.openrouter.assertConfigured();
+
+        const dataHash = tagDataHash(tag.data);
+        const generationHash = tagQuestionGenerationHash(tag, dataHash);
+        const questions = await this.generateTagQuestions(tag);
+        const kb = buildTagKbCache(tag, questions, dataHash, generationHash);
+
+        await this.persistTagKb(tag, kb);
+        let summary;
+        if (isTagKbExcluded(tag)) {
+            await this.deleteTagByIdUnlocked(normalizedTagId);
+            summary = {
+                tagId: normalizedTagId,
+                excluded: true,
+                deleted: true,
+            };
+        } else {
+            summary = await this.syncTagByIdUnlocked(normalizedTagId);
+        }
+
+        return { ...summary, editor: await this.getTagQuestionEditor(normalizedTagId) };
+    }
+
     async updateTagQuestionsUnlocked(tagId, rawText) {
         const normalizedTagId = String(tagId);
         const tag = await this.Tag.findById(normalizedTagId);
