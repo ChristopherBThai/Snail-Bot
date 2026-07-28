@@ -19,6 +19,7 @@ class Mongo {
         // I didn't want to @ts-ignore every time I used these...
         this.Channel = undefined;
         this.Config = undefined;
+        this.KnowledgeTerm = undefined;
         this.Quest = undefined;
         this.Tag = undefined;
         this.User = undefined;

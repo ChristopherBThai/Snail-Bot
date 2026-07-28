@@ -80,6 +80,10 @@ module.exports = class KnowledgeBase extends require('./Module') {
         return this.bot.snail_db.Tag;
     }
 
+    get KnowledgeTerm() {
+        return this.bot.snail_db.KnowledgeTerm;
+    }
+
     get openrouter() {
         return this.bot.modules.openrouter;
     }
@@ -300,11 +304,9 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
         assertAskBudget(askStartedAt);
         const context = groups.map(formatTagAnswerContext).join('\n\n');
+        const terms = await this.fetchQuestionTerms(question);
 
-        const { content } = await this.openrouter.chat(
-            SYSTEM_PROMPT,
-            `Support notes:\n${context}\n\nUser question:\n${question}`
-        );
+        const { content } = await this.openrouter.chat(SYSTEM_PROMPT, formatAnswerPrompt(context, question, terms));
 
         const sources = groups.map((group) => ({ tagId: group.tagId, visibility: group.visibility }));
         return {
@@ -312,6 +314,42 @@ module.exports = class KnowledgeBase extends require('./Module') {
             sources,
             hits,
         };
+    }
+
+    async fetchQuestionTerms(question) {
+        const termIds = extractTermIds(question);
+        if (!termIds.length) return [];
+
+        const docs = await leanQuery(this.KnowledgeTerm.find({ _id: { $in: termIds } }));
+        const termsById = new Map(docs.map((term) => [String(term._id), term]));
+        return termIds.map((termId) => termsById.get(termId)).filter(Boolean);
+    }
+
+    async setKnowledgeTerm(termId, meaning) {
+        const normalizedTermId = normalizeTermId(termId);
+        const normalizedMeaning = String(meaning ?? '').trim();
+        if (!normalizedTermId) throw new Error('Term id must contain at least one alphanumeric character.');
+        if (!normalizedMeaning) throw new Error('Term meaning cannot be blank.');
+
+        await this.KnowledgeTerm.updateOne(
+            { _id: normalizedTermId },
+            { $set: { meaning: normalizedMeaning } },
+            { upsert: true }
+        );
+        return { _id: normalizedTermId, meaning: normalizedMeaning };
+    }
+
+    async deleteKnowledgeTerm(termId) {
+        const normalizedTermId = normalizeTermId(termId);
+        if (!normalizedTermId) throw new Error('Term id must contain at least one alphanumeric character.');
+
+        const result = await this.KnowledgeTerm.deleteOne({ _id: normalizedTermId });
+        return { _id: normalizedTermId, deleted: result.deletedCount > 0 };
+    }
+
+    async listKnowledgeTerms() {
+        const terms = await leanQuery(this.KnowledgeTerm.find({}));
+        return terms.sort((a, b) => String(a._id).localeCompare(String(b._id)));
     }
 
     async rerankTagGroups(question, groups) {
@@ -785,6 +823,32 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
 function tagFilter(tagId) {
     return { must: [{ key: 'tag_id', match: { value: String(tagId) } }] };
+}
+
+function normalizeTermId(termId) {
+    return String(termId ?? '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
+}
+
+function extractTermIds(question) {
+    const seen = new Set();
+    const termIds = [];
+    for (const match of String(question ?? '').match(/[a-z0-9]+/gi) || []) {
+        const termId = normalizeTermId(match);
+        if (!termId || seen.has(termId)) continue;
+        seen.add(termId);
+        termIds.push(termId);
+    }
+    return termIds;
+}
+
+function formatAnswerPrompt(context, question, terms) {
+    const supportNotes = `Support notes:\n${context}`;
+    if (!terms.length) return `${supportNotes}\n\nUser question:\n${question}`;
+
+    const termLines = terms.map((term) => `${term._id} = ${term.meaning}`).join('\n');
+    return `${supportNotes}\n\nOwO bot terms:\n${termLines}\n\nUser question:\n${question}`;
 }
 
 function isTagKbExcluded(tag) {
