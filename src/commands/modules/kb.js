@@ -24,6 +24,7 @@ module.exports = new Command({
         '- `snail kb status`\n  - Show tag-backed knowledge base sync status and collection info\n' +
         '- `snail kb reindex`\n  - Sync Mongo tags to Qdrant (only changed tag points are re-embedded)\n' +
         '- `snail kb reindex dry`\n  - Show what a reindex would do without making changes\n' +
+        '- `snail kb reindex questions`\n  - Regenerate retrieval questions for all tags, then incrementally sync Qdrant\n' +
         '- `snail kb reset confirm`\n  - Destructively recreate the Qdrant collection, then sync Mongo tags. Remote resets require backup through `ssh hub.corg.network` first.\n' +
         '- `snail kb find {query}`\n  - Search matching tags for manager/debug review\n' +
         '- `snail kb add {name} {data}`\n  - Add a KB-only/private support tag\n' +
@@ -43,6 +44,7 @@ module.exports = new Command({
         'snail kb status',
         'snail kb reindex',
         'snail kb reindex dry',
+        'snail kb reindex questions',
         'snail kb reset confirm',
         'snail kb find how do gems expire',
         'snail kb add privategems Private note for support helpers only',
@@ -183,21 +185,31 @@ function formatSyncProgress(progress) {
 }
 
 async function runReindex(KB) {
-    const dry = this.message.args[0]?.toLowerCase() === 'dry';
+    const modes = new Set(this.message.args.map((arg) => arg.toLowerCase()));
+    const dry = modes.has('dry');
+    const regenerateQuestions = modes.has('questions');
+
+    if (dry && regenerateQuestions) {
+        await this.error('`snail kb reindex questions` regenerates Mongo question caches, so it cannot be combined with `dry`.');
+        return;
+    }
 
     if (KB.syncing) {
         await this.error('a sync is already in progress!');
         return;
     }
 
-    const status = await this.send(`🐌 **|** ${dry ? 'Computing diff' : 'Syncing'}...`);
+    const status = await this.send(
+        `🐌 **|** ${dry ? 'Computing diff' : regenerateQuestions ? 'Regenerating questions and syncing' : 'Syncing'}...`
+    );
 
     try {
-        const summary = await KB.sync({ dryRun: dry });
+        const summary = await KB.sync({ dryRun: dry, regenerateQuestions });
         const embed = {
-            title: dry ? 'Reindex (dry run)' : 'Reindex Complete',
+            title: dry ? 'Reindex (dry run)' : regenerateQuestions ? 'Question Reindex Complete' : 'Reindex Complete',
             color: this.config.embedcolor,
             description:
+                `**Question Cache:** ${summary.regeneratedQuestions ? 'regenerated' : 'preserved'}\n` +
                 `**Added:** ${summary.added}\n` +
                 `**Vector updates:** ${summary.vectorUpdated}\n` +
                 `**Payload updates:** ${summary.metaUpdated}\n` +
