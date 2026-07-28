@@ -42,11 +42,13 @@
         "embeddingSize": 4096,
         "queryInstruction": "Given a user question about the OwO Discord bot, retrieve a matching knowledge base entry that answers it.",
         "topK": 6,
+        "rerankCandidateLimit": 50,
         "scoreThreshold": 0.7
     },
     "openrouter": {
         "embeddingModel": "qwen/qwen3-embedding-8b",
         "chatModel": "deepseek/deepseek-v3.2",
+        "rerankModel": "cohere/rerank-4-fast",
         "maxTokens": 500,
         "temperature": 0.2,
         "excludedProviders": ["deepinfra", "novita", "gmicloud", "atlas-cloud", "siliconflow"]
