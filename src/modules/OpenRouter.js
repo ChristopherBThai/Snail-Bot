@@ -3,6 +3,7 @@ const axios = require('axios');
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
 const EMBED_TIMEOUT = 30000;
 const CHAT_TIMEOUT = 60000;
+const RERANK_TIMEOUT = 30000;
 const RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 500;
 
@@ -20,6 +21,7 @@ module.exports = class OpenRouter extends require('./Module') {
         this.apiKey = process.env.OPENROUTER_API_KEY;
         this.embeddingModel = config.embeddingModel || 'openai/text-embedding-3-small';
         this.chatModel = config.chatModel || 'deepseek/deepseek-chat-v3.1';
+        this.rerankModel = config.rerankModel || 'cohere/rerank-4-fast';
         this.maxTokens = config.maxTokens ?? 500;
         this.temperature = config.temperature ?? 0.2;
         this.excludedProviders = normalizeExcludedProviders(config.excludedProviders);
@@ -87,6 +89,29 @@ module.exports = class OpenRouter extends require('./Module') {
         };
     }
 
+    async rerank(query, documents, { topN } = {}) {
+        this.assertConfigured();
+        if (!documents.length) return [];
+
+        const top_n = Math.min(topN ?? documents.length, documents.length);
+        const res = await this.#requestOpenRouter('rerank', () =>
+            axios.post(
+                `${OPENROUTER_BASE}/rerank`,
+                this.buildBody({
+                    model: this.rerankModel,
+                    query,
+                    documents,
+                    top_n,
+                }),
+                {
+                    headers: this.headers(),
+                    timeout: RERANK_TIMEOUT,
+                }
+            )
+        );
+        return parseRerankResults(res.data?.results, documents.length);
+    }
+
     async setChatModel(model) {
         this.chatModel = model;
         await this.bot.setConfiguration(`${this.id}_chat_model`, model);
@@ -114,6 +139,7 @@ module.exports = class OpenRouter extends require('./Module') {
             `${super.getConfigurationOverview()}\n` +
             `- Embedding Model: ${this.embeddingModel}\n` +
             `- Chat Model: ${this.chatModel}\n` +
+            `- Rerank Model: ${this.rerankModel}\n` +
             `- Excluded Providers: ${this.excludedProviders.length ? this.excludedProviders.join(', ') : 'none'}`
         );
     }
@@ -138,10 +164,19 @@ module.exports = class OpenRouter extends require('./Module') {
     }
 
     #addOpenRouterApmLabels(transaction, span, res, type) {
-        transaction?.setLabel(`openrouter.${type}.model`, res.data.model);
-        transaction?.setLabel(`openrouter.${type}.provider`, res.data.provider);
-        span?.setLabel('openrouter_model', res.data.model);
-        span?.setLabel('openrouter_provider', res.data.provider);
+        const model = res.data?.model || (type === 'rerank' ? this.rerankModel : undefined);
+        const provider = res.data?.provider;
+
+        if (model) {
+            transaction?.setLabel(`openrouter.${type}.model`, model);
+            span?.setLabel('openrouter_model', model);
+        }
+        if (provider) {
+            transaction?.setLabel(`openrouter.${type}.provider`, provider);
+            span?.setLabel('openrouter_provider', provider);
+        }
+
+        if (!res.data?.usage) return;
 
         const customContext = {};
         customContext[type] = {
@@ -177,6 +212,23 @@ function isRetryableError(err) {
 function normalizeExcludedProviders(providers) {
     if (!Array.isArray(providers)) return [];
     return providers.map((provider) => String(provider).trim()).filter(Boolean);
+}
+
+function parseRerankResults(results, documentCount) {
+    if (!Array.isArray(results)) return [];
+    return results
+        .map((result) => ({
+            index: Number(result?.index),
+            relevanceScore: Number(result?.relevance_score ?? result?.score),
+        }))
+        .filter(
+            (result) =>
+                Number.isInteger(result.index) &&
+                result.index >= 0 &&
+                result.index < documentCount &&
+                Number.isFinite(result.relevanceScore)
+        )
+        .sort((a, b) => b.relevanceScore - a.relevanceScore);
 }
 
 function delay(ms) {
