@@ -158,7 +158,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
         };
 
         if (sources.length) {
-            embed.footer = { text: `Tags: ${sources.slice(0, 5).map(formatSource).join(', ')}` };
+            embed.description += `\n\n-# Tags: ${sources.slice(0, 5).map(formatSource).join(', ')}`;
         }
 
         const collectorModule = this.bot.modules['interactioncollector'];
