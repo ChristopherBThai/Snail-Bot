@@ -23,6 +23,7 @@ const ASK_DEADLINE_MS = 90000;
 const ASK_QDRANT_TIMEOUT = 15000;
 const ASK_QDRANT_RETRY_ATTEMPTS = 2;
 const ASK_RETRY_DELAY_MS = 500;
+const DEFAULT_RERANK_CANDIDATE_LIMIT = 30;
 const ASK_FEEDBACK_IDLE_MS = 30 * 60 * 1000;
 const ASK_FEEDBACK_HELPFUL_ID = 'kb_ask_feedback_helpful';
 const ASK_FEEDBACK_NEEDS_FIX_ID = 'kb_ask_feedback_needs_fix';
@@ -59,6 +60,8 @@ module.exports = class KnowledgeBase extends require('./Module') {
             kbConfig.queryInstruction ||
             'Given a user question about the OwO Discord bot, retrieve a matching knowledge base entry that answers it.';
         this.topK = kbConfig.topK ?? 6;
+        this.rerankCandidateLimit =
+            kbConfig.rerankCandidateLimit ?? Math.max(DEFAULT_RERANK_CANDIDATE_LIMIT, this.topK * 5);
         this.scoreThreshold = kbConfig.scoreThreshold ?? 0.3;
         this.dupeThreshold = kbConfig.dupeThreshold ?? 0.75;
         this.askFeedbackChannel = kbConfig.askFeedbackChannel;
@@ -277,13 +280,14 @@ module.exports = class KnowledgeBase extends require('./Module') {
         assertAskBudget(askStartedAt);
         const rawHits = await this.qdrant.search(this.collection, {
             vector,
-            limit: this.topK * 3,
+            limit: this.rerankCandidateLimit,
             scoreThreshold: this.scoreThreshold,
             ...remainingAskRequestOptions(askStartedAt, ASK_QDRANT_TIMEOUT, ASK_QDRANT_RETRY_ATTEMPTS),
         });
 
         assertAskBudget(askStartedAt);
-        const groups = (await this.materializeTagGroups(groupHitsByTag(rawHits))).slice(0, this.topK);
+        const candidateGroups = await this.materializeTagGroups(groupHitsByTag(rawHits));
+        const groups = await this.rerankTagGroups(question, candidateGroups);
         const hits = groups.flatMap((group) => group.hits);
 
         if (!groups.length) {
@@ -310,6 +314,21 @@ module.exports = class KnowledgeBase extends require('./Module') {
         };
     }
 
+    async rerankTagGroups(question, groups) {
+        if (groups.length <= 1) return groups.slice(0, this.topK);
+
+        try {
+            const documents = groups.map(formatRerankTagDocument);
+            const rankings = await this.openrouter.rerank(question, documents, {
+                topN: Math.min(this.topK, documents.length),
+            });
+            return selectRerankedGroups(groups, rankings, this.topK);
+        } catch (err) {
+            console.error('[KB] rerank failed, falling back to dense order:', err.message);
+            return groups.slice(0, this.topK);
+        }
+    }
+
     async debugSearch(question, { limit, includeBelowThreshold = true } = {}) {
         if (!this.qdrant) await this.initQdrant();
         const vector = await this.embedQuery(question);
@@ -333,10 +352,12 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
         const rawHits = await this.qdrant.search(this.collection, {
             vector,
-            limit: limit * 5,
+            limit: Math.max(this.rerankCandidateLimit, limit * 5),
+            scoreThreshold: this.scoreThreshold,
         });
 
-        return (await this.materializeTagGroups(groupHitsByTag(rawHits))).slice(0, limit);
+        const groups = await this.materializeTagGroups(groupHitsByTag(rawHits));
+        return (await this.rerankTagGroups(question, groups)).slice(0, limit);
     }
 
     async materializeTagGroups(groups) {
@@ -752,6 +773,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
             `- Collection: ${this.collection}\n` +
             `- Embedding Size: ${this.embeddingSize}d\n` +
             `- Top K: ${this.topK}\n` +
+            `- Rerank Candidates: ${this.rerankCandidateLimit}\n` +
             `- Score Threshold: ${this.scoreThreshold}\n` +
             `- Dupe Threshold: ${this.dupeThreshold}\n` +
             `- Last Sync: ${last}`
@@ -1184,12 +1206,39 @@ function previewText(text, max) {
     return normalized.length > max ? `${normalized.slice(0, max - 1)}…` : normalized;
 }
 
+function selectRerankedGroups(groups, rankings, topK) {
+    const selected = [];
+    const selectedIndexes = new Set();
+
+    for (const ranking of rankings) {
+        const group = groups[ranking.index];
+        if (!group || selectedIndexes.has(ranking.index)) continue;
+        selected.push({ ...group, rerankScore: ranking.relevanceScore });
+        selectedIndexes.add(ranking.index);
+        if (selected.length >= topK) return selected;
+    }
+
+    for (let i = 0; i < groups.length && selected.length < topK; i++) {
+        if (!selectedIndexes.has(i)) selected.push(groups[i]);
+    }
+
+    return selected;
+}
+
+function formatRerankTagDocument(group) {
+    return `[Tag: ${group.tagId}]\n${normalizedTagData(group)}`;
+}
+
 function formatTagAnswerContext(group) {
-    const data = String(group.tag?.data ?? '')
+    const data = normalizedTagData(group);
+    return `[Tag: ${group.tagId}]\n${data}`;
+}
+
+function normalizedTagData(group) {
+    return String(group.tag?.data ?? '')
         .replace(/[ \t]+\n/g, '\n')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
-    return `[Tag: ${group.tagId}]\n${data}`;
 }
 
 function formatSource(source) {
