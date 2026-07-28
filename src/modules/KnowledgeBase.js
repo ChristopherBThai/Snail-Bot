@@ -33,11 +33,13 @@ const RAW_GENERATION_RESPONSE_LOG_CHARS = 4000;
 const TAG_QUESTION_PROMPT_VERSION = 'tag-question-v3';
 const TAG_QUESTION_SYSTEM_PROMPT =
     'You generate retrieval scaffolding questions for OwO Discord bot support tags. ' +
-    'Use ONLY the supplied tag data as source of truth. Do not add related-topic facts or assumptions. ' +
-    'First extract important atomic facts from the tag data, then write natural English user questions for those facts. ' +
-    'Every question must be answerable using only the tag data and must include supported_by fact ids plus exact evidence from the tag data. ' +
-    'Discard any question whose answer would require information absent from the tag data. ' +
-    'Return only raw JSON with keys facts and questions. Do not include explanations, markdown, or code fences.';
+    'Use only the tag data as the source of truth. ' +
+    'Every question must be fully answerable from the tag data alone. ' +
+    'Cover the important facts explicitly stated in the tag data. ' +
+    'Do not add questions that require information outside the tag data. ' +
+    'Use natural user wording and vary phrasing when useful. ' +
+    'Do not start every question with "OwO bot" or the tag name. ' +
+    'Return only a raw JSON array of English strings. Do not include explanations, markdown, code fences, or answer facts.';
 const TAG_QUESTION_PROMPT_SOURCE = `${TAG_QUESTION_PROMPT_VERSION}:${TAG_QUESTION_SYSTEM_PROMPT}`;
 
 module.exports = class KnowledgeBase extends require('./Module') {
@@ -566,7 +568,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
         let generatedQuestions;
         try {
-            generatedQuestions = parseGeneratedQuestionPlan(content, tag);
+            generatedQuestions = parseGeneratedQuestionArray(content);
         } catch (err) {
             console.error(
                 `[KB] tag question generation raw response for tag '${String(tag._id)}': ${truncateForLog(content)}`
@@ -890,14 +892,15 @@ function buildTagQuestionPrompt(tag) {
     const tagId = String(tag._id);
     const data = String(tag.data ?? '').trim();
     return (
-        'Generate 1 to 8 concise English user questions for this support tag.\n' +
-        'The tag data is the only source of truth. Do not use OwO knowledge, tag id meanings, or likely related topics unless the tag data explicitly says them.\n' +
-        'Step 1: extract important atomic facts explicitly stated in the tag data. Give each fact an id such as f1, a short fact sentence, and exact evidence copied from the tag data.\n' +
-        'Step 2: write natural user questions for those facts. Each question must be answerable using only its supported_by facts and must include exact evidence copied from the tag data.\n' +
-        'Every important fact should be covered by at least one question. Short tag data may only support one to three questions; do not pad with related but unsupported questions.\n' +
-        'Discard any question whose answer would require facts absent from the tag data. For example, if the data only says an item is a currency, do not ask how to earn, spend, transfer, check, use, or see commands for it unless the data explicitly says those things.\n' +
-        'Use natural English user wording and varied phrasing. Do not start every question with "OwO bot" or the tag name.\n' +
-        'Return this exact JSON shape and nothing else: {"facts":[{"id":"f1","fact":"atomic fact stated by tag data","evidence":"exact quote from tag data"}],"questions":[{"question":"natural user question","supported_by":["f1"],"evidence":"exact quote from tag data"}]}.\n' +
+        'Generate concise English user questions that this support tag can answer.\n' +
+        'Use only the tag data as the source of truth.\n' +
+        'Every question must be fully answerable from the tag data alone.\n' +
+        'Cover the important facts explicitly stated in the tag data.\n' +
+        'Do not add questions that require information outside the tag data.\n' +
+        'Use natural user wording and vary phrasing when useful.\n' +
+        'Do not start every question with "OwO bot" or the tag name.\n' +
+        'Return only a raw JSON array of English strings.\n' +
+        'Do not include explanations, markdown, code fences, or answer facts.\n' +
         `Tag id: ${tagId}\n` +
         `Tag data:\n${data}`
     );
@@ -917,95 +920,17 @@ function unwrapJsonResponse(content) {
     return fenced ? fenced[1].trim() : text;
 }
 
-function parseGeneratedQuestionPlan(content, tag) {
+function parseGeneratedQuestionArray(content) {
     let parsed;
     try {
         parsed = JSON.parse(unwrapJsonResponse(content));
     } catch (err) {
-        throw new Error('Tag question generation must return JSON with facts and questions arrays');
+        throw new Error('Tag question generation must return a JSON array of strings');
     }
-
-    if (!Array.isArray(parsed?.facts) || !Array.isArray(parsed?.questions)) {
-        throw new Error('Tag question generation must return JSON with facts and questions arrays');
+    if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== 'string')) {
+        throw new Error('Tag question generation must return a JSON array of strings');
     }
-
-    const source = String(tag?.data ?? '');
-    const validFacts = collectSupportedFacts(parsed.facts, source);
-    if (!validFacts.size) throw new Error('Tag question generation must include source-supported facts');
-
-    const questions = [];
-    const coveredFactIds = new Set();
-    for (const item of parsed.questions) {
-        if (typeof item?.question !== 'string') continue;
-        if (hasUnsupportedRelatedAction(item.question, source)) continue;
-
-        const supportedBy = normalizeSupportedBy(item.supported_by).filter((id) => validFacts.has(id));
-        if (!supportedBy.length) continue;
-        if (!evidenceAppearsInSource(source, item.evidence)) continue;
-
-        for (const id of supportedBy) coveredFactIds.add(id);
-        questions.push(item.question);
-    }
-
-    if (!questions.length) throw new Error('Tag question generation returned no source-supported questions');
-    for (const id of validFacts.keys()) {
-        if (!coveredFactIds.has(id)) throw new Error('Tag question generation did not cover every extracted fact');
-    }
-    return questions;
-}
-
-function collectSupportedFacts(facts, source) {
-    const supported = new Map();
-    for (const fact of facts) {
-        const id = typeof fact?.id === 'string' ? fact.id.trim() : '';
-        if (!id || supported.has(id)) continue;
-        if (typeof fact?.fact !== 'string' || !fact.fact.trim()) continue;
-        if (!evidenceAppearsInSource(source, fact.evidence)) continue;
-        supported.set(id, fact);
-    }
-    return supported;
-}
-
-function normalizeSupportedBy(value) {
-    if (!Array.isArray(value)) return [];
-    return value.map((id) => (typeof id === 'string' ? id.trim() : '')).filter(Boolean);
-}
-
-function evidenceAppearsInSource(source, evidence) {
-    if (typeof evidence !== 'string' || !evidence.trim()) return false;
-    return normalizeEvidenceText(source).includes(normalizeEvidenceText(evidence));
-}
-
-function normalizeEvidenceText(text) {
-    return String(text ?? '')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toLowerCase();
-}
-
-function hasUnsupportedRelatedAction(question, source) {
-    const normalizedQuestion = normalizeEvidenceText(question);
-    const normalizedSource = normalizeEvidenceText(source);
-    const guardedTerms = [
-        'earn',
-        'spend',
-        'balance',
-        'transfer',
-        'command',
-        'buy',
-        'sell',
-        'trade',
-        'price',
-        'cost',
-        'check',
-        'obtain',
-        'acquire',
-        'receive',
-    ];
-    return guardedTerms.some((term) => {
-        const termPattern = new RegExp(`\\b${term}\\w*\\b`);
-        return termPattern.test(normalizedQuestion) && !termPattern.test(normalizedSource);
-    });
+    return parsed;
 }
 
 function normalizeGeneratedQuestions(questions) {
@@ -1020,7 +945,7 @@ function normalizeGeneratedQuestions(questions) {
         out.push(text);
         if (out.length === 8) break;
     }
-    if (!out.length) throw new Error('Tag question generation returned no usable questions');
+    if (out.length < 5) throw new Error('Tag question generation returned fewer than 5 usable questions');
     return out;
 }
 
