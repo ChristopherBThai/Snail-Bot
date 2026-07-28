@@ -224,7 +224,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
         ];
 
         if (sources?.length) {
-            fields.push({ name: 'Tags', value: sources.slice(0, 10).map(formatSource).join(', ') });
+            fields.push({ name: 'Resources', value: `KB Tags: ${sources.slice(0, 10).map(formatSource).join(', ')}` });
         }
 
         if (answerLink) fields.push({ name: 'Snail Answer', value: answerLink });

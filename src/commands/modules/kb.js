@@ -60,14 +60,12 @@ module.exports = new Command({
             return;
         }
 
-        const subcommand = this.message.args.shift()?.toLowerCase();
-        if (
-            ['status', 'reindex', 'reset', 'find', 'questions', 'include', 'model'].includes(subcommand) &&
-            !openrouter
-        ) {
-            await this.error('the OpenRouter module is not loaded.');
+        if (!openrouter?.enabled) {
+            await this.error('the OpenRouter module is not loaded or enabled.');
             return;
         }
+
+        const subcommand = this.message.args.shift()?.toLowerCase();
 
         switch (subcommand) {
             case 'status':
@@ -87,7 +85,7 @@ module.exports = new Command({
             case 'list':
                 return listKbOnlyTags.call(this);
             case 'questions':
-                return showQuestions.call(this, KB, openrouter);
+                return showQuestions.call(this, KB);
             case 'exclude':
                 return setTagExcluded.call(this, KB, true);
             case 'include':
@@ -433,7 +431,7 @@ async function listKbOnlyTags() {
     });
 }
 
-async function showQuestions(KB, openrouter) {
+async function showQuestions(KB) {
     const tagId = this.message.args.shift();
     if (!tagId) {
         await this.error('please provide a tag id! Example: `snail kb questions gems`');
@@ -470,7 +468,6 @@ async function showQuestions(KB, openrouter) {
                 const rawText = getModalInputValue(data, QUESTION_MODAL_INPUT_ID);
                 await interaction.acknowledge();
                 acknowledged = true;
-                if (!openrouter) throw new Error('the OpenRouter module is not loaded.');
                 const result = await KB.updateTagQuestions(editor.tagId, rawText);
                 if (!result) {
                     content = { content: '🚫 **|** That tag no longer exists.', components: [] };
