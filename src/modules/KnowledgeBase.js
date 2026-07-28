@@ -643,6 +643,38 @@ module.exports = class KnowledgeBase extends require('./Module') {
         return this.enqueueSyncOperation(() => this.updateTagQuestionsUnlocked(tagId, rawText));
     }
 
+    async regenerateTagQuestions(tagId) {
+        return this.enqueueSyncOperation(() => this.regenerateTagQuestionsUnlocked(tagId));
+    }
+
+    async regenerateTagQuestionsUnlocked(tagId) {
+        const normalizedTagId = String(tagId);
+        const tag = await this.Tag.findById(normalizedTagId);
+        if (!tag) return null;
+
+        this.openrouter.assertConfigured();
+
+        const dataHash = tagDataHash(tag.data);
+        const generationHash = tagQuestionGenerationHash(tag, dataHash);
+        const questions = await this.generateTagQuestions(tag);
+        const kb = buildTagKbCache(tag, questions, dataHash, generationHash);
+
+        await this.persistTagKb(tag, kb);
+        let summary;
+        if (isTagKbExcluded(tag)) {
+            await this.deleteTagByIdUnlocked(normalizedTagId);
+            summary = {
+                tagId: normalizedTagId,
+                excluded: true,
+                deleted: true,
+            };
+        } else {
+            summary = await this.syncTagByIdUnlocked(normalizedTagId);
+        }
+
+        return { ...summary, editor: await this.getTagQuestionEditor(normalizedTagId) };
+    }
+
     async updateTagQuestionsUnlocked(tagId, rawText) {
         const normalizedTagId = String(tagId);
         const tag = await this.Tag.findById(normalizedTagId);
@@ -920,7 +952,7 @@ function hasInitializedQuestionCache(kb) {
 }
 
 function hasValidQuestionCacheEntries(questions) {
-    if (!Array.isArray(questions) || questions.length > 8) return false;
+    if (!Array.isArray(questions)) return false;
     return questions.every((question) => {
         if (typeof question?.text !== 'string' || typeof question?.hash !== 'string') return false;
         const text = question.text.replace(/\s+/g, ' ').trim();
@@ -999,9 +1031,7 @@ function normalizeGeneratedQuestions(questions) {
         if (seen.has(key)) continue;
         seen.add(key);
         out.push(text);
-        if (out.length === 8) break;
     }
-    if (out.length < 5) throw new Error('Tag question generation returned fewer than 5 usable questions');
     return out;
 }
 
@@ -1015,7 +1045,6 @@ function normalizeManualQuestions(rawText) {
         if (seen.has(key)) continue;
         seen.add(key);
         out.push(text);
-        if (out.length > 8) throw new Error('Please keep retrieval questions to 8 lines or fewer.');
     }
     return out;
 }
@@ -1035,7 +1064,6 @@ function normalizeExistingQuestions(questions) {
         if (seen.has(key)) continue;
         seen.add(key);
         out.push(text);
-        if (out.length === 8) break;
     }
     return toQuestionCacheEntries(out);
 }

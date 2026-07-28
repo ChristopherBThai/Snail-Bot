@@ -10,6 +10,7 @@ const EMBED_FIELD_VALUE_LIMIT = 1024;
 const ANSWER_CHUNK_LIMIT = 1000;
 const QUESTION_MODAL_INPUT_ID = 'kb_questions_bulk_text';
 const QUESTIONS_EDIT_ID = 'kb_questions_edit';
+const QUESTIONS_GENERATE_ID = 'kb_questions_generate';
 module.exports = new Command({
     alias: ['kb'],
 
@@ -505,6 +506,42 @@ async function showQuestions(KB) {
                 case QUESTIONS_EDIT_ID:
                     await interaction.createModal(getQuestionsModal(editor, message.id));
                     return;
+                case QUESTIONS_GENERATE_ID: {
+                    await interaction.acknowledge();
+                    acknowledged = true;
+                    rendered = renderQuestionEditorMessages(this, editor, 'Generating retrieval questions...');
+                    content = rendered.content;
+                    await message.edit(content);
+
+                    const result = await KB.regenerateTagQuestions(editor.tagId);
+                    if (!result) {
+                        content = { content: '🚫 **|** That tag no longer exists.', components: [] };
+                        await message.edit(content);
+                        if (answerMessage) {
+                            await answerMessage.delete().catch(() => {});
+                            answerMessage = null;
+                        }
+                        collector.stop('missing');
+                        return;
+                    }
+
+                    editor = result.editor;
+                    rendered = renderQuestionEditorMessages(
+                        this,
+                        editor,
+                        summarizeSyncResult('Regenerated questions', result)
+                    );
+                    content = rendered.content;
+                    await message.edit(content);
+                    if (rendered.answerContent) {
+                        if (answerMessage) await answerMessage.edit(rendered.answerContent);
+                        else answerMessage = await this.send(rendered.answerContent);
+                    } else if (answerMessage) {
+                        await answerMessage.delete().catch(() => {});
+                        answerMessage = null;
+                    }
+                    return;
+                }
             }
         } catch (err) {
             console.error(`[KB] questions editor failed for '${editor?.tagId || tagId}':`, err);
@@ -568,7 +605,10 @@ function buildQuestionContent(command, editor, description) {
         components: [
             {
                 type: 1,
-                components: [{ type: 2, custom_id: QUESTIONS_EDIT_ID, style: 1, label: 'Edit Questions' }],
+                components: [
+                    { type: 2, custom_id: QUESTIONS_EDIT_ID, style: 1, label: 'Edit Questions' },
+                    { type: 2, custom_id: QUESTIONS_GENERATE_ID, style: 2, label: 'Regenerate Questions' },
+                ],
             },
         ],
     };
