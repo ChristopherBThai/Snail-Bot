@@ -1,5 +1,7 @@
 const Command = require('../Command.js');
 
+const EMBED_FIELD_VALUE_LIMIT = 1024;
+
 module.exports = new Command({
     alias: ['help'],
 
@@ -79,12 +81,7 @@ async function displayCommand(command) {
             name: command.usage,
             icon_url: this.bot.user.avatarURL,
         },
-        fields: [
-            {
-                name: 'Description',
-                value: command.description,
-            },
-        ],
+        fields: buildEmbedFields('Description', command.description),
         timestamp: new Date(),
         color: this.config.embedcolor,
     };
@@ -97,11 +94,41 @@ async function displayCommand(command) {
     }
 
     if (command.examples?.length) {
-        embed.fields.push({
-            name: 'Example usage',
-            value: command.examples.map((example) => `- ${example}`).join('\n'),
-        });
+        embed.fields.push(
+            ...buildEmbedFields('Example usage', command.examples.map((example) => `- ${example}`).join('\n'))
+        );
     }
 
     await this.send({ embed });
+}
+
+function buildEmbedFields(name, value) {
+    const chunks = splitFieldValue(value);
+    return chunks.map((chunk, index) => ({
+        name: index ? `${name} continued` : name,
+        value: chunk,
+    }));
+}
+
+function splitFieldValue(value) {
+    const chunks = [];
+    for (const line of String(value).split('\n')) {
+        let remaining = line || ' ';
+        while (remaining.length > EMBED_FIELD_VALUE_LIMIT) {
+            chunks.push(remaining.slice(0, EMBED_FIELD_VALUE_LIMIT));
+            remaining = remaining.slice(EMBED_FIELD_VALUE_LIMIT);
+        }
+
+        const lastIndex = chunks.length - 1;
+        const separator = chunks[lastIndex] ? '\n' : '';
+        if (
+            chunks[lastIndex] &&
+            chunks[lastIndex].length + separator.length + remaining.length <= EMBED_FIELD_VALUE_LIMIT
+        ) {
+            chunks[lastIndex] += `${separator}${remaining}`;
+            continue;
+        }
+        chunks.push(remaining);
+    }
+    return chunks;
 }
