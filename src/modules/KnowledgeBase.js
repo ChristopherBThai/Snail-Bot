@@ -450,18 +450,20 @@ module.exports = class KnowledgeBase extends require('./Module') {
         return { ...this.syncProgress };
     }
 
-    async sync({ dryRun = false } = {}) {
-        return this.enqueueSyncOperation(() => this.syncUnlocked({ dryRun }));
+    async sync({ dryRun = false, regenerateQuestions = false } = {}) {
+        return this.enqueueSyncOperation(() => this.syncUnlocked({ dryRun, regenerateQuestions }));
     }
 
-    async syncUnlocked({ dryRun = false } = {}) {
+    async syncUnlocked({ dryRun = false, regenerateQuestions = false } = {}) {
         if (this.syncing) throw new Error('A sync is already in progress');
+        if (dryRun && regenerateQuestions) throw new Error('Question regeneration cannot be dry-run');
         if (!this.qdrant) await this.initQdrant();
         if (!dryRun) this.openrouter.assertConfigured();
 
         this.syncing = true;
         this.startSyncProgress(dryRun);
-        const log = (msg) => console.log(`[KB] sync${dryRun ? ' (dry)' : ''}: ${msg}`);
+        const modeLabel = dryRun ? ' (dry)' : regenerateQuestions ? ' (regenerate questions)' : '';
+        const log = (msg) => console.log(`[KB] sync${modeLabel}: ${msg}`);
         try {
             const tags = await this.Tag.find();
             this.updateSyncProgress({ phase: 'planning', totalTags: tags.length });
@@ -474,7 +476,8 @@ module.exports = class KnowledgeBase extends require('./Module') {
                 const tag = tags[i];
                 if (!isTagKbExcluded(tag)) {
                     try {
-                        if (!dryRun) await this.ensureTagKbCache(tag);
+                        if (regenerateQuestions) await this.regenerateTagQuestionCache(tag);
+                        else if (!dryRun) await this.ensureTagKbCache(tag);
                         const tagPoints = this.buildDesiredTagPoints(tag);
                         if (hasQuestionPoint(tagPoints)) tagsWithQuestions += 1;
                         for (const [pointId, point] of tagPoints) desired.set(pointId, point);
@@ -525,6 +528,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
                 totalPoints: desired.size,
                 totalTags: tags.length,
                 dryRun,
+                regeneratedQuestions: regenerateQuestions,
             };
             log(
                 `diff: +${summary.added} add, ~${summary.vectorUpdated} vector, ` +
@@ -584,8 +588,15 @@ module.exports = class KnowledgeBase extends require('./Module') {
             return tag.kb;
         }
 
+        await this.regenerateTagQuestionCache(tag);
+        return tag.kb;
+    }
+
+    async regenerateTagQuestionCache(tag) {
         this.openrouter.assertConfigured();
 
+        const dataHash = tagDataHash(tag.data);
+        const generationHash = tagQuestionGenerationHash(tag, dataHash);
         const questions = await this.generateTagQuestions(tag);
         const kb = buildTagKbCache(tag, questions, dataHash, generationHash);
 
@@ -652,14 +663,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
         const tag = await this.Tag.findById(normalizedTagId);
         if (!tag) return null;
 
-        this.openrouter.assertConfigured();
-
-        const dataHash = tagDataHash(tag.data);
-        const generationHash = tagQuestionGenerationHash(tag, dataHash);
-        const questions = await this.generateTagQuestions(tag);
-        const kb = buildTagKbCache(tag, questions, dataHash, generationHash);
-
-        await this.persistTagKb(tag, kb);
+        await this.regenerateTagQuestionCache(tag);
         let summary;
         if (isTagKbExcluded(tag)) {
             await this.deleteTagByIdUnlocked(normalizedTagId);
