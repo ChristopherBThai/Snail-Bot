@@ -349,10 +349,12 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
         const rawHits = await this.qdrant.search(this.collection, {
             vector,
-            limit: limit * 5,
+            limit: Math.max(this.rerankCandidateLimit, limit * 5),
+            scoreThreshold: this.scoreThreshold,
         });
 
-        return (await this.materializeTagGroups(groupHitsByTag(rawHits))).slice(0, limit);
+        const groups = await this.materializeTagGroups(groupHitsByTag(rawHits));
+        return (await this.rerankTagGroups(question, groups)).slice(0, limit);
     }
 
     async materializeTagGroups(groups) {

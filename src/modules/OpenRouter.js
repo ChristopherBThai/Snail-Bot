@@ -150,7 +150,7 @@ module.exports = class OpenRouter extends require('./Module') {
 
         return requestWithRetry(fn)
             .then((res) => {
-                if (type !== 'rerank') this.#addOpenRouterApmLabels(transaction, span, res, type);
+                this.#addOpenRouterApmLabels(transaction, span, res, type);
                 span?.setOutcome('success');
                 return res;
             })
@@ -164,17 +164,24 @@ module.exports = class OpenRouter extends require('./Module') {
     }
 
     #addOpenRouterApmLabels(transaction, span, res, type) {
-        transaction?.setLabel(`openrouter.${type}.model`, res.data.model);
-        transaction?.setLabel(`openrouter.${type}.provider`, res.data.provider);
-        span?.setLabel('openrouter_model', res.data.model);
-        span?.setLabel('openrouter_provider', res.data.provider);
+        const data = res.data ?? {};
+
+        if (data.model) {
+            transaction?.setLabel(`openrouter.${type}.model`, data.model);
+            span?.setLabel('openrouter_model', data.model);
+        }
+        if (data.provider) {
+            transaction?.setLabel(`openrouter.${type}.provider`, data.provider);
+            span?.setLabel('openrouter_provider', data.provider);
+        }
+        if (!data.usage) return;
 
         const customContext = {};
         customContext[type] = {
-            prompt_tokens: res.data.usage.prompt_tokens,
-            completion_tokens: res.data.usage.completion_tokens,
-            total_tokens: res.data.usage.total_tokens,
-            cost: res.data.usage.cost,
+            prompt_tokens: data.usage.prompt_tokens,
+            completion_tokens: data.usage.completion_tokens,
+            total_tokens: data.usage.total_tokens,
+            cost: data.usage.cost,
         };
         this.elasticapm.apm?.setCustomContext(customContext);
     }
