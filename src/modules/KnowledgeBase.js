@@ -31,15 +31,7 @@ const EMBED_FIELD_VALUE_LIMIT = 1024;
 const TAG_SYNC_LOG_EVERY = 25;
 const RAW_GENERATION_RESPONSE_LOG_CHARS = 4000;
 const TAG_QUESTION_PROMPT_VERSION = 'tag-question-v3';
-const TAG_QUESTION_SYSTEM_PROMPT =
-    'You generate retrieval scaffolding questions for OwO Discord bot support tags. ' +
-    'Use only the tag data as the source of truth. ' +
-    'Every question must be fully answerable from the tag data alone. ' +
-    'Cover the important facts explicitly stated in the tag data. ' +
-    'Do not add questions that require information outside the tag data. ' +
-    'Use natural user wording and vary phrasing when useful. ' +
-    'Do not start every question with "OwO bot" or the tag name. ' +
-    'Return only a raw JSON array of English strings. Do not include explanations, markdown, code fences, or answer facts.';
+const TAG_QUESTION_SYSTEM_PROMPT = 'You generate retrieval scaffolding questions for OwO Discord bot support tags.';
 const TAG_QUESTION_PROMPT_SOURCE = `${TAG_QUESTION_PROMPT_VERSION}:${TAG_QUESTION_SYSTEM_PROMPT}`;
 
 module.exports = class KnowledgeBase extends require('./Module') {
