@@ -30,11 +30,8 @@ const ASK_FEEDBACK_NEEDS_FIX_ID = 'kb_ask_feedback_needs_fix';
 const EMBED_FIELD_VALUE_LIMIT = 1024;
 const TAG_SYNC_LOG_EVERY = 25;
 const RAW_GENERATION_RESPONSE_LOG_CHARS = 4000;
-const TAG_QUESTION_PROMPT_VERSION = 'tag-question-v2';
-const TAG_QUESTION_SYSTEM_PROMPT =
-    'You generate retrieval scaffolding questions for OwO Discord bot support tags. ' +
-    'Return only a raw JSON array of English strings. Do not include explanations, markdown, code fences, or answer facts. ' +
-    'Write the questions the way a user would ask them; do not prefix every question with the bot name.';
+const TAG_QUESTION_PROMPT_VERSION = 'tag-question-v3';
+const TAG_QUESTION_SYSTEM_PROMPT = 'You generate retrieval scaffolding questions for OwO Discord bot support tags.';
 const TAG_QUESTION_PROMPT_SOURCE = `${TAG_QUESTION_PROMPT_VERSION}:${TAG_QUESTION_SYSTEM_PROMPT}`;
 
 module.exports = class KnowledgeBase extends require('./Module') {
@@ -951,9 +948,15 @@ function buildTagQuestionPrompt(tag) {
     const tagId = String(tag._id);
     const data = String(tag.data ?? '').trim();
     return (
-        'Generate 5 to 8 concise English user questions that this support tag would help retrieve.\n' +
-        'Use natural user wording and vary the phrasing. Do not start every question with "OwO bot" or the tag name.\n' +
-        'The questions are retrieval scaffolding only and must not add facts beyond the tag data.\n' +
+        'Generate concise English user questions that this support tag can answer.\n' +
+        'Use only the tag data as the source of truth.\n' +
+        'Every question must be fully answerable from the tag data alone.\n' +
+        'Cover the important facts explicitly stated in the tag data.\n' +
+        'Do not add questions that require information outside the tag data.\n' +
+        'Use natural user wording and vary phrasing when useful.\n' +
+        'Do not start every question with "OwO bot" or the tag name.\n' +
+        'Return only a raw JSON array of English strings.\n' +
+        'Do not include explanations, markdown, code fences, or answer facts.\n' +
         `Tag id: ${tagId}\n` +
         `Tag data:\n${data}`
     );
