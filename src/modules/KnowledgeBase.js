@@ -952,7 +952,7 @@ function hasInitializedQuestionCache(kb) {
 }
 
 function hasValidQuestionCacheEntries(questions) {
-    if (!Array.isArray(questions) || questions.length > 8) return false;
+    if (!Array.isArray(questions)) return false;
     return questions.every((question) => {
         if (typeof question?.text !== 'string' || typeof question?.hash !== 'string') return false;
         const text = question.text.replace(/\s+/g, ' ').trim();
@@ -1031,9 +1031,7 @@ function normalizeGeneratedQuestions(questions) {
         if (seen.has(key)) continue;
         seen.add(key);
         out.push(text);
-        if (out.length === 8) break;
     }
-    if (out.length < 5) throw new Error('Tag question generation returned fewer than 5 usable questions');
     return out;
 }
 
@@ -1047,7 +1045,6 @@ function normalizeManualQuestions(rawText) {
         if (seen.has(key)) continue;
         seen.add(key);
         out.push(text);
-        if (out.length > 8) throw new Error('Please keep retrieval questions to 8 lines or fewer.');
     }
     return out;
 }
@@ -1067,7 +1064,6 @@ function normalizeExistingQuestions(questions) {
         if (seen.has(key)) continue;
         seen.add(key);
         out.push(text);
-        if (out.length === 8) break;
     }
     return toQuestionCacheEntries(out);
 }
