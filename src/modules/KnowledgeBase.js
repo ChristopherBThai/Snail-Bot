@@ -986,11 +986,6 @@ function normalizeEvidenceText(text) {
 function hasUnsupportedRelatedAction(question, source) {
     const normalizedQuestion = normalizeEvidenceText(question);
     const normalizedSource = normalizeEvidenceText(source);
-    const guardedPhrases = ['get more', 'used for', 'ways to', 'how can i'];
-    if (guardedPhrases.some((phrase) => normalizedQuestion.includes(phrase) && !normalizedSource.includes(phrase))) {
-        return true;
-    }
-
     const guardedTerms = [
         'earn',
         'spend',
@@ -1007,7 +1002,10 @@ function hasUnsupportedRelatedAction(question, source) {
         'acquire',
         'receive',
     ];
-    return guardedTerms.some((term) => normalizedQuestion.includes(term) && !normalizedSource.includes(term));
+    return guardedTerms.some((term) => {
+        const termPattern = new RegExp(`\\b${term}\\w*\\b`);
+        return termPattern.test(normalizedQuestion) && !termPattern.test(normalizedSource);
+    });
 }
 
 function normalizeGeneratedQuestions(questions) {
