@@ -3,6 +3,11 @@ const mongoose = require('mongoose');
 const TagSchema = new mongoose.Schema({
     _id: String,
     data: String,
+    visibility: {
+        type: String,
+        enum: ['public', 'kb_only'],
+        default: 'public',
+    },
     kb: {
         dataHash: String,
         promptVersion: String,
