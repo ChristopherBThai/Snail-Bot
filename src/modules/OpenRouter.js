@@ -150,7 +150,7 @@ module.exports = class OpenRouter extends require('./Module') {
 
         return requestWithRetry(fn)
             .then((res) => {
-                this.#addOpenRouterApmLabels(transaction, span, res, type);
+                if (type !== 'rerank') this.#addOpenRouterApmLabels(transaction, span, res, type);
                 span?.setOutcome('success');
                 return res;
             })
@@ -164,19 +164,10 @@ module.exports = class OpenRouter extends require('./Module') {
     }
 
     #addOpenRouterApmLabels(transaction, span, res, type) {
-        const model = res.data?.model || (type === 'rerank' ? this.rerankModel : undefined);
-        const provider = res.data?.provider;
-
-        if (model) {
-            transaction?.setLabel(`openrouter.${type}.model`, model);
-            span?.setLabel('openrouter_model', model);
-        }
-        if (provider) {
-            transaction?.setLabel(`openrouter.${type}.provider`, provider);
-            span?.setLabel('openrouter_provider', provider);
-        }
-
-        if (!res.data?.usage) return;
+        transaction?.setLabel(`openrouter.${type}.model`, res.data.model);
+        transaction?.setLabel(`openrouter.${type}.provider`, res.data.provider);
+        span?.setLabel('openrouter_model', res.data.model);
+        span?.setLabel('openrouter_provider', res.data.provider);
 
         const customContext = {};
         customContext[type] = {

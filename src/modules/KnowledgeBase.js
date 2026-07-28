@@ -278,6 +278,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
         const rawHits = await this.qdrant.search(this.collection, {
             vector,
             limit: this.rerankCandidateLimit,
+            scoreThreshold: this.scoreThreshold,
             ...remainingAskRequestOptions(askStartedAt, ASK_QDRANT_TIMEOUT, ASK_QDRANT_RETRY_ATTEMPTS),
         });
 
