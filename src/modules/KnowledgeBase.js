@@ -160,7 +160,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
         if (sources.length) {
             const publicSources = sources.filter((source) => source?.visibility !== 'kb_only');
             if (publicSources.length) {
-                embed.footer = { text: `Tags: ${publicSources.slice(0, 5).map(formatSource).join(', ')}` };
+                embed.description += `\n\n-# Tags: ${publicSources.slice(0, 5).map(formatSource).join(', ')}`;
             }
         }
 
