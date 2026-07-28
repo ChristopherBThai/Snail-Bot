@@ -23,7 +23,6 @@ const ASK_DEADLINE_MS = 90000;
 const ASK_QDRANT_TIMEOUT = 15000;
 const ASK_QDRANT_RETRY_ATTEMPTS = 2;
 const ASK_RETRY_DELAY_MS = 500;
-const ASK_SLOW_STAGE_MS = 3000;
 const ASK_FEEDBACK_IDLE_MS = 30 * 60 * 1000;
 const ASK_FEEDBACK_HELPFUL_ID = 'kb_ask_feedback_helpful';
 const ASK_FEEDBACK_NEEDS_FIX_ID = 'kb_ask_feedback_needs_fix';
@@ -123,6 +122,9 @@ module.exports = class KnowledgeBase extends require('./Module') {
     async onMessage(message) {
         if (message.author?.bot) return;
         if (!message.mentions?.some((u) => u.id === this.bot.user?.id)) return;
+
+        const channel = await this.bot.snail_db.Channel.findById(message.channel.id);
+        if (channel?.disabledCommands.includes('ask')) return;
 
         const stripped = message.content.replace(new RegExp(`<@!?${this.bot.user.id}>`, 'g'), '').trim();
 
