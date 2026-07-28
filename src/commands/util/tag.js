@@ -60,7 +60,7 @@ module.exports = new Command({
                         return;
                     }
 
-                    tag = await this.bot.snail_db.Tag.findById(subcommand);
+                    tag = await this.bot.snail_db.Tag.findOne({ _id: subcommand, visibility: { $ne: 'kb_only' } });
                 }
 
                 if (['add', 'edit'].includes(subcommand)) {
@@ -73,7 +73,9 @@ module.exports = new Command({
 
                 if (subcommand == 'add') {
                     if (tag) {
-                        await this.error(`that tag already exists!`);
+                        const visibilityHint =
+                            tag?.visibility === 'kb_only' ? ' This is a KB-only tag; use `snail kb edit/delete`.' : '';
+                        await this.error(`that tag already exists!${visibilityHint}`);
                         return;
                     }
 
@@ -85,6 +87,12 @@ module.exports = new Command({
                     // all other subcommands require the tag to exist
                     if (!tag) {
                         await this.error(`that tag does not exist!`);
+                        return;
+                    }
+                    if (tag?.visibility === 'kb_only') {
+                        await this.error(
+                            `\`${name}\` is a KB-only tag. Use \`snail kb ${subcommand} ${name}\` instead.`
+                        );
                         return;
                     }
                 }
@@ -117,9 +125,11 @@ module.exports = new Command({
                 break;
             }
             case 'tags': {
-                const tags = (await this.snail_db.Tag.find({})).map((tag) => `\`${tag._id}\``).sort();
+                const tags = (await this.snail_db.Tag.find({ visibility: { $ne: 'kb_only' } }))
+                    .map((tag) => `\`${tag._id}\``)
+                    .sort();
 
-                if (!tags) {
+                if (!tags.length) {
                     await this.error(`Oh no! I don't have any tags :(`);
                     return;
                 }

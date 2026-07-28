@@ -10,7 +10,6 @@ const EMBED_FIELD_VALUE_LIMIT = 1024;
 const ANSWER_CHUNK_LIMIT = 1000;
 const QUESTION_MODAL_INPUT_ID = 'kb_questions_bulk_text';
 const QUESTIONS_EDIT_ID = 'kb_questions_edit';
-
 module.exports = new Command({
     alias: ['kb'],
 
@@ -26,6 +25,10 @@ module.exports = new Command({
         '- `snail kb reindex dry`\n  - Show what a reindex would do without making changes\n' +
         '- `snail kb reset confirm`\n  - Destructively recreate the Qdrant collection, then sync Mongo tags. Remote resets require backup through `ssh hub.corg.network` first.\n' +
         '- `snail kb find {query}`\n  - Search matching tags for manager/debug review\n' +
+        '- `snail kb add {name} {data}`\n  - Add a KB-only/private support tag\n' +
+        '- `snail kb edit {name} {data}`\n  - Edit a KB-only/private support tag\n' +
+        '- `snail kb delete {name}`\n  - Delete a KB-only/private support tag\n' +
+        '- `snail kb list`\n  - List KB-only/private support tags\n' +
         '- `snail kb questions {tag}`\n  - Show/edit retrieval questions cached in Mongo for a tag\n' +
         '- `snail kb exclude {tag...}`\n  - Exclude one or more tags from KB retrieval and delete their Qdrant points\n' +
         '- `snail kb include {tag...}`\n  - Include one or more tags in KB retrieval and sync their Qdrant points\n' +
@@ -38,6 +41,10 @@ module.exports = new Command({
         'snail kb reindex dry',
         'snail kb reset confirm',
         'snail kb find how do gems expire',
+        'snail kb add privategems Private note for support helpers only',
+        'snail kb edit privategems Updated private note for support helpers only',
+        'snail kb delete privategems',
+        'snail kb list',
         'snail kb questions gems',
         'snail kb exclude newtr trstart',
         'snail kb include newtr trstart',
@@ -52,8 +59,9 @@ module.exports = new Command({
             await this.error('the Knowledge Base module is not loaded.');
             return;
         }
-        if (!openrouter) {
-            await this.error('the OpenRouter module is not loaded.');
+
+        if (!openrouter?.enabled) {
+            await this.error('the OpenRouter module is not loaded or enabled.');
             return;
         }
 
@@ -68,6 +76,14 @@ module.exports = new Command({
                 return runReset.call(this, KB);
             case 'find':
                 return runFind.call(this, KB);
+            case 'add':
+                return addKbOnlyTag.call(this, KB);
+            case 'edit':
+                return editKbOnlyTag.call(this, KB);
+            case 'delete':
+                return deleteKbOnlyTag.call(this, KB);
+            case 'list':
+                return listKbOnlyTags.call(this);
             case 'questions':
                 return showQuestions.call(this, KB);
             case 'exclude':
@@ -76,16 +92,11 @@ module.exports = new Command({
                 return setTagExcluded.call(this, KB, false);
             case 'excluded':
                 return listExcludedTags.call(this, KB);
-            case 'add':
-                await this.error(
-                    '`snail kb add` has been removed. Add support content with `snail tag add {name} {data}`.'
-                );
-                return;
             case 'model':
                 return setModel.call(this, openrouter);
             default:
                 await this.error(
-                    'that is not a valid subcommand! Use `snail kb [status|reindex|reset|find|questions|exclude|include|excluded|model] {...arguments}`'
+                    'that is not a valid subcommand! Use `snail kb [status|reindex|reset|find|add|edit|delete|list|questions|exclude|include|excluded|model] {...arguments}`'
                 );
         }
     },
@@ -273,6 +284,7 @@ async function runFind(KB) {
         const preview = (group.dataPreview || '').slice(0, FIND_PREVIEW_LEN);
         const ellipsis = (group.dataPreview || '').length > FIND_PREVIEW_LEN ? '…' : '';
         const value =
+            `**Visibility:** ${group.visibility === 'kb_only' ? 'KB-only' : 'public'}\n` +
             `**Matched kinds:** ${kinds}\n` +
             `**Retrieval-question matches:**\n${questions}\n` +
             `**Tag data preview:** ${preview}${ellipsis}\n`;
@@ -287,9 +299,134 @@ async function runFind(KB) {
             title: 'KB Tag Find Results',
             description:
                 `**Query:** ${query}\n` +
-                'Results are tag-backed. Add or change support content with `snail tag add/edit/delete`.',
+                'Results are tag-backed. Use `snail tag add/edit/delete` for public tags and `snail kb add/edit/delete` for KB-only tags.',
             color: this.config.embedcolor,
             fields,
+        },
+    });
+}
+
+async function addKbOnlyTag(KB) {
+    const name = this.message.args.shift()?.toLowerCase();
+    const data = this.message.args.join(' ');
+    if (!name) {
+        await this.error('please provide a tag name!');
+        return;
+    }
+    if (!data) {
+        await this.error('please provide some data for the KB-only tag!');
+        return;
+    }
+    if (!/^[a-z0-9]+$/.test(name)) {
+        await this.error('tag names can only contain alphanumeric characters!');
+        return;
+    }
+
+    const tag = await this.snail_db.Tag.findById(name);
+    if (tag) {
+        const visibilityHint =
+            tag.visibility === 'kb_only'
+                ? ' Use `snail kb edit/delete` for existing KB-only tags.'
+                : ' This is a public tag; use `snail tag edit/delete`.';
+        await this.error(`that tag already exists!${visibilityHint}`);
+        return;
+    }
+
+    await this.snail_db.Tag.create({ _id: name, data, visibility: 'kb_only' });
+    if (KB.enabled) {
+        try {
+            await KB.syncTagById(name);
+        } catch (err) {
+            console.error(`[KB] KB-only tag add sync hook failed for '${name}':`, err.message);
+        }
+    }
+    await this.send(`I created the KB-only tag \`${name}\`!`);
+}
+
+async function editKbOnlyTag(KB) {
+    const name = this.message.args.shift()?.toLowerCase();
+    const data = this.message.args.join(' ');
+    if (!name) {
+        await this.error('please provide a tag name!');
+        return;
+    }
+    if (!data) {
+        await this.error('please provide some data for the KB-only tag!');
+        return;
+    }
+
+    const tag = await this.snail_db.Tag.findById(name);
+    if (!tag) {
+        await this.error('that tag does not exist!');
+        return;
+    }
+    if (tag.visibility !== 'kb_only') {
+        await this.error(`\`${name}\` is a public tag. Use \`snail tag edit ${name}\` instead.`);
+        return;
+    }
+
+    await this.snail_db.Tag.updateOne({ _id: name }, { data });
+    if (KB.enabled) {
+        try {
+            await KB.syncTagById(name);
+        } catch (err) {
+            console.error(`[KB] KB-only tag edit sync hook failed for '${name}':`, err.message);
+        }
+    }
+    await this.send(`I updated the KB-only tag \`${name}\`!`);
+}
+
+async function deleteKbOnlyTag(KB) {
+    const name = this.message.args.shift()?.toLowerCase();
+    if (!name) {
+        await this.error('please provide a tag name!');
+        return;
+    }
+
+    const tag = await this.snail_db.Tag.findById(name);
+    if (!tag) {
+        await this.error('that tag does not exist!');
+        return;
+    }
+    if (tag.visibility !== 'kb_only') {
+        await this.error(`\`${name}\` is a public tag. Use \`snail tag delete ${name}\` instead.`);
+        return;
+    }
+
+    await this.snail_db.Tag.deleteOne({ _id: name });
+    if (KB.enabled) {
+        try {
+            await KB.deleteTagById(name);
+        } catch (err) {
+            console.error(`[KB] KB-only tag delete sync hook failed for '${name}':`, err.message);
+        }
+    }
+    await this.send(`I deleted the KB-only tag \`${name}\`!`);
+}
+
+async function listKbOnlyTags() {
+    let tags;
+    try {
+        tags = (await this.snail_db.Tag.find({ visibility: 'kb_only' }))
+            .map((tag) => String(tag._id))
+            .sort((a, b) => a.localeCompare(b));
+    } catch (err) {
+        console.error('[KB] list KB-only tags failed:', err);
+        await this.error(`failed to list KB-only tags: \`${err.message}\``);
+        return;
+    }
+
+    if (!tags.length) {
+        await this.error(`Oh no! I don't have any KB-only tags :(`);
+        return;
+    }
+
+    await this.send({
+        embed: {
+            title: `KB-only Tags (${tags.length})`,
+            description: formatTagList(tags).slice(0, 3500),
+            timestamp: new Date(),
+            color: this.config.embedcolor,
         },
     });
 }

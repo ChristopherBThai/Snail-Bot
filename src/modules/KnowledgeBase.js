@@ -155,7 +155,10 @@ module.exports = class KnowledgeBase extends require('./Module') {
         };
 
         if (sources.length) {
-            embed.footer = { text: `Tags: ${sources.slice(0, 5).map(formatSource).join(', ')}` };
+            const publicSources = sources.filter((source) => source?.visibility !== 'kb_only');
+            if (publicSources.length) {
+                embed.footer = { text: `Tags: ${publicSources.slice(0, 5).map(formatSource).join(', ')}` };
+            }
         }
 
         const collectorModule = this.bot.modules['interactioncollector'];
@@ -221,7 +224,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
         ];
 
         if (sources?.length) {
-            fields.push({ name: 'Tags', value: sources.slice(0, 10).map(formatSource).join(', ') });
+            fields.push({ name: 'Resources', value: `KB Tags: ${sources.slice(0, 10).map(formatSource).join(', ')}` });
         }
 
         if (answerLink) fields.push({ name: 'Snail Answer', value: answerLink });
@@ -299,7 +302,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
             `Support notes:\n${context}\n\nUser question:\n${question}`
         );
 
-        const sources = groups.map((group) => group.tagId);
+        const sources = groups.map((group) => ({ tagId: group.tagId, visibility: group.visibility }));
         return {
             answer: content || "I don't know that one yet — please ask a helper or rephrase your question.",
             sources,
@@ -347,7 +350,13 @@ module.exports = class KnowledgeBase extends require('./Module') {
                 const tag = tagById.get(group.tagId);
                 if (!tag || isTagKbExcluded(tag)) return null;
                 const dataPreview = previewText(tag.data, 220);
-                return { ...group, tag, doc: tag, dataPreview };
+                return {
+                    ...group,
+                    tag,
+                    doc: tag,
+                    visibility: tag?.visibility === 'kb_only' ? 'kb_only' : 'public',
+                    dataPreview,
+                };
             })
             .filter(Boolean);
     }
@@ -1184,8 +1193,5 @@ function formatTagAnswerContext(group) {
 }
 
 function formatSource(source) {
-    if (typeof source === 'string' && /^https?:\/\//.test(source)) {
-        return `<${source}>`;
-    }
-    return `\`${source}\``;
+    return `\`${source.tagId}\``;
 }
