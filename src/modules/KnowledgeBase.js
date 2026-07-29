@@ -14,8 +14,10 @@ const SYSTEM_PROMPT =
     'If the question is unrelated to the OwO bot or this support server, say you can only help with OwO bot or server questions. ' +
     'You may use Discord markdown when it makes the answer easier to read, such as bullets, bold text, headers, or short code spans. ' +
     'You may reuse emojis, including custom Discord emoji tokens, exactly as they appear in the provided support notes. Do not invent custom emojis. ' +
+    'Return only a raw JSON object with exactly this semantic shape: {"answer":"string","tagIds":["tag_id"]}. ' +
+    'Set answer to the user-facing answer text. Set tagIds to only the tag ids you used, copied exactly from the [Tag: id] labels in the provided notes. ' +
     'Do not mention the knowledge base, support notes, entries, context, sources, or phrases like "based on". ' +
-    'Do not include source tags or links in your answer text — they will be appended separately.';
+    'Do not include source tags or links in the answer string — they will be appended separately.';
 
 const EMBED_BATCH = 64;
 const META_LOG_EVERY = 50;
@@ -304,10 +306,11 @@ module.exports = class KnowledgeBase extends require('./Module') {
         const terms = await this.fetchQuestionTerms(question);
 
         const { content } = await this.openrouter.chat(SYSTEM_PROMPT, formatAnswerPrompt(context, question, terms));
+        const answerResponse = parseAnswerResponse(content);
+        const sources = selectAnswerSources(groups, answerResponse);
 
-        const sources = groups.map((group) => ({ tagId: group.tagId, visibility: group.visibility }));
         return {
-            answer: content || "I don't know that one yet — please ask a helper or rephrase your question.",
+            answer: answerResponse.answer || "I don't know that one yet — please ask a helper or rephrase your question.",
             sources,
             hits,
         };
@@ -878,10 +881,13 @@ function extractTermIds(question) {
 
 function formatAnswerPrompt(context, question, terms) {
     const supportNotes = `Support notes:\n${context}`;
-    if (!terms.length) return `${supportNotes}\n\nUser question:\n${question}`;
+    const responseFormat =
+        'Return JSON only. Use this exact shape: {"answer":"answer text","tagIds":["tag id copied from [Tag: id]"]}. ' +
+        'Do not put tag ids, source labels, or links inside answer.';
+    if (!terms.length) return `${supportNotes}\n\nUser question:\n${question}\n\n${responseFormat}`;
 
     const termLines = terms.map((term) => `${term._id} = ${term.meaning}`).join('\n');
-    return `${supportNotes}\n\nOwO bot terms:\n${termLines}\n\nUser question:\n${question}`;
+    return `${supportNotes}\n\nOwO bot terms:\n${termLines}\n\nUser question:\n${question}\n\n${responseFormat}`;
 }
 
 function isTagKbExcluded(tag) {
@@ -1010,6 +1016,51 @@ function unwrapJsonResponse(content) {
     const text = String(content ?? '').trim();
     const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
     return fenced ? fenced[1].trim() : text;
+}
+
+function parseAnswerResponse(content) {
+    const rawAnswer = String(content ?? '').trim();
+    let parsed;
+    try {
+        parsed = JSON.parse(unwrapJsonResponse(content));
+    } catch (err) {
+        return { answer: rawAnswer, tagIds: [], parseFailed: true };
+    }
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return { answer: rawAnswer, tagIds: [], parseFailed: false };
+    }
+
+    const answer = typeof parsed.answer === 'string' ? parsed.answer.trim() : '';
+    const tagIds = Array.isArray(parsed.tagIds)
+        ? parsed.tagIds.map((tagId) => (typeof tagId === 'string' ? tagId.trim() : '')).filter(Boolean)
+        : [];
+
+    return { answer, tagIds, parseFailed: false };
+}
+
+function selectAnswerSources(groups, answerResponse) {
+    if (answerResponse.parseFailed) {
+        const [topGroup] = groups;
+        return topGroup ? [formatAnswerSource(topGroup)] : [];
+    }
+
+    if (!answerResponse.tagIds.length) return [];
+
+    const groupsByTagId = new Map(groups.map((group) => [group.tagId, group]));
+    const seen = new Set();
+    const sources = [];
+    for (const tagId of answerResponse.tagIds) {
+        if (seen.has(tagId)) continue;
+        seen.add(tagId);
+        const group = groupsByTagId.get(tagId);
+        if (group) sources.push(formatAnswerSource(group));
+    }
+    return sources;
+}
+
+function formatAnswerSource(group) {
+    return { tagId: group.tagId, visibility: group.visibility };
 }
 
 function parseGeneratedQuestionArray(content) {
