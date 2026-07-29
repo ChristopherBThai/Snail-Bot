@@ -189,6 +189,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
             const content = {
                 content: buildPlainAnswerContent(answer, sources),
                 components,
+                allowedMentions: { repliedUser: false, everyone: false, roles: false, users: false },
             };
             const answerMessage = await thread.createMessage(content);
             return { answerMessage, content };
