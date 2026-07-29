@@ -881,13 +881,10 @@ function extractTermIds(question) {
 
 function formatAnswerPrompt(context, question, terms) {
     const supportNotes = `Support notes:\n${context}`;
-    const responseFormat =
-        'Return JSON only. Use this exact shape: {"answer":"answer text","tagIds":["tag id copied from [Tag: id]"]}. ' +
-        'Do not put tag ids, source labels, or links inside answer.';
-    if (!terms.length) return `${supportNotes}\n\nUser question:\n${question}\n\n${responseFormat}`;
+    if (!terms.length) return `${supportNotes}\n\nUser question:\n${question}`;
 
     const termLines = terms.map((term) => `${term._id} = ${term.meaning}`).join('\n');
-    return `${supportNotes}\n\nOwO bot terms:\n${termLines}\n\nUser question:\n${question}\n\n${responseFormat}`;
+    return `${supportNotes}\n\nOwO bot terms:\n${termLines}\n\nUser question:\n${question}`;
 }
 
 function isTagKbExcluded(tag) {
@@ -1042,7 +1039,7 @@ function parseAnswerResponse(content) {
 function selectAnswerSources(groups, answerResponse) {
     if (answerResponse.parseFailed) {
         const [topGroup] = groups;
-        return topGroup ? [formatAnswerSource(topGroup)] : [];
+        return topGroup ? [{ tagId: topGroup.tagId, visibility: topGroup.visibility }] : [];
     }
 
     if (!answerResponse.tagIds.length) return [];
@@ -1054,13 +1051,9 @@ function selectAnswerSources(groups, answerResponse) {
         if (seen.has(tagId)) continue;
         seen.add(tagId);
         const group = groupsByTagId.get(tagId);
-        if (group) sources.push(formatAnswerSource(group));
+        if (group) sources.push({ tagId: group.tagId, visibility: group.visibility });
     }
     return sources;
-}
-
-function formatAnswerSource(group) {
-    return { tagId: group.tagId, visibility: group.visibility };
 }
 
 function parseGeneratedQuestionArray(content) {
