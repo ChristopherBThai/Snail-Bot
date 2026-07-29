@@ -1024,11 +1024,11 @@ function parseAnswerResponse(content) {
         return { answer: rawAnswer, tagIds: [], parseFailed: true };
     }
 
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        return { answer: rawAnswer, tagIds: [], parseFailed: false };
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || typeof parsed.answer !== 'string') {
+        return { answer: '', tagIds: [], parseFailed: true };
     }
 
-    const answer = typeof parsed.answer === 'string' ? parsed.answer.trim() : '';
+    const answer = parsed.answer.trim();
     const tagIds = Array.isArray(parsed.tagIds)
         ? parsed.tagIds.map((tagId) => (typeof tagId === 'string' ? tagId.trim() : '')).filter(Boolean)
         : [];
