@@ -1428,11 +1428,12 @@ function isThreadChannel(channel) {
 }
 
 function buildPlainAnswerContent(answer, sources) {
-    const content = String(answer ?? '');
+    let content = `> -# ⚠️ Snail may be incorrect. This feature is still a work in progress!\n\n`
+    content += String(answer ?? '');
     const publicSources = (sources ?? []).filter((source) => source?.visibility !== 'kb_only');
 
     if (!publicSources.length) return content;
-    return `${content}\n\n-# Tags: ${publicSources.slice(0, 5).map(formatSource).join(', ')}`;
+    return `${content}\n\n> -# Tags: ${publicSources.slice(0, 5).map(formatSource).join(', ')}`;
 }
 
 function buildAskThreadName(question) {
