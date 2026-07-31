@@ -153,35 +153,74 @@ module.exports = class KnowledgeBase extends require('./Module') {
     }
 
     async sendAnswer(message, { answer, sources }, { question } = {}) {
-        const embed = {
-            color: this.bot.config.embedcolor,
-            description: answer,
+        const collectorModule = this.bot.modules['interactioncollector'];
+        const components = this.askFeedbackChannel && collectorModule?.create ? buildAskFeedbackComponents() : [];
+        const feedback = {
+            originalMessage: message,
+            question,
+            answer,
+            sources,
         };
 
-        if (sources.length) {
-            const publicSources = sources.filter((source) => source?.visibility !== 'kb_only');
-            if (publicSources.length) {
-                embed.description += `\n\n-# Tags: ${publicSources.slice(0, 5).map(formatSource).join(', ')}`;
+        const threadAnswer = await this.trySendThreadAnswer(message, answer, sources, components, question);
+        if (threadAnswer) {
+            if (this.askFeedbackChannel && collectorModule?.create) {
+                this.collectAskFeedback(collectorModule, threadAnswer.answerMessage, threadAnswer.content, feedback);
             }
+            return;
         }
 
-        const collectorModule = this.bot.modules['interactioncollector'];
-        const content = {
-            embeds: [embed],
-            components: this.askFeedbackChannel && collectorModule?.create ? buildAskFeedbackComponents() : [],
-            messageReference: { messageID: message.id },
-            allowedMentions: { repliedUser: false, everyone: false, roles: false, users: false },
-        };
+        const content = this.buildFallbackAnswerContent(answer, sources, components, message);
         const answerMessage = await message.channel.createMessage(content);
 
         if (this.askFeedbackChannel && collectorModule?.create) {
-            this.collectAskFeedback(collectorModule, answerMessage, content, {
-                originalMessage: message,
-                question,
-                answer,
-                sources,
-            });
+            this.collectAskFeedback(collectorModule, answerMessage, content, feedback);
         }
+    }
+
+    async trySendThreadAnswer(message, answer, sources, components, question) {
+        if (typeof message.channel?.createThreadWithMessage !== 'function') return;
+
+        try {
+            const thread = await message.channel.createThreadWithMessage(message.id, {
+                name: buildAskThreadName(question),
+                autoArchiveDuration: 1440,
+            });
+            const content = {
+                content: buildPlainAnswerContent(answer, sources),
+                components,
+                allowedMentions: { repliedUser: false, everyone: false, roles: false, users: false },
+            };
+            const answerMessage = await thread.createMessage(content);
+            return { answerMessage, content };
+        } catch (err) {
+            console.warn('[KB] ask thread delivery failed, falling back to reply:', err.message);
+        }
+    }
+
+    buildFallbackAnswerContent(answer, sources, components, message) {
+        const base = {
+            components,
+            messageReference: { messageID: message.id },
+            allowedMentions: { repliedUser: false, everyone: false, roles: false, users: false },
+        };
+
+        if (isThreadChannel(message.channel)) {
+            return {
+                ...base,
+                content: buildPlainAnswerContent(answer, sources),
+            };
+        }
+
+        return {
+            ...base,
+            embeds: [
+                {
+                    color: this.bot.config.embedcolor,
+                    description: buildPlainAnswerContent(answer, sources),
+                },
+            ],
+        };
     }
 
     collectAskFeedback(collectorModule, answerMessage, content, feedback) {
@@ -1338,6 +1377,29 @@ function normalizedTagData(group) {
         .replace(/[ \t]+\n/g, '\n')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
+}
+
+function isThreadChannel(channel) {
+    return Boolean(channel?.threadMetadata || (channel?.parentID && !channel?.createThreadWithMessage));
+}
+
+function buildPlainAnswerContent(answer, sources) {
+    const content = String(answer ?? '');
+    const publicSources = (sources ?? []).filter((source) => source?.visibility !== 'kb_only');
+
+    if (!publicSources.length) return content;
+    return `${content}\n\n-# Tags: ${publicSources.slice(0, 5).map(formatSource).join(', ')}`;
+}
+
+function buildAskThreadName(question) {
+    const prefix = 'snail ask';
+    const normalized = String(question ?? '')
+        .replace(/[\r\n]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const title = normalized ? `${prefix}: ${normalized}` : prefix;
+
+    return title.length > 100 ? `${title.slice(0, 99)}…` : title;
 }
 
 function formatSource(source) {
