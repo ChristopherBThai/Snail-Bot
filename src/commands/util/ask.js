@@ -38,7 +38,7 @@ module.exports = new Command({
         }
 
         try {
-            const result = await KB.ask(question);
+            const result = await KB.ask(question, { message: this.message });
             await KB.sendAnswer(this.message, result, { question });
         } catch (err) {
             console.error('[KB] ask command failed:', err.message);

@@ -32,6 +32,10 @@ const ASK_FEEDBACK_NEEDS_FIX_ID = 'kb_ask_feedback_needs_fix';
 const EMBED_FIELD_VALUE_LIMIT = 1024;
 const TAG_SYNC_LOG_EVERY = 25;
 const RAW_GENERATION_RESPONSE_LOG_CHARS = 4000;
+const ASK_HISTORY_MAX_TURNS = 5;
+const ASK_HISTORY_MAX_CHARS = 6000;
+const ASK_HISTORY_FETCH_LIMIT = 100;
+const ASK_ANSWER_MARKER = '\u2063\u2063\u2063\u2063\u2063';
 const TAG_QUESTION_PROMPT_VERSION = 'tag-question-v3';
 const TAG_QUESTION_SYSTEM_PROMPT = 'You generate retrieval scaffolding questions for OwO Discord bot support tags.';
 const TAG_QUESTION_PROMPT_SOURCE = `${TAG_QUESTION_PROMPT_VERSION}:${TAG_QUESTION_SYSTEM_PROMPT}`;
@@ -127,12 +131,16 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
     async onMessage(message) {
         if (message.author?.bot) return;
-        if (!message.mentions?.some((u) => u.id === this.bot.user?.id)) return;
+        const mentioned = message.mentions?.some((u) => u.id === this.bot.user?.id);
+        const askThreadReply = mentioned ? false : await this.isAskThreadReplyMessage(message);
+        if (!mentioned && !askThreadReply) return;
 
         const channel = await this.bot.snail_db.Channel.findById(message.channel.id);
         if (channel?.disabledCommands.includes('ask')) return;
 
-        const stripped = message.content.replace(new RegExp(`<@!?${this.bot.user.id}>`, 'g'), '').trim();
+        const stripped = mentioned
+            ? message.content.replace(new RegExp(`<@!?${this.bot.user.id}>`, 'g'), '').trim()
+            : String(message.content ?? '').trim();
 
         if (!stripped) return;
         if (stripped.length > 500) return;
@@ -140,7 +148,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
         await message.channel.sendTyping().catch(() => {});
 
         try {
-            const result = await this.ask(stripped);
+            const result = await this.ask(stripped, { message });
             await this.sendAnswer(message, result, { question: stripped });
         } catch (err) {
             console.error('[KB] mention ask failed:', err.message);
@@ -296,12 +304,12 @@ module.exports = class KnowledgeBase extends require('./Module') {
         return vector;
     }
 
-    async ask(question) {
+    async ask(question, { message } = {}) {
         const transaction = this.elasticApm.startTransaction('snail.ask.fetch', 'bot');
 
         try {
             transaction?.setLabel('question_length', question.length);
-            const result = await this.fetchAskAnswer(question);
+            const result = await this.fetchAskAnswer(question, { message });
             transaction?.setOutcome('success');
             return result;
         } catch (err) {
@@ -313,11 +321,13 @@ module.exports = class KnowledgeBase extends require('./Module') {
         }
     }
 
-    async fetchAskAnswer(question) {
+    async fetchAskAnswer(question, { message } = {}) {
         if (!this.qdrant) await this.initQdrant();
 
         const askStartedAt = Date.now();
-        const vector = await this.embedQuery(question);
+        const conversationHistory = await this.fetchAskConversationHistory(message);
+        const retrievalQuery = formatHistoryAwareQuestion(question, conversationHistory);
+        const vector = await this.embedQuery(retrievalQuery);
 
         assertAskBudget(askStartedAt);
         const rawHits = await this.qdrant.search(this.collection, {
@@ -329,7 +339,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
         assertAskBudget(askStartedAt);
         const candidateGroups = await this.materializeTagGroups(groupHitsByTag(rawHits));
-        const groups = await this.rerankTagGroups(question, candidateGroups);
+        const groups = await this.rerankTagGroups(retrievalQuery, candidateGroups);
         const hits = groups.flatMap((group) => group.hits);
 
         if (!groups.length) {
@@ -344,15 +354,80 @@ module.exports = class KnowledgeBase extends require('./Module') {
         const context = groups.map(formatTagAnswerContext).join('\n\n');
         const terms = await this.fetchQuestionTerms(question);
 
-        const { content } = await this.openrouter.chat(SYSTEM_PROMPT, formatAnswerPrompt(context, question, terms));
+        const { content } = await this.openrouter.responses(
+            SYSTEM_PROMPT,
+            formatAnswerPrompt(context, question, terms),
+            conversationHistory
+        );
         const answerResponse = parseAnswerResponse(content);
         const sources = selectAnswerSources(groups, answerResponse);
 
         return {
-            answer: answerResponse.answer || "I don't know that one yet — please ask a helper or rephrase your question.",
+            answer:
+                answerResponse.answer || "I don't know that one yet — please ask a helper or rephrase your question.",
             sources,
             hits,
         };
+    }
+
+    async fetchAskConversationHistory(message) {
+        if (!message || !isThreadChannel(message.channel)) return [];
+        if (!isSnailAskThreadChannel(message.channel, this.bot.user?.id)) return [];
+
+        let messages;
+        try {
+            messages = await message.channel.getMessages(ASK_HISTORY_FETCH_LIMIT, message.id);
+        } catch (err) {
+            console.warn('[KB] ask history fetch failed:', err.message);
+            return [];
+        }
+
+        const starterMessage = await this.fetchAskThreadStarterMessage(message.channel);
+        if (starterMessage) messages.push(starterMessage);
+
+        const referencedMessageId = message.messageReference?.messageID || message.messageReference?.message_id;
+        if (
+            referencedMessageId &&
+            !messages.some((candidate) => String(candidate.id) === String(referencedMessageId))
+        ) {
+            const referenced = await this.fetchReferencedMessage(message, referencedMessageId);
+            if (referenced) messages.push(referenced);
+        }
+
+        if (!messages.some((historyMessage) => isSnailAskAnswerMessage(historyMessage, this.bot.user?.id))) return [];
+
+        return buildAskConversationHistory(messages, this.bot.user?.id, this.bot.config.prefixes);
+    }
+
+    async isAskThreadReplyMessage(message) {
+        if (!message || !isSnailAskThreadChannel(message.channel, this.bot.user?.id)) return false;
+        const referencedMessageId = message.messageReference?.messageID || message.messageReference?.message_id;
+        if (!referencedMessageId) return false;
+
+        const referenced = await this.fetchReferencedMessage(message, referencedMessageId);
+        return isSnailAskAnswerMessage(referenced, this.bot.user?.id);
+    }
+
+    async fetchReferencedMessage(message, referencedMessageId) {
+        if (message.referencedMessage && String(message.referencedMessage.id) === String(referencedMessageId)) {
+            return message.referencedMessage;
+        }
+        try {
+            return await message.channel.getMessage(referencedMessageId);
+        } catch (err) {
+            console.warn('[KB] ask reply provenance fetch failed:', err.message);
+        }
+    }
+
+    async fetchAskThreadStarterMessage(channel) {
+        const parent = this.bot.getChannel(channel?.parentID);
+        if (!parent || typeof parent.getMessage !== 'function' || !channel?.id) return;
+
+        try {
+            return await parent.getMessage(channel.id);
+        } catch (err) {
+            console.warn('[KB] ask thread starter fetch failed:', err.message);
+        }
     }
 
     async fetchQuestionTerms(question) {
@@ -918,6 +993,161 @@ function extractTermIds(question) {
     return termIds;
 }
 
+function formatHistoryAwareQuestion(question, history) {
+    const historyText = formatHistoryForPrompt(history);
+    if (!historyText) return question;
+    return `Previous ask conversation:\n${historyText}\n\nCurrent user question:\n${question}`;
+}
+
+function formatHistoryForPrompt(history) {
+    return (history || [])
+        .map((item) => `${item.role === 'assistant' ? 'Snail' : 'User'}: ${String(item.content ?? '').trim()}`)
+        .filter((line) => !line.endsWith(':'))
+        .join('\n');
+}
+
+function buildAskConversationHistory(messages, botUserId, prefixes = []) {
+    const chronological = [...(messages || [])].sort(compareDiscordMessageIds);
+    const askAnswerMessageIds = new Set();
+    const turns = [];
+    let pendingUser = null;
+
+    for (const message of chronological) {
+        if (isBotMessage(message, botUserId)) {
+            if (pendingUser && isSnailAskAnswerMessage(message, botUserId)) {
+                askAnswerMessageIds.add(String(message.id));
+                turns.push({
+                    user: pendingUser,
+                    assistant: { id: message.id, content: cleanAskAnswerContent(message.content) },
+                });
+                pendingUser = null;
+            } else if (isSnailAskAnswerMessage(message, botUserId)) {
+                askAnswerMessageIds.add(String(message.id));
+                turns.push({ assistant: { id: message.id, content: cleanAskAnswerContent(message.content) } });
+            }
+            continue;
+        }
+
+        if (isAskFlowUserMessage(message, botUserId, askAnswerMessageIds, prefixes)) {
+            pendingUser = cleanUserMessageContent(message.content, botUserId);
+        }
+    }
+
+    return capAskHistory(turns);
+}
+
+function capAskHistory(turns) {
+    const recentTurns = turns.slice(-ASK_HISTORY_MAX_TURNS);
+    const capped = [];
+    let chars = 0;
+
+    for (let i = recentTurns.length - 1; i >= 0; i--) {
+        const turn = recentTurns[i];
+        const pair = [
+            { role: 'user', content: turn.user },
+            { role: 'assistant', id: turn.assistant?.id, content: turn.assistant?.content },
+        ].filter((item) => item.content);
+        const pairChars = pair.reduce((total, item) => total + item.content.length, 0);
+        if (capped.length && chars + pairChars > ASK_HISTORY_MAX_CHARS) break;
+        if (!capped.length && pairChars > ASK_HISTORY_MAX_CHARS) {
+            const budget = Math.floor(ASK_HISTORY_MAX_CHARS / 2);
+            capped.unshift(
+                { role: 'user', content: truncateForHistory(turn.user, budget) },
+                {
+                    role: 'assistant',
+                    id: turn.assistant?.id,
+                    content: truncateForHistory(turn.assistant?.content, budget),
+                }
+            );
+            break;
+        }
+        capped.unshift(...pair);
+        chars += pairChars;
+    }
+
+    return capped;
+}
+
+function isAskFlowUserMessage(message, botUserId, askAnswerMessageIds, prefixes) {
+    if (message.author?.bot) return false;
+    if (isAskCommandMessage(message.content, prefixes)) return true;
+    if (mentionsBot(message, botUserId)) return true;
+    return isReplyToSnailAskAnswerMessage(message, botUserId, askAnswerMessageIds);
+}
+
+function isAskCommandMessage(content, prefixes = []) {
+    const text = String(content ?? '')
+        .trim()
+        .toLowerCase();
+    if (/^snail\s+ask(?:\s|$)/.test(text)) return true;
+
+    return (prefixes || [])
+        .map((prefix) =>
+            String(prefix ?? '')
+                .trim()
+                .toLowerCase()
+        )
+        .filter(Boolean)
+        .some((prefix) => text.startsWith(`${prefix} ask `) || text === `${prefix} ask`);
+}
+
+function mentionsBot(message, botUserId) {
+    if (!botUserId) return false;
+    if (message.mentions?.some((user) => user.id === botUserId)) return true;
+    return new RegExp(`<@!?${botUserId}>`).test(String(message.content ?? ''));
+}
+
+function isReplyToSnailAskAnswerMessage(message, botUserId, askAnswerMessageIds) {
+    if (!botUserId) return false;
+    const referencedMessageId = message.messageReference?.messageID || message.messageReference?.message_id;
+    if (referencedMessageId && askAnswerMessageIds.has(String(referencedMessageId))) return true;
+    return isSnailAskAnswerMessage(message.referencedMessage, botUserId);
+}
+
+function isSnailAskAnswerMessage(message, botUserId) {
+    if (!isBotMessage(message, botUserId)) return false;
+    const content = String(message.content ?? '');
+    return content.includes(ASK_ANSWER_MARKER) || content.startsWith('> -# ⚠️ Snail may be incorrect.');
+}
+
+function isBotMessage(message, botUserId) {
+    return Boolean(botUserId && message.author?.id === botUserId);
+}
+
+function cleanUserMessageContent(content, botUserId) {
+    return String(content ?? '')
+        .replace(new RegExp(`<@!?${botUserId}>`, 'g'), '@Snail')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function cleanAskAnswerContent(content) {
+    return String(content ?? '')
+        .split(ASK_ANSWER_MARKER)
+        .join('')
+        .replace(/^> -# ⚠️ Snail may be incorrect\. This feature is still a work in progress!\s*/i, '')
+        .replace(/\n\n> -# Tags:.*$/s, '')
+        .trim();
+}
+
+function truncateForHistory(content, maxChars) {
+    const text = String(content ?? '').trim();
+    if (text.length <= maxChars) return text;
+    return `${text.slice(0, Math.max(0, maxChars - 1))}…`;
+}
+
+function compareDiscordMessageIds(a, b) {
+    try {
+        const left = BigInt(a.id);
+        const right = BigInt(b.id);
+        if (left < right) return -1;
+        if (left > right) return 1;
+        return 0;
+    } catch {
+        return String(a.id).localeCompare(String(b.id));
+    }
+}
+
 function formatAnswerPrompt(context, question, terms) {
     const supportNotes = `Support notes:\n${context}`;
     if (!terms.length) return `${supportNotes}\n\nUser question:\n${question}`;
@@ -1427,8 +1657,18 @@ function isThreadChannel(channel) {
     return Boolean(channel?.threadMetadata || (channel?.parentID && !channel?.createThreadWithMessage));
 }
 
+function isSnailAskThreadChannel(channel, botUserId) {
+    return (
+        isThreadChannel(channel) &&
+        Boolean(botUserId && channel?.ownerID === botUserId) &&
+        String(channel?.name ?? '')
+            .toLowerCase()
+            .startsWith('snail ask')
+    );
+}
+
 function buildPlainAnswerContent(answer, sources) {
-    let content = `> -# ⚠️ Snail may be incorrect. This feature is still a work in progress!\n\n`
+    let content = `> -# ⚠️ Snail may be incorrect. This feature is still a work in progress!${ASK_ANSWER_MARKER}\n\n`;
     content += String(answer ?? '');
     const publicSources = (sources ?? []).filter((source) => source?.visibility !== 'kb_only');
 
