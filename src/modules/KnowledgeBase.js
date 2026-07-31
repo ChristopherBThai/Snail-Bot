@@ -14,8 +14,10 @@ const SYSTEM_PROMPT =
     'If the question is unrelated to the OwO bot or this support server, say you can only help with OwO bot or server questions. ' +
     'You may use Discord markdown when it makes the answer easier to read, such as bullets, bold text, headers, or short code spans. ' +
     'You may reuse emojis, including custom Discord emoji tokens, exactly as they appear in the provided support notes. Do not invent custom emojis. ' +
+    'Return only a raw JSON object with exactly this semantic shape: {"answer":"string","tagIds":["tag_id"]}. ' +
+    'Set answer to the user-facing answer text. Set tagIds to only the tag ids you used, copied exactly from the [Tag: id] labels in the provided notes. ' +
     'Do not mention the knowledge base, support notes, entries, context, sources, or phrases like "based on". ' +
-    'Do not include source tags or links in your answer text — they will be appended separately.';
+    'Do not include source tags or links in the answer string — they will be appended separately.';
 
 const EMBED_BATCH = 64;
 const META_LOG_EVERY = 50;
@@ -343,10 +345,11 @@ module.exports = class KnowledgeBase extends require('./Module') {
         const terms = await this.fetchQuestionTerms(question);
 
         const { content } = await this.openrouter.chat(SYSTEM_PROMPT, formatAnswerPrompt(context, question, terms));
+        const answerResponse = parseAnswerResponse(content);
+        const sources = selectAnswerSources(groups, answerResponse);
 
-        const sources = groups.map((group) => ({ tagId: group.tagId, visibility: group.visibility }));
         return {
-            answer: content || "I don't know that one yet — please ask a helper or rephrase your question.",
+            answer: answerResponse.answer || "I don't know that one yet — please ask a helper or rephrase your question.",
             sources,
             hits,
         };
@@ -1049,6 +1052,47 @@ function unwrapJsonResponse(content) {
     const text = String(content ?? '').trim();
     const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
     return fenced ? fenced[1].trim() : text;
+}
+
+function parseAnswerResponse(content) {
+    const rawAnswer = String(content ?? '').trim();
+    let parsed;
+    try {
+        parsed = JSON.parse(unwrapJsonResponse(content));
+    } catch (err) {
+        return { answer: rawAnswer, tagIds: [], parseFailed: true };
+    }
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || typeof parsed.answer !== 'string') {
+        return { answer: '', tagIds: [], parseFailed: true };
+    }
+
+    const answer = parsed.answer.trim();
+    const tagIds = Array.isArray(parsed.tagIds)
+        ? parsed.tagIds.map((tagId) => (typeof tagId === 'string' ? tagId.trim() : '')).filter(Boolean)
+        : [];
+
+    return { answer, tagIds, parseFailed: false };
+}
+
+function selectAnswerSources(groups, answerResponse) {
+    if (answerResponse.parseFailed) {
+        const [topGroup] = groups;
+        return topGroup ? [{ tagId: topGroup.tagId, visibility: topGroup.visibility }] : [];
+    }
+
+    if (!answerResponse.tagIds.length) return [];
+
+    const groupsByTagId = new Map(groups.map((group) => [group.tagId, group]));
+    const seen = new Set();
+    const sources = [];
+    for (const tagId of answerResponse.tagIds) {
+        if (seen.has(tagId)) continue;
+        seen.add(tagId);
+        const group = groupsByTagId.get(tagId);
+        if (group) sources.push({ tagId: group.tagId, visibility: group.visibility });
+    }
+    return sources;
 }
 
 function parseGeneratedQuestionArray(content) {
