@@ -67,11 +67,12 @@ module.exports = class CommandHandler extends require('./Module') {
         const command = this.commands[message.command];
         if (!command) return;
 
-        // Check if that command has been disabled in this channel
-        const disabledChannelId =
-            command.alias[0] === 'ask' && message.channel?.parentID ? message.channel.parentID : message.channel.id;
-        const channel = await this.bot.snail_db.Channel.findById(disabledChannelId);
-        if (channel?.disabledCommands.includes(command.alias[0])) {
+        // Check if that command has been disabled in this channel or its parent
+        const channelIds = [...new Set([message.channel.id, message.channel.parentID].filter(Boolean))];
+        const channels = await Promise.all(
+            channelIds.map((channelId) => this.bot.snail_db.Channel.findById(channelId))
+        );
+        if (channels.some((channel) => channel?.disabledCommands.includes(command.alias[0]))) {
             if (this.disabledCooldowns[message.author.id + message.command]) return;
 
             this.disabledCooldowns[message.author.id + message.command] = true;
@@ -104,7 +105,7 @@ module.exports = class CommandHandler extends require('./Module') {
             },
         };
 
-        await message.channel.sendTyping();
+        if (command.sendTyping) await message.channel.sendTyping();
 
         if (command.auth(message.member)) {
             // Staff are not bound by the chains of cooldowns >:)

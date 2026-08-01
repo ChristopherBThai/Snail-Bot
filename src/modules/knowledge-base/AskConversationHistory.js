@@ -154,7 +154,7 @@ function mentionsBot(message, botUserId) {
 }
 
 function isBotMessage(message, botUserId) {
-    return Boolean(botUserId && message.author?.id === botUserId);
+    return Boolean(botUserId && message?.author?.id === botUserId);
 }
 
 function cleanUserMessageContent(content, botUserId, prefixes) {

@@ -11,6 +11,7 @@ module.exports = class Command {
         this.usage = args.usage;
         this.description = args.description;
         this.examples = args.examples;
+        this.sendTyping = args.sendTyping ?? true;
         this.execute = args.execute;
     }
 };

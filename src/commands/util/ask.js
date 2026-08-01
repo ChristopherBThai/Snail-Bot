@@ -13,6 +13,8 @@ module.exports = new Command({
 
     examples: ['snail ask what are gems?', 'snail ask how do I get cowoncy?'],
 
+    sendTyping: false,
+
     execute: async function () {
         const KB = this.bot.modules['knowledgebase'];
 
@@ -38,8 +40,7 @@ module.exports = new Command({
         }
 
         try {
-            const result = await KB.ask(question, { message: this.message });
-            await KB.sendAnswer(this.message, result, { question });
+            await KB.answerQuestion(this.message, question);
         } catch (err) {
             console.error('[KB] ask command failed:', err.message);
             await this.error('something went wrong while looking that up.');
