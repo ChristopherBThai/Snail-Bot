@@ -62,7 +62,7 @@ module.exports = class OpenRouter extends require('./Module') {
         return res.data.data.map((d) => d.embedding);
     }
 
-    async chat(systemPrompt, userPrompt) {
+    async chat(systemPrompt, userPrompt, history = []) {
         this.assertConfigured();
 
         const res = await this.#requestOpenRouter('chat', () =>
@@ -70,10 +70,7 @@ module.exports = class OpenRouter extends require('./Module') {
                 `${OPENROUTER_BASE}/chat/completions`,
                 this.buildBody({
                     model: this.chatModel,
-                    messages: [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: userPrompt },
-                    ],
+                    messages: buildChatMessages(systemPrompt, userPrompt, history),
                     max_tokens: this.maxTokens,
                     temperature: this.temperature,
                 }),
@@ -227,6 +224,17 @@ function parseRerankResults(results, documentCount) {
                 Number.isFinite(result.relevanceScore)
         )
         .sort((a, b) => b.relevanceScore - a.relevanceScore);
+}
+
+function buildChatMessages(systemPrompt, userPrompt, history = []) {
+    return [
+        { role: 'system', content: systemPrompt },
+        ...(history || []).map((item) => ({
+            role: item?.role === 'assistant' ? 'assistant' : 'user',
+            content: String(item?.content ?? ''),
+        })),
+        { role: 'user', content: userPrompt },
+    ];
 }
 
 function delay(ms) {
