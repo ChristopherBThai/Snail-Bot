@@ -69,9 +69,7 @@ module.exports = class CommandHandler extends require('./Module') {
 
         // Check if that command has been disabled in this channel
         const disabledChannelId =
-            message.channel?.threadMetadata && message.channel?.parentID
-                ? message.channel.parentID
-                : message.channel.id;
+            command.alias[0] === 'ask' && message.channel?.parentID ? message.channel.parentID : message.channel.id;
         const channel = await this.bot.snail_db.Channel.findById(disabledChannelId);
         if (channel?.disabledCommands.includes(command.alias[0])) {
             if (this.disabledCooldowns[message.author.id + message.command]) return;

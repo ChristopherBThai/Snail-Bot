@@ -17,27 +17,33 @@ function isSnailAskThreadChannel(channel, botUserId) {
 function buildAskConversationHistory(messages, botUserId, prefixes = []) {
     const chronological = [...(messages || [])].sort(compareDiscordMessageIds);
     const askAnswerMessageIds = new Set();
+    const pendingUsers = [];
     const turns = [];
-    let pendingUser = null;
 
     for (const message of chronological) {
         if (isBotMessage(message, botUserId)) {
-            if (pendingUser && isSnailAskAnswerMessage(message, botUserId)) {
-                askAnswerMessageIds.add(String(message.id));
-                turns.push({
-                    user: pendingUser,
-                    assistant: cleanAskAnswerContent(message.content),
-                });
-                pendingUser = null;
-            } else if (isSnailAskAnswerMessage(message, botUserId)) {
-                askAnswerMessageIds.add(String(message.id));
-                turns.push({ assistant: cleanAskAnswerContent(message.content) });
-            }
+            if (!isSnailAskAnswerMessage(message, botUserId)) continue;
+
+            askAnswerMessageIds.add(String(message.id));
+            const referencedUserId = getReferencedMessageId(message);
+            const referencedUserIndex = referencedUserId
+                ? pendingUsers.findIndex((pending) => pending.id === String(referencedUserId))
+                : -1;
+            const pendingUser =
+                referencedUserIndex >= 0 ? pendingUsers.splice(referencedUserIndex, 1)[0] : pendingUsers.shift();
+
+            turns.push({
+                user: pendingUser?.content,
+                assistant: cleanAskAnswerContent(message.content),
+            });
             continue;
         }
 
         if (isAskFlowUserMessage(message, botUserId, askAnswerMessageIds, prefixes)) {
-            pendingUser = cleanUserMessageContent(message.content, botUserId, prefixes);
+            pendingUsers.push({
+                id: String(message.id),
+                content: cleanUserMessageContent(message.content, botUserId, prefixes),
+            });
         }
     }
 
@@ -86,8 +92,9 @@ function formatHistoryForPrompt(history, maxChars) {
 
         const line = `${item.role === 'assistant' ? 'Snail' : 'User'}: ${content}`;
         if (lines.length && chars + line.length > maxChars) break;
-        lines.unshift(truncateForHistory(line, maxChars));
-        chars += line.length;
+        const truncatedLine = truncateForHistory(line, maxChars);
+        lines.unshift(truncatedLine);
+        chars += truncatedLine.length;
     }
 
     return lines.join('\n');
@@ -131,9 +138,13 @@ function isThreadChannel(channel) {
 
 function isReplyToSnailAskAnswerMessage(message, botUserId, askAnswerMessageIds) {
     if (!botUserId) return false;
-    const referencedMessageId = message.messageReference?.messageID || message.messageReference?.message_id;
+    const referencedMessageId = getReferencedMessageId(message);
     if (referencedMessageId && askAnswerMessageIds.has(String(referencedMessageId))) return true;
     return isSnailAskAnswerMessage(message.referencedMessage, botUserId);
+}
+
+function getReferencedMessageId(message) {
+    return message?.messageReference?.messageID || message?.messageReference?.message_id;
 }
 
 function mentionsBot(message, botUserId) {
