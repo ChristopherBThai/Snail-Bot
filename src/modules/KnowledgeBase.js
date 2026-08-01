@@ -137,11 +137,8 @@ module.exports = class KnowledgeBase extends require('./Module') {
         if (!stripped) return;
         if (stripped.length > 500) return;
 
-        await message.channel.sendTyping().catch(() => {});
-
         try {
-            const result = await this.ask(stripped);
-            await this.sendAnswer(message, result, { question: stripped });
+            await this.answerQuestion(message, stripped);
         } catch (err) {
             console.error('[KB] mention ask failed:', err.message);
             await message.channel
@@ -154,7 +151,26 @@ module.exports = class KnowledgeBase extends require('./Module') {
         }
     }
 
-    async sendAnswer(message, { answer, sources }, { question } = {}) {
+    async answerQuestion(message, question) {
+        let deliveryChannel = message.channel;
+
+        if (!isThreadChannel(deliveryChannel) && typeof deliveryChannel?.createThreadWithMessage === 'function') {
+            try {
+                deliveryChannel = await deliveryChannel.createThreadWithMessage(message.id, {
+                    name: buildAskThreadName(question),
+                    autoArchiveDuration: 1440,
+                });
+            } catch (err) {
+                console.warn('[KB] ask thread creation failed, falling back to reply:', err.message);
+            }
+        }
+
+        await deliveryChannel.sendTyping().catch(() => {});
+        const result = await this.ask(question);
+        await this.sendAnswer(message, result, { question, deliveryChannel });
+    }
+
+    async sendAnswer(message, { answer, sources }, { question, deliveryChannel = message.channel } = {}) {
         const collectorModule = this.bot.modules['interactioncollector'];
         const components = this.askFeedbackChannel && collectorModule?.create ? buildAskFeedbackComponents() : [];
         const feedback = {
@@ -164,39 +180,29 @@ module.exports = class KnowledgeBase extends require('./Module') {
             sources,
         };
 
-        const threadAnswer = await this.trySendThreadAnswer(message, answer, sources, components, question);
-        if (threadAnswer) {
-            if (this.askFeedbackChannel && collectorModule?.create) {
-                this.collectAskFeedback(collectorModule, threadAnswer.answerMessage, threadAnswer.content, feedback);
-            }
-            return;
-        }
-
-        const content = this.buildFallbackAnswerContent(answer, sources, components, message);
-        const answerMessage = await message.channel.createMessage(content);
-
-        if (this.askFeedbackChannel && collectorModule?.create) {
-            this.collectAskFeedback(collectorModule, answerMessage, content, feedback);
-        }
-    }
-
-    async trySendThreadAnswer(message, answer, sources, components, question) {
-        if (typeof message.channel?.createThreadWithMessage !== 'function') return;
-
-        try {
-            const thread = await message.channel.createThreadWithMessage(message.id, {
-                name: buildAskThreadName(question),
-                autoArchiveDuration: 1440,
-            });
-            const content = {
+        let content;
+        if (deliveryChannel === message.channel) {
+            content = this.buildFallbackAnswerContent(answer, sources, components, message);
+        } else {
+            content = {
                 content: buildPlainAnswerContent(answer, sources),
                 components,
                 allowedMentions: { repliedUser: false, everyone: false, roles: false, users: false },
             };
-            const answerMessage = await thread.createMessage(content);
-            return { answerMessage, content };
+        }
+
+        let answerMessage;
+        try {
+            answerMessage = await deliveryChannel.createMessage(content);
         } catch (err) {
-            console.warn('[KB] ask thread delivery failed, falling back to reply:', err.message);
+            if (deliveryChannel === message.channel) throw err;
+            console.warn('[KB] ask thread answer failed, falling back to reply:', err.message);
+            content = this.buildFallbackAnswerContent(answer, sources, components, message);
+            answerMessage = await message.channel.createMessage(content);
+        }
+
+        if (this.askFeedbackChannel && collectorModule?.create) {
+            this.collectAskFeedback(collectorModule, answerMessage, content, feedback);
         }
     }
 
@@ -349,7 +355,8 @@ module.exports = class KnowledgeBase extends require('./Module') {
         const sources = selectAnswerSources(groups, answerResponse);
 
         return {
-            answer: answerResponse.answer || "I don't know that one yet — please ask a helper or rephrase your question.",
+            answer:
+                answerResponse.answer || "I don't know that one yet — please ask a helper or rephrase your question.",
             sources,
             hits,
         };
@@ -1428,7 +1435,7 @@ function isThreadChannel(channel) {
 }
 
 function buildPlainAnswerContent(answer, sources) {
-    let content = `> -# ⚠️ Snail may be incorrect. This feature is still a work in progress!\n\n`
+    let content = `> -# ⚠️ Snail may be incorrect. This feature is still a work in progress!\n\n`;
     content += String(answer ?? '');
     const publicSources = (sources ?? []).filter((source) => source?.visibility !== 'kb_only');
 
