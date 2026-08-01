@@ -102,7 +102,7 @@ module.exports = class CommandHandler extends require('./Module') {
             },
         };
 
-        await message.channel.sendTyping();
+        if (command.sendTyping) await message.channel.sendTyping();
 
         if (command.auth(message.member)) {
             // Staff are not bound by the chains of cooldowns >:)
