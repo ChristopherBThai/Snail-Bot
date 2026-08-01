@@ -3,7 +3,6 @@ const axios = require('axios');
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
 const EMBED_TIMEOUT = 30000;
 const CHAT_TIMEOUT = 60000;
-const RESPONSES_TIMEOUT = 60000;
 const RERANK_TIMEOUT = 30000;
 const RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 500;
@@ -63,7 +62,7 @@ module.exports = class OpenRouter extends require('./Module') {
         return res.data.data.map((d) => d.embedding);
     }
 
-    async chat(systemPrompt, userPrompt) {
+    async chat(systemPrompt, userPrompt, history = []) {
         this.assertConfigured();
 
         const res = await this.#requestOpenRouter('chat', () =>
@@ -71,10 +70,7 @@ module.exports = class OpenRouter extends require('./Module') {
                 `${OPENROUTER_BASE}/chat/completions`,
                 this.buildBody({
                     model: this.chatModel,
-                    messages: [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: userPrompt },
-                    ],
+                    messages: buildChatMessages(systemPrompt, userPrompt, history),
                     max_tokens: this.maxTokens,
                     temperature: this.temperature,
                 }),
@@ -87,31 +83,6 @@ module.exports = class OpenRouter extends require('./Module') {
         return {
             content: String(res.data?.choices?.[0]?.message?.content ?? '').trim(),
             usage: res.data.usage,
-        };
-    }
-
-    async responses(systemPrompt, userPrompt, history = []) {
-        this.assertConfigured();
-
-        const res = await this.#requestOpenRouter('responses', () =>
-            axios.post(
-                `${OPENROUTER_BASE}/responses`,
-                this.buildBody({
-                    model: this.chatModel,
-                    instructions: systemPrompt,
-                    input: buildResponsesInput(history, userPrompt),
-                    max_output_tokens: this.maxTokens,
-                    temperature: this.temperature,
-                }),
-                {
-                    headers: this.headers(),
-                    timeout: RESPONSES_TIMEOUT,
-                }
-            )
-        );
-        return {
-            content: parseResponsesOutputText(res.data).trim(),
-            usage: normalizeUsage(res.data.usage),
         };
     }
 
@@ -200,11 +171,15 @@ module.exports = class OpenRouter extends require('./Module') {
             transaction?.setLabel(`openrouter.${type}.provider`, data.provider);
             span?.setLabel('openrouter_provider', data.provider);
         }
-        const usage = normalizeUsage(data.usage);
-        if (!usage) return;
+        if (!data.usage) return;
 
         const customContext = {};
-        customContext[type] = usage;
+        customContext[type] = {
+            prompt_tokens: data.usage.prompt_tokens,
+            completion_tokens: data.usage.completion_tokens,
+            total_tokens: data.usage.total_tokens,
+            cost: data.usage.cost,
+        };
         this.elasticapm.apm?.setCustomContext(customContext);
     }
 };
@@ -251,61 +226,15 @@ function parseRerankResults(results, documentCount) {
         .sort((a, b) => b.relevanceScore - a.relevanceScore);
 }
 
-function buildResponsesInput(history, userPrompt) {
-    const input = [];
-    for (let i = 0; i < (history || []).length; i++) {
-        const item = history[i];
-        const role = item?.role === 'assistant' ? 'assistant' : 'user';
-        input.push(toResponsesMessage(role, item?.content, item?.id || `history_${i}`));
-    }
-    input.push(toResponsesMessage('user', userPrompt));
-    return input;
-}
-
-function toResponsesMessage(role, text, id) {
-    const contentType = role === 'assistant' ? 'output_text' : 'input_text';
-    const message = {
-        type: 'message',
-        role,
-        content: [
-            {
-                type: contentType,
-                text: String(text ?? ''),
-            },
-        ],
-    };
-    if (role === 'assistant') {
-        message.id = toResponsesMessageId(id);
-        message.status = 'completed';
-        message.content[0].annotations = [];
-    }
-    return message;
-}
-
-function toResponsesMessageId(id) {
-    return `msg_${String(id ?? 'history').replace(/[^a-zA-Z0-9_-]/g, '_')}`;
-}
-
-function parseResponsesOutputText(data) {
-    if (typeof data?.output_text === 'string') return data.output_text;
-
-    const parts = [];
-    for (const item of data?.output || []) {
-        for (const content of item?.content || []) {
-            if (typeof content?.text === 'string') parts.push(content.text);
-        }
-    }
-    return parts.join('');
-}
-
-function normalizeUsage(usage) {
-    if (!usage) return;
-    return {
-        prompt_tokens: usage.prompt_tokens ?? usage.input_tokens,
-        completion_tokens: usage.completion_tokens ?? usage.output_tokens,
-        total_tokens: usage.total_tokens,
-        cost: usage.cost,
-    };
+function buildChatMessages(systemPrompt, userPrompt, history = []) {
+    return [
+        { role: 'system', content: systemPrompt },
+        ...(history || []).map((item) => ({
+            role: item?.role === 'assistant' ? 'assistant' : 'user',
+            content: String(item?.content ?? ''),
+        })),
+        { role: 'user', content: userPrompt },
+    ];
 }
 
 function delay(ms) {
