@@ -166,11 +166,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
         }
 
         await deliveryChannel.sendTyping().catch(() => {});
-        const result = await this.ask(question);
-        await this.sendAnswer(message, result, { question, deliveryChannel });
-    }
-
-    async sendAnswer(message, { answer, sources }, { question, deliveryChannel = message.channel } = {}) {
+        const { answer, sources } = await this.ask(question);
         const collectorModule = this.bot.modules['interactioncollector'];
         const components = this.askFeedbackChannel && collectorModule?.create ? buildAskFeedbackComponents() : [];
         const feedback = {
