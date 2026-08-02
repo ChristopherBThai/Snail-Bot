@@ -37,7 +37,7 @@ module.exports = new Command({
                     .map((cmd) => cmd.toLowerCase()) // Make all lowercase
                     .filter((cmd) => this.commands[cmd] || cmd == 'all'); // Filter out command names that don't exist unless it's the "all" argument
 
-                if (disableAllChannels && cmds.length > 1) {
+                if (disableAllChannels) {
                     channels = this.bot.guilds
                         .get(this.message.guildID)
                         .channels.filter((channel) => channel.type != ChannelTypes.GUILD_CATEGORY)
@@ -52,6 +52,7 @@ module.exports = new Command({
                 }
 
                 cmds = cmds.filter((cmd) => !this.command.alias.includes(cmd)); // Filter out this command and its aliases
+                if (disableAllChannels) cmds = [...new Set(cmds)];
 
                 if (cmds.length == 0) {
                     await this.error('please list at least one valid command!');
@@ -67,19 +68,13 @@ module.exports = new Command({
                     await this.snail_db.Channel.updateOne({ _id: channel }, operation, { upsert: true });
                 }
 
-                if (disableAllChannels) {
-                    await this.send(
-                        `I ${this.message.command}d ${cmds.map((cmd) => `\`${cmd}\``).join(', ')} in ${
-                            channels.length
-                        } eligible channels!`
-                    );
-                } else {
-                    await this.send(
-                        `I ${this.message.command}d ${cmds.map((cmd) => `\`${cmd}\``).join(', ')} in ${channels
-                            .map((id) => `<#${id}>`)
-                            .join(', ')}!`
-                    );
-                }
+                const commandSummary = disableAllChannels
+                    ? `${cmds.length} command${cmds.length == 1 ? '' : 's'}`
+                    : cmds.map((cmd) => `\`${cmd}\``).join(', ');
+                const channelSummary = disableAllChannels
+                    ? `${channels.length} eligible channel${channels.length == 1 ? '' : 's'}`
+                    : channels.map((id) => `<#${id}>`).join(', ');
+                await this.send(`I ${this.message.command}d ${commandSummary} in ${channelSummary}!`);
 
                 break;
             }

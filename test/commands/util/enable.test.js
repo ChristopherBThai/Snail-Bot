@@ -90,7 +90,7 @@ async function execute(args, command = 'disable', disabledCommandsByChannel = {}
 }
 
 async function selectedCommandsCanBeDisabledAcrossGuildParentChannels() {
-    const { writes, sends } = await execute(['ask', 'ALL']);
+    const { writes } = await execute(['ask', 'ALL']);
 
     assert.deepEqual(
         writes.map(([filter, operation]) => [filter._id, operation]),
@@ -99,13 +99,10 @@ async function selectedCommandsCanBeDisabledAcrossGuildParentChannels() {
             { $addToSet: { disabledCommands: ['ask'] } },
         ])
     );
-    assert.equal(sends[0], 'I disabled `ask` in 4 eligible channels!');
-    assert.equal(sends[0].includes('<#'), false);
-    assert.ok(sends[0].length < 2000);
 }
 
 async function multipleSelectedCommandsCanBeDisabledAcrossGuildParentChannels() {
-    const { writes } = await execute(['ask', 'ping', 'all']);
+    const { writes, sends } = await execute(['ask', 'ping', 'all']);
 
     assert.deepEqual(
         writes.map(([filter, operation]) => [filter._id, operation]),
@@ -114,6 +111,24 @@ async function multipleSelectedCommandsCanBeDisabledAcrossGuildParentChannels() 
             { $addToSet: { disabledCommands: ['ask', 'ping'] } },
         ])
     );
+    assert.equal(sends[0], 'I disabled 2 commands in 4 eligible channels!');
+}
+
+async function repeatedCommandsProduceUniqueWritesAndABoundedBulkResponse() {
+    const args = [...Array(390).fill('ask'), 'all'];
+    assert.ok(args.join(' ').length < 2000);
+
+    const { writes, sends } = await execute(args);
+
+    assert.deepEqual(
+        writes.map(([filter, operation]) => [filter._id, operation]),
+        [CURRENT_CHANNEL_ID, SECOND_CHANNEL_ID, VOICE_CHANNEL_ID, FORUM_CHANNEL_ID].map((channelID) => [
+            channelID,
+            { $addToSet: { disabledCommands: ['ask'] } },
+        ])
+    );
+    assert.equal(sends[0], 'I disabled 1 command in 4 eligible channels!');
+    assert.ok(sends[0].length < 2000);
 }
 
 async function loneAllStillDisablesEveryCommandInTheCurrentChannel() {
@@ -186,6 +201,7 @@ async function enabledListingStaysUnchanged() {
 const tests = [
     selectedCommandsCanBeDisabledAcrossGuildParentChannels,
     multipleSelectedCommandsCanBeDisabledAcrossGuildParentChannels,
+    repeatedCommandsProduceUniqueWritesAndABoundedBulkResponse,
     loneAllStillDisablesEveryCommandInTheCurrentChannel,
     ordinaryPerChannelEnableAndDisableStayUnchanged,
     enableAskAllStillEnablesEveryCommandInTheCurrentChannel,
