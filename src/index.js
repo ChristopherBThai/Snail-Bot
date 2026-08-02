@@ -27,7 +27,7 @@ async function start() {
         log,
     });
 
-    const gateway = createGateway({ token, logging, log, packages, rest });
+    const gateway = createGateway({ config, token, logging, log, packages, rest });
     log.info('Connecting to Discord gateway');
     await gateway.spawnShards();
 }

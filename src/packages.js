@@ -1,4 +1,4 @@
-import { InteractionResponseType, MessageFlags } from 'discord-api-types/v10';
+import nick from './commands/nick.js';
 import snail from './commands/snail.js';
 
 /**
@@ -10,7 +10,13 @@ import snail from './commands/snail.js';
 /**
  * A Discord interaction handler contributed by a package.
  *
- * @typedef {(interaction: Interaction) => void | Promise<void>} InteractionHandler
+ * @typedef {object} InteractionContext
+ * @property {Interaction} interaction Raw Discord interaction.
+ * @property {(message: string | import('@discordeno/types').InteractionCallbackData, options?: { ephemeral?: boolean }) => Promise<unknown>} respond Sends the initial interaction response.
+ */
+
+/**
+ * @typedef {(context: InteractionContext) => void | Promise<void>} InteractionHandler
  */
 
 /**
@@ -18,6 +24,8 @@ import snail from './commands/snail.js';
  *
  * @typedef {object} PackageCommand
  * @property {import('@discordeno/types').CreateApplicationCommand} definition Discord application command definition.
+ * @property {boolean} [staff] Whether Discord should limit default visibility to staff.
+ * @property {(interaction: Interaction, config: Record<string, unknown>) => boolean | Promise<boolean>} [authorize] Runtime authorization check.
  * @property {InteractionHandler} handle
  */
 
@@ -26,6 +34,7 @@ import snail from './commands/snail.js';
  *
  * @typedef {object} PackageInteraction
  * @property {string} id Discord custom ID.
+ * @property {(interaction: Interaction, config: Record<string, unknown>) => boolean | Promise<boolean>} [authorize] Runtime authorization check.
  * @property {InteractionHandler} handle
  */
 
@@ -68,66 +77,56 @@ import snail from './commands/snail.js';
  * @typedef {object} PackageContext
  * @property {Record<string, unknown>} config Public configuration values.
  * @property {object} logging Logging manager.
- * @property {import('@discordeno/rest').RestManager} rest Discord REST manager.
+ * @property {ReturnType<import('./discord.js').createRest>} rest Discord REST manager.
  */
 
 /** @typedef {(context: PackageContext) => Package} PackageSetup */
 
 /** @type {PackageSetup[]} */
-const PACKAGES = [snail];
+const PACKAGES = [snail, nick];
 
 /**
  * Sets up installed packages and indexes their Discord contributions.
  */
 export function setupPackages({ config, logging, log, rest }) {
-    const commands = [];
+    const commands = new Map();
+    const components = new Map();
+    const modals = new Map();
     const events = [];
     const features = new Set();
-    const commandHandlers = {};
-    const componentHandlers = {};
-    const modalHandlers = {};
-    let componentCount = 0;
-    let modalCount = 0;
 
     for (const setup of PACKAGES) {
         const package_ = setup({ config, logging, rest });
         const missing = package_.missing ?? [];
-        const unavailable = missing.length
-            ? (interaction) =>
-                  rest.sendInteractionResponse(interaction.id, interaction.token, {
-                      type: InteractionResponseType.ChannelMessageWithSource,
-                      data: {
-                          content: `This interaction is unavailable. Missing: ${missing.map((value) => `\`${value}\``).join(', ')}`,
-                          flags: MessageFlags.Ephemeral,
-                      },
-                  })
-            : undefined;
 
         for (const command of package_.commands ?? []) {
-            if (Object.hasOwn(commandHandlers, command.definition.name)) {
-                throw new Error(`Duplicate command: ${command.definition.name}`);
+            const name = command.definition.name;
+
+            if (commands.has(name)) {
+                throw new Error(`Duplicate command: ${name}`);
             }
 
-            commands.push(command);
-            commandHandlers[command.definition.name] = unavailable ?? command.handle;
+            if (command.staff && typeof command.authorize !== 'function') {
+                throw new Error(`Staff command requires authorization: ${name}`);
+            }
+
+            commands.set(name, { ...command, missing });
         }
 
         for (const component of package_.components ?? []) {
-            if (Object.hasOwn(componentHandlers, component.id)) {
+            if (components.has(component.id)) {
                 throw new Error(`Duplicate component: ${component.id}`);
             }
 
-            componentCount++;
-            componentHandlers[component.id] = unavailable ?? component.handle;
+            components.set(component.id, { ...component, missing });
         }
 
         for (const modal of package_.modals ?? []) {
-            if (Object.hasOwn(modalHandlers, modal.id)) {
+            if (modals.has(modal.id)) {
                 throw new Error(`Duplicate modal: ${modal.id}`);
             }
 
-            modalCount++;
-            modalHandlers[modal.id] = unavailable ?? modal.handle;
+            modals.set(modal.id, { ...modal, missing });
         }
 
         if (package_.feature) {
@@ -155,17 +154,16 @@ export function setupPackages({ config, logging, log, rest }) {
     log.debug('Loaded packages', {
         packages: PACKAGES.length,
         features: features.size,
-        commands: commands.length,
-        components: componentCount,
-        modals: modalCount,
+        commands: commands.size,
+        components: components.size,
+        modals: modals.size,
         events: events.length,
     });
 
     return {
         commands,
-        commandHandlers,
-        componentHandlers,
-        modalHandlers,
+        components,
+        modals,
         events,
     };
 }

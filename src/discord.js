@@ -1,6 +1,13 @@
 import { createGatewayManager } from '@discordeno/gateway';
 import { createRestManager } from '@discordeno/rest';
-import { GatewayDispatchEvents, InteractionResponseType, InteractionType, MessageFlags } from 'discord-api-types/v10';
+import {
+    ComponentType,
+    GatewayDispatchEvents,
+    InteractionResponseType,
+    InteractionType,
+    MessageFlags,
+    PermissionFlagsBits,
+} from 'discord-api-types/v10';
 
 /**
  * Creates Snail's Discord REST manager.
@@ -22,22 +29,25 @@ export async function synchronizeCommands({ rest, guildId, commands, log }) {
 
     log.info('Synchronizing guild application commands', {
         guildId,
-        commandCount: commands.length,
+        commandCount: commands.size,
     });
     await rest.upsertGuildApplicationCommands(
         guildId,
-        commands.map((command) => command.definition),
+        [...commands.values()].map((command) => ({
+            ...command.definition,
+            ...(command.staff ? { defaultMemberPermissions: PermissionFlagsBits.BypassSlowmode.toString() } : {}),
+        })),
     );
     log.info('Guild application commands synchronized', {
         guildId,
-        commandCount: commands.length,
+        commandCount: commands.size,
     });
 }
 
 /**
  * Creates Snail's Discord gateway manager and interaction dispatcher.
  */
-export function createGateway({ token, logging, log, packages, rest }) {
+export function createGateway({ config, token, logging, log, packages, rest }) {
     return createGatewayManager({
         token,
         logger: createDiscordenoLogger(logging.createLogger('gateway', true)),
@@ -69,59 +79,102 @@ export function createGateway({ token, logging, log, packages, rest }) {
                 if (payload.t !== GatewayDispatchEvents.InteractionCreate) return;
 
                 const interaction = payload.d;
-                let handlerName;
+                const context = createInteractionContext(rest, interaction);
                 let handler;
+                let handlerId;
+                let handlerType;
 
                 if (interaction.type === InteractionType.ApplicationCommand) {
-                    handlerName = interaction.data.name;
-                    handler = packages.commandHandlers[handlerName];
+                    handlerId = interaction.data.name;
+                    handler = packages.commands.get(handlerId);
+                    handlerType = 'command';
                 } else if (interaction.type === InteractionType.MessageComponent) {
-                    handlerName = interaction.data.customId;
-                    handler = packages.componentHandlers[handlerName];
+                    handlerId = interaction.data.customId;
+                    handler = packages.components.get(handlerId);
+                    handlerType = 'component';
                 } else if (interaction.type === InteractionType.ModalSubmit) {
-                    handlerName = interaction.data.customId;
-                    handler = packages.modalHandlers[handlerName];
+                    handlerId = interaction.data.customId;
+                    handler = packages.modals.get(handlerId);
+                    handlerType = 'modal';
                 }
 
                 log.debug('Received interaction', {
                     type: interaction.type,
-                    handlerName,
+                    handlerId,
                 });
 
                 if (!handler) {
                     log.warn('No handler registered for interaction', {
                         type: interaction.type,
-                        handlerName,
+                        handlerId,
                     });
                     return;
                 }
 
                 try {
-                    await handler(interaction);
+                    if (handler.missing.length) {
+                        await context.respond(
+                            `This interaction is unavailable. Missing: ${handler.missing.map((value) => `\`${value}\``).join(', ')}`,
+                            { ephemeral: true },
+                        );
+                        return;
+                    }
+
+                    if (handler.authorize && !(await handler.authorize(interaction, config))) {
+                        log.warn('Interaction unauthorized', {
+                            type: handlerType,
+                            id: handlerId,
+                            userId: interaction.member?.user.id ?? interaction.user?.id,
+                        });
+                        await context.respond('You are not authorized to use this interaction.', {
+                            ephemeral: true,
+                        });
+                        return;
+                    }
+
+                    await handler.handle(context);
                 } catch (error) {
                     log.error('Interaction handler failed', {
                         error,
-                        handlerName,
+                        handlerId,
                     });
 
                     try {
-                        await rest.sendInteractionResponse(interaction.id, interaction.token, {
-                            type: InteractionResponseType.ChannelMessageWithSource,
-                            data: {
-                                content: 'Something went wrong while handling this interaction.',
-                                flags: MessageFlags.Ephemeral,
-                            },
+                        await context.respond('Something went wrong while handling this interaction.', {
+                            ephemeral: true,
                         });
                     } catch (responseError) {
                         log.error('Interaction error response failed', {
                             error: responseError,
-                            handlerName,
+                            handlerId,
                         });
                     }
                 }
             },
         },
     });
+}
+
+function createInteractionContext(rest, interaction) {
+    return {
+        interaction,
+        respond(message, options) {
+            return rest.sendInteractionResponse(interaction.id, interaction.token, {
+                type: InteractionResponseType.ChannelMessageWithSource,
+                data: normalizeMessage(message, options),
+            });
+        },
+    };
+}
+
+function normalizeMessage(message, { ephemeral = false } = {}) {
+    const data =
+        typeof message === 'string' ? { components: [{ type: ComponentType.TextDisplay, content: message }] } : message;
+
+    return {
+        ...data,
+        flags: (data.flags ?? 0) | MessageFlags.IsComponentsV2 | (ephemeral ? MessageFlags.Ephemeral : 0),
+    };
 }
 
 /**
