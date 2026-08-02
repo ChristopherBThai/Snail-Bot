@@ -106,12 +106,13 @@ module.exports = class KnowledgeBase extends require('./Module') {
     }
 
     async onceReady() {
+        const persistedThreadsEnabled = await this.bot.getConfiguration(`${this.id}_threads_enabled`);
+        if (typeof persistedThreadsEnabled === 'boolean') this.threadsEnabled = persistedThreadsEnabled;
+
         await super.onceReady();
 
         const persistedFeedbackChannel = await this.bot.getConfiguration(`${this.id}_ask_feedback_channel`);
         if (persistedFeedbackChannel) this.askFeedbackChannel = persistedFeedbackChannel;
-        const persistedThreadsEnabled = await this.bot.getConfiguration(`${this.id}_threads_enabled`);
-        if (typeof persistedThreadsEnabled === 'boolean') this.threadsEnabled = persistedThreadsEnabled;
         await this.openrouter.loadPersistedConfiguration();
 
         if (this.enabled) {
@@ -135,7 +136,6 @@ module.exports = class KnowledgeBase extends require('./Module') {
     }
 
     async setThreadsEnabled(enabled) {
-        if (typeof enabled !== 'boolean') throw new TypeError('Threads enabled must be a boolean');
         await this.bot.setConfiguration(`${this.id}_threads_enabled`, enabled);
         this.threadsEnabled = enabled;
     }
