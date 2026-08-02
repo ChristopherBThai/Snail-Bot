@@ -1,5 +1,6 @@
 const Command = require('../Command.js');
 const { parseChannelID } = require('../../utils/global.js');
+const { ChannelTypes } = require('eris').Constants;
 
 module.exports = new Command({
     alias: ['enable', 'disable', 'enabled'],
@@ -25,10 +26,21 @@ module.exports = new Command({
         switch (this.message.command) {
             case 'enable':
             case 'disable': {
+                const disableAllChannels =
+                    this.message.command == 'disable' &&
+                    this.message.args[this.message.args.length - 1]?.toLowerCase() == 'all';
                 let cmds = this.message.args
                     .filter((cmd) => !parseChannelID(cmd)) // Filter out channels
                     .map((cmd) => cmd.toLowerCase()) // Make all lowercase
                     .filter((cmd) => this.commands[cmd] || cmd == 'all'); // Filter out command names that don't exist unless it's the "all" argument
+
+                if (disableAllChannels && cmds.length > 1) {
+                    channels = this.bot.guilds
+                        .get(this.message.guildID)
+                        .channels.filter((channel) => channel.type != ChannelTypes.GUILD_CATEGORY)
+                        .map((channel) => channel.id);
+                    cmds.pop();
+                }
 
                 if (cmds.includes('all')) {
                     cmds = [...new Set(Object.values(this.commands).map((cmd) => cmd.alias[0]))];
