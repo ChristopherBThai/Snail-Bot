@@ -106,7 +106,7 @@ module.exports = new Command({
             case 'excluded':
                 return listExcludedTags.call(this, KB);
             case 'enablethreads': {
-                const [value] = this.message.args;
+                const value = this.message.args[0]?.toLowerCase();
                 if (this.message.args.length !== 1 || (value !== 'true' && value !== 'false')) {
                     await this.error('please choose exactly `true` or `false`.');
                     return;
@@ -155,6 +155,7 @@ async function showStatus(KB, openrouter) {
         color: this.config.embedcolor,
         description:
             `**Enabled:** ${KB.enabled}\n` +
+            `**Thread Responses:** ${KB.threadsEnabled}\n` +
             `**Collection:** \`${KB.collection}\`\n` +
             `**Points in Qdrant:** ${pointCount}\n` +
             `**Chat Model:** \`${openrouter.chatModel}\`\n` +
