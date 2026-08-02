@@ -38,6 +38,7 @@ module.exports = new Command({
         '- `snail kb exclude {tag...}`\n  - Exclude one or more tags from KB retrieval and delete their Qdrant points\n' +
         '- `snail kb include {tag...}`\n  - Include one or more tags in KB retrieval and sync their Qdrant points\n' +
         '- `snail kb excluded`\n  - List tags excluded from KB retrieval\n' +
+        '- `snail kb enableThreads true|false`\n  - Enable or disable ask thread responses\n' +
         '- `snail kb model {modelSlug}`\n  - Set the chat model (OpenRouter slug)\n',
 
     examples: [
@@ -58,6 +59,7 @@ module.exports = new Command({
         'snail kb exclude newtr trstart',
         'snail kb include newtr trstart',
         'snail kb excluded',
+        'snail kb enableThreads false',
         'snail kb model anthropic/claude-haiku-4.5',
     ],
 
@@ -103,11 +105,21 @@ module.exports = new Command({
                 return setTagExcluded.call(this, KB, false);
             case 'excluded':
                 return listExcludedTags.call(this, KB);
+            case 'enablethreads': {
+                const [value] = this.message.args;
+                if (this.message.args.length !== 1 || (value !== 'true' && value !== 'false')) {
+                    await this.error('please choose exactly `true` or `false`.');
+                    return;
+                }
+                const enabled = value === 'true';
+                await KB.setThreadsEnabled(enabled);
+                return this.send(`I have set KB thread responses to \`${enabled}\`!`);
+            }
             case 'model':
                 return setModel.call(this, openrouter);
             default:
                 await this.error(
-                    'that is not a valid subcommand! Use `snail kb [status|reindex|reset|find|add|edit|delete|list|questions|term|exclude|include|excluded|model] {...arguments}`'
+                    'that is not a valid subcommand! Use `snail kb [status|reindex|reset|find|add|edit|delete|list|questions|term|exclude|include|excluded|enableThreads|model] {...arguments}`'
                 );
         }
     },
@@ -190,7 +202,9 @@ async function runReindex(KB) {
     const regenerateQuestions = modes.has('questions');
 
     if (dry && regenerateQuestions) {
-        await this.error('`snail kb reindex questions` regenerates Mongo question caches, so it cannot be combined with `dry`.');
+        await this.error(
+            '`snail kb reindex questions` regenerates Mongo question caches, so it cannot be combined with `dry`.'
+        );
         return;
     }
 

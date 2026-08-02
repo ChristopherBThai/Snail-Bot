@@ -73,6 +73,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
         this.scoreThreshold = kbConfig.scoreThreshold ?? 0.3;
         this.dupeThreshold = kbConfig.dupeThreshold ?? 0.75;
         this.askFeedbackChannel = kbConfig.askFeedbackChannel;
+        this.threadsEnabled = true;
 
         this.qdrant = null;
         this.syncing = false;
@@ -105,6 +106,9 @@ module.exports = class KnowledgeBase extends require('./Module') {
     }
 
     async onceReady() {
+        const persistedThreadsEnabled = await this.bot.getConfiguration(`${this.id}_threads_enabled`);
+        if (typeof persistedThreadsEnabled === 'boolean') this.threadsEnabled = persistedThreadsEnabled;
+
         await super.onceReady();
 
         const persistedFeedbackChannel = await this.bot.getConfiguration(`${this.id}_ask_feedback_channel`);
@@ -129,6 +133,11 @@ module.exports = class KnowledgeBase extends require('./Module') {
         } catch (err) {
             console.error('[KB] enable failed:', err.message);
         }
+    }
+
+    async setThreadsEnabled(enabled) {
+        await this.bot.setConfiguration(`${this.id}_threads_enabled`, enabled);
+        this.threadsEnabled = enabled;
     }
 
     async initQdrant() {
@@ -174,7 +183,11 @@ module.exports = class KnowledgeBase extends require('./Module') {
     async answerQuestion(message, question) {
         let deliveryChannel = message.channel;
 
-        if (!isThreadChannel(deliveryChannel) && typeof deliveryChannel?.createThreadWithMessage === 'function') {
+        if (
+            this.threadsEnabled &&
+            !isThreadChannel(deliveryChannel) &&
+            typeof deliveryChannel?.createThreadWithMessage === 'function'
+        ) {
             try {
                 deliveryChannel = await deliveryChannel.createThreadWithMessage(message.id, {
                     name: buildAskThreadName(question),
