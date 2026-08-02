@@ -64,9 +64,15 @@ module.exports = new Command({
                         ? { $pull: { disabledCommands: { $in: cmds } } }
                         : { $addToSet: { disabledCommands: cmds } };
 
-                for (const channel of channels) {
-                    await this.snail_db.Channel.updateOne({ _id: channel }, operation, { upsert: true });
-                }
+                await this.snail_db.Channel.bulkWrite(
+                    channels.map((channel) => ({
+                        updateOne: {
+                            filter: { _id: channel },
+                            update: operation,
+                            upsert: true,
+                        },
+                    }))
+                );
 
                 const commandSummary = disableAllChannels
                     ? `${cmds.length} command${cmds.length == 1 ? '' : 's'}`
