@@ -26,9 +26,12 @@ module.exports = new Command({
         switch (this.message.command) {
             case 'enable':
             case 'disable': {
+                const precedingArgs = this.message.args.slice(0, -1);
                 const disableAllChannels =
                     this.message.command == 'disable' &&
-                    this.message.args[this.message.args.length - 1]?.toLowerCase() == 'all';
+                    this.message.args[this.message.args.length - 1]?.toLowerCase() == 'all' &&
+                    precedingArgs.length > 0 &&
+                    precedingArgs.every((cmd) => !parseChannelID(cmd) && this.commands[cmd.toLowerCase()]);
                 let cmds = this.message.args
                     .filter((cmd) => !parseChannelID(cmd)) // Filter out channels
                     .map((cmd) => cmd.toLowerCase()) // Make all lowercase
@@ -64,11 +67,19 @@ module.exports = new Command({
                     await this.snail_db.Channel.updateOne({ _id: channel }, operation, { upsert: true });
                 }
 
-                await this.send(
-                    `I ${this.message.command}d ${cmds.map((cmd) => `\`${cmd}\``).join(', ')} in ${channels
-                        .map((id) => `<#${id}>`)
-                        .join(', ')}!`
-                );
+                if (disableAllChannels) {
+                    await this.send(
+                        `I ${this.message.command}d ${cmds.map((cmd) => `\`${cmd}\``).join(', ')} in ${
+                            channels.length
+                        } eligible channels!`
+                    );
+                } else {
+                    await this.send(
+                        `I ${this.message.command}d ${cmds.map((cmd) => `\`${cmd}\``).join(', ')} in ${channels
+                            .map((id) => `<#${id}>`)
+                            .join(', ')}!`
+                    );
+                }
 
                 break;
             }

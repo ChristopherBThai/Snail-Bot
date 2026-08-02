@@ -90,7 +90,7 @@ async function execute(args, command = 'disable', disabledCommandsByChannel = {}
 }
 
 async function selectedCommandsCanBeDisabledAcrossGuildParentChannels() {
-    const { writes } = await execute(['ask', 'ALL']);
+    const { writes, sends } = await execute(['ask', 'ALL']);
 
     assert.deepEqual(
         writes.map(([filter, operation]) => [filter._id, operation]),
@@ -99,6 +99,9 @@ async function selectedCommandsCanBeDisabledAcrossGuildParentChannels() {
             { $addToSet: { disabledCommands: ['ask'] } },
         ])
     );
+    assert.equal(sends[0], 'I disabled `ask` in 4 eligible channels!');
+    assert.equal(sends[0].includes('<#'), false);
+    assert.ok(sends[0].length < 2000);
 }
 
 async function multipleSelectedCommandsCanBeDisabledAcrossGuildParentChannels() {
@@ -131,6 +134,8 @@ async function ordinaryPerChannelEnableAndDisableStayUnchanged() {
     assert.deepEqual(enabled.writes, [
         [{ _id: SECOND_CHANNEL_ID }, { $pull: { disabledCommands: { $in: ['ask'] } } }, { upsert: true }],
     ]);
+    assert.equal(disabled.sends[0], `I disabled \`ask\` in <#${SECOND_CHANNEL_ID}>!`);
+    assert.equal(enabled.sends[0], `I enabled \`ask\` in <#${SECOND_CHANNEL_ID}>!`);
 }
 
 async function enableAskAllStillEnablesEveryCommandInTheCurrentChannel() {
@@ -143,6 +148,14 @@ async function enableAskAllStillEnablesEveryCommandInTheCurrentChannel() {
 
 async function allBeforeAnExplicitChannelStillDisablesEveryCommandOnlyThere() {
     const { writes } = await execute(['ask', 'all', `<#${SECOND_CHANNEL_ID}>`]);
+
+    assert.deepEqual(writes, [
+        [{ _id: SECOND_CHANNEL_ID }, { $addToSet: { disabledCommands: ['ask', 'ping'] } }, { upsert: true }],
+    ]);
+}
+
+async function terminalAllAfterAnExplicitChannelStillDisablesEveryCommandOnlyThere() {
+    const { writes } = await execute(['ask', `<#${SECOND_CHANNEL_ID}>`, 'all']);
 
     assert.deepEqual(writes, [
         [{ _id: SECOND_CHANNEL_ID }, { $addToSet: { disabledCommands: ['ask', 'ping'] } }, { upsert: true }],
@@ -177,6 +190,7 @@ const tests = [
     ordinaryPerChannelEnableAndDisableStayUnchanged,
     enableAskAllStillEnablesEveryCommandInTheCurrentChannel,
     allBeforeAnExplicitChannelStillDisablesEveryCommandOnlyThere,
+    terminalAllAfterAnExplicitChannelStillDisablesEveryCommandOnlyThere,
     allBeforeAnotherCommandStillDisablesEveryCommandInTheCurrentChannel,
     enabledListingStaysUnchanged,
 ];
