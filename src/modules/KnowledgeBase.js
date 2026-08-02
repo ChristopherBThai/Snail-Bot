@@ -136,6 +136,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
     }
 
     async setThreadsEnabled(enabled) {
+        if (typeof enabled !== 'boolean') throw new TypeError('enabled must be a boolean.');
         await this.bot.setConfiguration(`${this.id}_threads_enabled`, enabled);
         this.threadsEnabled = enabled;
     }
