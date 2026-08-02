@@ -124,7 +124,7 @@ export function createGateway({ config, token, logging, log, packages, rest }) {
                         log.warn('Interaction unauthorized', {
                             type: handlerType,
                             id: handlerId,
-                            userId: interaction.member?.user.id ?? interaction.user?.id,
+                            userId: interaction.member?.user?.id ?? interaction.user?.id,
                         });
                         await context.respond('You are not authorized to use this interaction.', {
                             ephemeral: true,
