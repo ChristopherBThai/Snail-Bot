@@ -191,7 +191,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
             try {
                 deliveryChannel = await deliveryChannel.createThreadWithMessage(message.id, {
                     name: buildAskThreadName(question),
-                    autoArchiveDuration: 1440,
+                    autoArchiveDuration: 60,
                 });
             } catch (err) {
                 console.warn('[KB] ask thread creation failed, falling back to reply:', err.message);
