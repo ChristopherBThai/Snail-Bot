@@ -1,3 +1,4 @@
+import afk from './commands/afk.js';
 import nick from './commands/nick.js';
 import snail from './commands/snail.js';
 
@@ -83,7 +84,7 @@ import snail from './commands/snail.js';
 /** @typedef {(context: PackageContext) => Package} PackageSetup */
 
 /** @type {PackageSetup[]} */
-const PACKAGES = [snail, nick];
+const PACKAGES = [snail, nick, afk];
 
 /**
  * Sets up installed packages and indexes their Discord contributions.
