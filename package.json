@@ -26,7 +26,7 @@
     "bad-words": "^3.0.3",
     "dotenv": "^8.2.0",
     "elastic-apm-node": "^4.18.0",
-    "eris": "^0.18.0",
+    "eris": "git+https://github.com/ChristopherBThai/eris.git#dd03e34058f4382d572c410a6ab599859b34e2fc",
     "eventemitter3": "^5.0.1",
     "got": "^11.8.0",
     "mongoose": "^9.8.0",

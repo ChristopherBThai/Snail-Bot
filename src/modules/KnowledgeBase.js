@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const Eris = require('eris');
 const { v5: uuidv5 } = require('uuid');
 
 const { ephemeralInteractionResponse } = require('../utils/sender.js');
@@ -190,10 +191,17 @@ module.exports = class KnowledgeBase extends require('./Module') {
             typeof deliveryChannel?.createThreadWithMessage === 'function'
         ) {
             try {
-                deliveryChannel = await deliveryChannel.createThreadWithMessage(message.id, {
-                    name: buildAskThreadName(question),
-                    autoArchiveDuration: 60,
-                });
+                const rawChannel = await this.bot.requestHandler.request(
+                    'POST',
+                    `/channels/${message.channel.id}/messages/${message.id}/threads`,
+                    true,
+                    {
+                        auto_archive_duration: 60,
+                        name: buildAskThreadName(question),
+                        rejectOn429: true,
+                    }
+                );
+                deliveryChannel = Eris.Channel.from(rawChannel, this.bot);
             } catch (err) {
                 console.warn('[KB] ask thread creation failed, falling back to reply:', err.message);
             }
