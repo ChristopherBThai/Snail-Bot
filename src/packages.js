@@ -1,5 +1,6 @@
 import afk from './commands/afk.js';
 import nick from './commands/nick.js';
+import sendUserData from './commands/sendUserData.js';
 import snail from './commands/snail.js';
 
 /**
@@ -13,7 +14,9 @@ import snail from './commands/snail.js';
  *
  * @typedef {object} InteractionContext
  * @property {Interaction} interaction Raw Discord interaction.
- * @property {(message: string | import('@discordeno/types').InteractionCallbackData, options?: { ephemeral?: boolean }) => Promise<unknown>} respond Sends the initial interaction response.
+ * @property {(message: string | import('@discordeno/types').InteractionCallbackData, options?: { ephemeral?: boolean }) => Promise<unknown>} respond Sends, edits, or follows up according to the interaction's response state.
+ * @property {(options?: { ephemeral?: boolean }) => Promise<unknown>} defer Defers the initial interaction response.
+ * @property {(message: string | import('@discordeno/types').InteractionCallbackData, options?: { ephemeral?: boolean }) => Promise<unknown>} editResponse Edits an acknowledged interaction's original response.
  */
 
 /**
@@ -25,6 +28,7 @@ import snail from './commands/snail.js';
  *
  * @typedef {object} PackageCommand
  * @property {import('@discordeno/types').CreateApplicationCommand} definition Discord application command definition.
+ * @property {boolean} [global] Whether the command is synchronized globally instead of to the configured guild.
  * @property {boolean} [staff] Whether Discord should limit default visibility to staff.
  * @property {(interaction: Interaction, config: Record<string, unknown>) => boolean | Promise<boolean>} [authorize] Runtime authorization check.
  * @property {InteractionHandler} handle
@@ -77,19 +81,21 @@ import snail from './commands/snail.js';
  *
  * @typedef {object} PackageContext
  * @property {Record<string, unknown>} config Public configuration values.
+ * @property {import('./data/index.js').Databases} databases Connected databases grouped by data owner.
  * @property {object} logging Logging manager.
- * @property {ReturnType<import('./discord.js').createRest>} rest Discord REST manager.
+ * @property {{ owoMySQL?: string }} unavailable Normalized dependency failure reasons.
+ * @property {ReturnType<import('./discord/rest.js').createRest>} rest Discord REST manager.
  */
 
 /** @typedef {(context: PackageContext) => Package} PackageSetup */
 
 /** @type {PackageSetup[]} */
-const PACKAGES = [snail, nick, afk];
+const PACKAGES = [snail, nick, afk, sendUserData];
 
 /**
  * Sets up installed packages and indexes their Discord contributions.
  */
-export function setupPackages({ config, logging, log, rest }) {
+export function setupPackages({ config, databases, logging, log, rest, unavailable }) {
     const commands = new Map();
     const components = new Map();
     const modals = new Map();
@@ -97,7 +103,7 @@ export function setupPackages({ config, logging, log, rest }) {
     const features = new Set();
 
     for (const setup of PACKAGES) {
-        const package_ = setup({ config, logging, rest });
+        const package_ = setup({ config, databases, logging, rest, unavailable });
         const missing = package_.missing ?? [];
 
         for (const command of package_.commands ?? []) {

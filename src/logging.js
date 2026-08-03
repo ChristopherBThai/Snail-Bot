@@ -50,7 +50,7 @@ const TIME_FORMAT = new Intl.DateTimeFormat(undefined, {
  */
 
 /**
- * Creates an isolated logging manager.
+ * Creates an isolated Snail logging manager.
  */
 export function createLogging() {
     const loggers = new Map();

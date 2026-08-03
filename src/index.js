@@ -1,6 +1,8 @@
-import { loadConfig } from './config.js';
-import { createGateway, createRest, synchronizeCommands } from './discord.js';
-import { createLogging } from './logger.js';
+import { loadConfig } from './config/index.js';
+import { connectDatabases } from './data/index.js';
+import { createGateway } from './discord/gateway.js';
+import { createRest, synchronizeCommands } from './discord/rest.js';
+import { createLogging } from './logging.js';
 import { setupPackages } from './packages.js';
 
 const logging = createLogging();
@@ -9,16 +11,18 @@ const log = logging.createLogger('snail', true);
 async function start() {
     log.info('Starting Snail');
 
-    const { name, token, config } = await loadConfig();
+    const { name, config, environment } = await loadConfig();
     log.debug('Loaded configuration', {
         name,
         guildId: config.guildId,
     });
 
-    const rest = createRest({ token, logging });
+    const rest = createRest({ token: environment.token, logging });
     log.debug('Created REST manager');
 
-    const packages = setupPackages({ config, logging, log, rest });
+    const { databases, unavailable } = await connectDatabases(environment.databases, log);
+
+    const packages = setupPackages({ config, databases, logging, log, rest, unavailable });
 
     await synchronizeCommands({
         rest,
@@ -27,12 +31,19 @@ async function start() {
         log,
     });
 
-    const gateway = createGateway({ config, token, logging, log, packages, rest });
+    const gateway = createGateway({
+        config,
+        token: environment.token,
+        logging,
+        log,
+        packages,
+        rest,
+    });
     log.info('Connecting to Discord gateway');
     await gateway.spawnShards();
 }
 
 start().catch((error) => {
     log.error('Startup failed', { error });
-    process.exitCode = 1;
+    process.exit(1);
 });

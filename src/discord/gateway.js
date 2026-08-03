@@ -1,48 +1,12 @@
 import { createGatewayManager } from '@discordeno/gateway';
-import { createRestManager } from '@discordeno/rest';
 import {
     ComponentType,
     GatewayDispatchEvents,
     InteractionResponseType,
     InteractionType,
     MessageFlags,
-    PermissionFlagsBits,
 } from 'discord-api-types/v10';
-
-/**
- * Creates Snail's Discord REST manager.
- */
-export function createRest({ token, logging }) {
-    return createRestManager({
-        token,
-        logger: createDiscordenoLogger(logging.createLogger('rest', true)),
-    });
-}
-
-/**
- * Synchronizes Snail's global and guild application commands.
- */
-export async function synchronizeCommands({ rest, guildId, commands, log }) {
-    log.info('Synchronizing global application commands', { commandCount: 0 });
-    await rest.upsertGlobalApplicationCommands([]);
-    log.info('Global application commands synchronized', { commandCount: 0 });
-
-    log.info('Synchronizing guild application commands', {
-        guildId,
-        commandCount: commands.size,
-    });
-    await rest.upsertGuildApplicationCommands(
-        guildId,
-        [...commands.values()].map((command) => ({
-            ...command.definition,
-            ...(command.staff ? { defaultMemberPermissions: PermissionFlagsBits.BypassSlowmode.toString() } : {}),
-        })),
-    );
-    log.info('Guild application commands synchronized', {
-        guildId,
-        commandCount: commands.size,
-    });
-}
+import { createDiscordenoLogger } from './logger.js';
 
 /**
  * Creates Snail's Discord gateway manager and interaction dispatcher.
@@ -156,59 +120,67 @@ export function createGateway({ config, token, logging, log, packages, rest }) {
 }
 
 function createInteractionContext(rest, interaction) {
+    let responseState = 'pending';
+
     return {
         interaction,
-        respond(message, options) {
-            return rest.sendInteractionResponse(interaction.id, interaction.token, {
+        async respond(message, options) {
+            const data = normalizeMessage(message, options);
+
+            if (responseState === 'deferred') {
+                const response = await rest.editOriginalInteractionResponse(interaction.token, data);
+                responseState = 'responded';
+                return response;
+            }
+
+            if (responseState === 'responded') {
+                return rest.sendFollowupMessage(interaction.token, data);
+            }
+
+            const response = await rest.sendInteractionResponse(interaction.id, interaction.token, {
                 type: InteractionResponseType.ChannelMessageWithSource,
-                data: normalizeMessage(message, options),
+                data,
             });
+            responseState = 'responded';
+            return response;
+        },
+        async defer({ ephemeral = false } = {}) {
+            if (responseState !== 'pending') {
+                throw new Error('Interaction has already been acknowledged');
+            }
+
+            const response = await rest.sendInteractionResponse(interaction.id, interaction.token, {
+                type: InteractionResponseType.DeferredChannelMessageWithSource,
+                data: ephemeral ? { flags: MessageFlags.Ephemeral } : undefined,
+            });
+            responseState = 'deferred';
+            return response;
+        },
+        async editResponse(message, options) {
+            if (responseState === 'pending') {
+                throw new Error('Interaction has not been acknowledged');
+            }
+
+            const response = await rest.editOriginalInteractionResponse(
+                interaction.token,
+                normalizeMessage(message, options),
+            );
+            responseState = 'responded';
+            return response;
         },
     };
 }
 
 function normalizeMessage(message, { ephemeral = false } = {}) {
-    const data =
-        typeof message === 'string' ? { components: [{ type: ComponentType.TextDisplay, content: message }] } : message;
-
-    return {
-        ...data,
-        flags: (data.flags ?? 0) | MessageFlags.IsComponentsV2 | (ephemeral ? MessageFlags.Ephemeral : 0),
-    };
-}
-
-/**
- * Adapts a Snail logger to Discordeno's variadic logger interface.
- *
- * Discordeno `fatal` records are retained as Snail `error` records.
- */
-function createDiscordenoLogger(logger) {
-    function adapt(method) {
-        return (...args) => {
-            const [message, ...details] = args;
-
-            if (message instanceof Error) {
-                method(message.message, {
-                    error: message,
-                    ...(details.length === 0 ? {} : { details }),
-                });
-                return;
-            }
-
-            if (details.length === 1 && details[0] instanceof Error) {
-                method(message, { error: details[0] });
-                return;
-            }
-
-            method(message, details.length > 1 ? details : details[0]);
+    if (typeof message === 'string') {
+        return {
+            components: [{ type: ComponentType.TextDisplay, content: message }],
+            flags: MessageFlags.IsComponentsV2 | (ephemeral ? MessageFlags.Ephemeral : 0),
         };
     }
 
     return {
-        debug: adapt(logger.debug),
-        info: adapt(logger.info),
-        warn: adapt(logger.warn),
-        error: adapt(logger.error),
-        fatal: adapt(logger.error),
+        ...message,
+        flags: (message.flags ?? 0) | (ephemeral ? MessageFlags.Ephemeral : 0),
     };
 }

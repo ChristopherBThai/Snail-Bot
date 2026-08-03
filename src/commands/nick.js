@@ -1,5 +1,5 @@
 import { ApplicationCommandOptionType, ApplicationCommandType } from 'discord-api-types/v10';
-import { hasManagerAccess } from '../auth.js';
+import { hasManagerAccess } from '../discord/auth.js';
 
 const NICK_COMMAND_DEFINITION = {
     type: ApplicationCommandType.ChatInput,

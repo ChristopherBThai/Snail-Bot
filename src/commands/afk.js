@@ -1,5 +1,5 @@
 import { ApplicationCommandType } from 'discord-api-types/v10';
-import { hasAdminAccess, hasHelperAccess, hasManagerAccess } from '../auth.js';
+import { hasAdminAccess, hasHelperAccess, hasManagerAccess } from '../discord/auth.js';
 
 const AFK_COMMAND_DEFINITION = {
     type: ApplicationCommandType.ChatInput,
