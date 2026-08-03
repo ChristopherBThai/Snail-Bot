@@ -27,6 +27,7 @@ module.exports = new Command({
         '- `snail kb reindex questions`\n  - Regenerate retrieval questions for all tags, then incrementally sync Qdrant\n' +
         '- `snail kb reset confirm`\n  - Destructively recreate the Qdrant collection, then sync Mongo tags. Remote resets require backup through `ssh hub.corg.network` first.\n' +
         '- `snail kb find {query}`\n  - Search matching tags for manager/debug review\n' +
+        '- `snail kb tag {tag}`\n  - Display a KB-only/private support tag\n' +
         '- `snail kb add {name} {data}`\n  - Add a KB-only/private support tag\n' +
         '- `snail kb edit {name} {data}`\n  - Edit a KB-only/private support tag\n' +
         '- `snail kb delete {name}`\n  - Delete a KB-only/private support tag\n' +
@@ -48,6 +49,7 @@ module.exports = new Command({
         'snail kb reindex questions',
         'snail kb reset confirm',
         'snail kb find how do gems expire',
+        'snail kb tag privategems',
         'snail kb add privategems Private note for support helpers only',
         'snail kb edit privategems Updated private note for support helpers only',
         'snail kb delete privategems',
@@ -87,6 +89,8 @@ module.exports = new Command({
                 return runReset.call(this, KB);
             case 'find':
                 return runFind.call(this, KB);
+            case 'tag':
+                return showKbOnlyTag.call(this);
             case 'add':
                 return addKbOnlyTag.call(this, KB);
             case 'edit':
@@ -119,7 +123,7 @@ module.exports = new Command({
                 return setModel.call(this, openrouter);
             default:
                 await this.error(
-                    'that is not a valid subcommand! Use `snail kb [status|reindex|reset|find|add|edit|delete|list|questions|term|exclude|include|excluded|enableThreads|model] {...arguments}`'
+                    'that is not a valid subcommand! Use `snail kb [status|reindex|reset|find|tag|add|edit|delete|list|questions|term|exclude|include|excluded|enableThreads|model] {...arguments}`'
                 );
         }
     },
@@ -340,6 +344,22 @@ async function runFind(KB) {
             fields,
         },
     });
+}
+
+async function showKbOnlyTag() {
+    const name = this.message.args.shift()?.toLowerCase();
+    if (!name || this.message.args.length) {
+        await this.error('please provide exactly one tag name!');
+        return;
+    }
+
+    const tag = await this.snail_db.Tag.findOne({ _id: name, visibility: 'kb_only' });
+    if (!tag) {
+        await this.error('that tag does not exist!');
+        return;
+    }
+
+    await this.send(tag.data);
 }
 
 async function addKbOnlyTag(KB) {
