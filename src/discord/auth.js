@@ -1,10 +1,12 @@
+import { getInteractionUser } from './interactions.js';
+
 /**
  * @typedef {import('@discordeno/types').Camelize<import('@discordeno/types').DiscordInteraction>} Interaction
  */
 
 export function hasOwnerAccess(interaction, config) {
     const ownerId = config.users?.owner;
-    const userId = interaction.member?.user?.id ?? interaction.user?.id;
+    const userId = getInteractionUser(interaction)?.id;
 
     return Boolean(ownerId && userId === ownerId);
 }

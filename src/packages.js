@@ -1,4 +1,5 @@
 import afk from './commands/afk.js';
+import giveItem from './commands/giveItem.js';
 import nick from './commands/nick.js';
 import sendUserData from './commands/sendUserData.js';
 import snail from './commands/snail.js';
@@ -16,7 +17,10 @@ import snail from './commands/snail.js';
  * @property {Interaction} interaction Raw Discord interaction.
  * @property {(message: string | import('@discordeno/types').InteractionCallbackData, options?: { ephemeral?: boolean }) => Promise<unknown>} respond Sends, edits, or follows up according to the interaction's response state.
  * @property {(options?: { ephemeral?: boolean }) => Promise<unknown>} defer Defers the initial interaction response.
+ * @property {() => Promise<unknown>} deferUpdate Defers an update to a component's message.
  * @property {(message: string | import('@discordeno/types').InteractionCallbackData, options?: { ephemeral?: boolean }) => Promise<unknown>} editResponse Edits an acknowledged interaction's original response.
+ * @property {(message: string | import('@discordeno/types').InteractionCallbackData) => Promise<unknown>} update Updates the message that produced a component or modal interaction.
+ * @property {(modal: import('@discordeno/types').InteractionCallbackData) => Promise<unknown>} openModal Opens a modal in response to an interaction.
  */
 
 /**
@@ -81,21 +85,21 @@ import snail from './commands/snail.js';
  *
  * @typedef {object} PackageContext
  * @property {Record<string, unknown>} config Public configuration values.
- * @property {import('./data/index.js').Databases} databases Connected databases grouped by data owner.
  * @property {object} logging Logging manager.
- * @property {{ owoMySQL?: string }} unavailable Normalized dependency failure reasons.
  * @property {ReturnType<import('./discord/rest.js').createRest>} rest Discord REST manager.
+ * @property {import('./services/index.js').Services} services Initialized external services grouped by owner.
+ * @property {{ owo: { api?: string[]; mysql?: string[] } }} unavailable Normalized dependency failure reasons grouped like `services`.
  */
 
 /** @typedef {(context: PackageContext) => Package} PackageSetup */
 
 /** @type {PackageSetup[]} */
-const PACKAGES = [snail, nick, afk, sendUserData];
+const PACKAGES = [snail, nick, afk, giveItem, sendUserData];
 
 /**
  * Sets up installed packages and indexes their Discord contributions.
  */
-export function setupPackages({ config, databases, logging, log, rest, unavailable }) {
+export function setupPackages({ config, logging, log, rest, services, unavailable }) {
     const commands = new Map();
     const components = new Map();
     const modals = new Map();
@@ -103,7 +107,7 @@ export function setupPackages({ config, databases, logging, log, rest, unavailab
     const features = new Set();
 
     for (const setup of PACKAGES) {
-        const package_ = setup({ config, databases, logging, rest, unavailable });
+        const package_ = setup({ config, logging, rest, services, unavailable });
         const missing = package_.missing ?? [];
 
         for (const command of package_.commands ?? []) {

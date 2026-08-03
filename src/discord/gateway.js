@@ -6,6 +6,7 @@ import {
     InteractionType,
     MessageFlags,
 } from 'discord-api-types/v10';
+import { getInteractionUser } from './interactions.js';
 import { createDiscordenoLogger } from './logger.js';
 
 /**
@@ -88,7 +89,7 @@ export function createGateway({ config, token, logging, log, packages, rest }) {
                         log.warn('Interaction unauthorized', {
                             type: handlerType,
                             id: handlerId,
-                            userId: interaction.member?.user?.id ?? interaction.user?.id,
+                            userId: getInteractionUser(interaction)?.id,
                         });
                         await context.respond('You are not authorized to use this interaction.', {
                             ephemeral: true,
@@ -156,6 +157,17 @@ function createInteractionContext(rest, interaction) {
             responseState = 'deferred';
             return response;
         },
+        async deferUpdate() {
+            if (responseState !== 'pending') {
+                throw new Error('Interaction has already been acknowledged');
+            }
+
+            const response = await rest.sendInteractionResponse(interaction.id, interaction.token, {
+                type: InteractionResponseType.DeferredMessageUpdate,
+            });
+            responseState = 'responded';
+            return response;
+        },
         async editResponse(message, options) {
             if (responseState === 'pending') {
                 throw new Error('Interaction has not been acknowledged');
@@ -165,6 +177,30 @@ function createInteractionContext(rest, interaction) {
                 interaction.token,
                 normalizeMessage(message, options),
             );
+            responseState = 'responded';
+            return response;
+        },
+        async update(message) {
+            if (responseState !== 'pending') {
+                throw new Error('Interaction has already been acknowledged');
+            }
+
+            const response = await rest.sendInteractionResponse(interaction.id, interaction.token, {
+                type: InteractionResponseType.UpdateMessage,
+                data: normalizeMessage(message),
+            });
+            responseState = 'responded';
+            return response;
+        },
+        async openModal(modal) {
+            if (responseState !== 'pending') {
+                throw new Error('Interaction has already been acknowledged');
+            }
+
+            const response = await rest.sendInteractionResponse(interaction.id, interaction.token, {
+                type: InteractionResponseType.Modal,
+                data: modal,
+            });
             responseState = 'responded';
             return response;
         },

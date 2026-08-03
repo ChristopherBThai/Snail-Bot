@@ -1,9 +1,9 @@
 import { loadConfig } from './config/index.js';
-import { connectDatabases } from './data/index.js';
 import { createGateway } from './discord/gateway.js';
 import { createRest, synchronizeCommands } from './discord/rest.js';
 import { createLogging } from './logging.js';
 import { setupPackages } from './packages.js';
+import { createServices } from './services/index.js';
 
 const logging = createLogging();
 const log = logging.createLogger('snail', true);
@@ -20,9 +20,9 @@ async function start() {
     const rest = createRest({ token: environment.token, logging });
     log.debug('Created REST manager');
 
-    const { databases, unavailable } = await connectDatabases(environment.databases, log);
+    const { services, unavailable } = await createServices(environment.services, log);
 
-    const packages = setupPackages({ config, databases, logging, log, rest, unavailable });
+    const packages = setupPackages({ config, logging, log, rest, services, unavailable });
 
     await synchronizeCommands({
         rest,

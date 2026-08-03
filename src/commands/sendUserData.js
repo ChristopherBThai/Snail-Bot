@@ -1,5 +1,6 @@
 import { ApplicationCommandType, ApplicationIntegrationType, InteractionContextType } from 'discord-api-types/v10';
 import { hasOwnerAccess } from '../discord/auth.js';
+import { getTargetUser } from '../discord/interactions.js';
 
 const SEND_USER_DATA_COMMAND_DEFINITION = {
     type: ApplicationCommandType.User,
@@ -8,13 +9,13 @@ const SEND_USER_DATA_COMMAND_DEFINITION = {
     contexts: [InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel],
 };
 
-export default function setup({ config, databases, logging, unavailable }) {
+export default function setup({ config, logging, services, unavailable }) {
     const log = logging.createLogger('sendUserData');
     const missing = [];
-    const owoMySQL = databases.owo.mysql;
+    const mysql = services.owo.mysql;
 
     if (!config.users?.owner) missing.push('users.owner (config)');
-    if (unavailable.owoMySQL) missing.push(unavailable.owoMySQL);
+    missing.push(...(unavailable.owo.mysql ?? []));
     return {
         name: 'Send User Data Command',
         missing,
@@ -24,8 +25,7 @@ export default function setup({ config, databases, logging, unavailable }) {
                 global: true,
                 authorize: hasOwnerAccess,
                 async handle({ interaction, respond, defer, editResponse }) {
-                    const targetId = interaction.data.targetId;
-                    const user = targetId ? interaction.data.resolved?.users?.[targetId] : undefined;
+                    const user = getTargetUser(interaction);
 
                     if (!user) {
                         await respond('Could not resolve that user.', { ephemeral: true });
@@ -35,7 +35,7 @@ export default function setup({ config, databases, logging, unavailable }) {
                     await defer({ ephemeral: true });
 
                     log.info('Exporting OwO user data', { userId: user.id });
-                    const { data, rowCount, tableCount } = await exportUserData(owoMySQL, user.id);
+                    const { data, rowCount, tableCount } = await exportUserData(mysql, user.id);
                     const bytes = Buffer.byteLength(data);
                     const timestamp = new Date().toISOString().replaceAll(':', '-');
                     const name = `user-data-${user.id}-${timestamp}.txt`;
@@ -72,8 +72,8 @@ export default function setup({ config, databases, logging, unavailable }) {
     };
 }
 
-async function exportUserData(owoMySQL, userId) {
-    const [constraints] = await owoMySQL.query(`
+async function exportUserData(mysql, userId) {
+    const [constraints] = await mysql.query(`
         SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
         FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
         WHERE TABLE_SCHEMA = SCHEMA() AND REFERENCED_TABLE_NAME IS NOT NULL
@@ -111,7 +111,7 @@ async function exportUserData(owoMySQL, userId) {
         for (const value of newValues) queriedValues.add(String(value));
         queried.set(queryKey, queriedValues);
 
-        const [rows] = await owoMySQL.query(`SELECT * FROM \`${table}\` WHERE \`${column}\` IN (?)`, [newValues]);
+        const [rows] = await mysql.query(`SELECT * FROM \`${table}\` WHERE \`${column}\` IN (?)`, [newValues]);
         if (!rows.length) continue;
 
         const tableRows = rowsByTable.get(table) ?? [];

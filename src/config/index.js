@@ -6,7 +6,6 @@ import 'dotenv/config';
 export async function loadConfig() {
     const token = process.env.DISCORD_TOKEN?.trim().replace(/^Bot\s+/i, '') || undefined;
     const name = process.env.CONFIG_NAME?.trim() || undefined;
-    const owoMySQLUri = process.env.OWO_MYSQL_URI?.trim() || undefined;
 
     if (!token) {
         throw new Error('DISCORD_TOKEN not configured in .env file');
@@ -36,9 +35,11 @@ export async function loadConfig() {
         config,
         environment: {
             token,
-            databases: {
+            services: {
                 owo: {
-                    mysqlUri: owoMySQLUri,
+                    apiPassword: process.env.OWO_API_PASSWORD?.trim() || undefined,
+                    apiUri: process.env.OWO_API_URI?.trim() || undefined,
+                    mysqlUri: process.env.OWO_MYSQL_URI?.trim() || undefined,
                 },
             },
         },

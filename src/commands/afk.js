@@ -1,5 +1,6 @@
 import { ApplicationCommandType } from 'discord-api-types/v10';
 import { hasAdminAccess, hasHelperAccess, hasManagerAccess } from '../discord/auth.js';
+import { getInteractionUser } from '../discord/interactions.js';
 
 const AFK_COMMAND_DEFINITION = {
     type: ApplicationCommandType.ChatInput,
@@ -27,7 +28,7 @@ export default function setup({ config, rest }) {
                 authorize: hasHelperAccess,
                 async handle({ interaction, respond }) {
                     const guildId = interaction.guildId;
-                    const userId = interaction.member?.user?.id ?? interaction.user?.id;
+                    const userId = getInteractionUser(interaction)?.id;
 
                     if (!guildId || !interaction.member || !userId) {
                         await respond('This command can only be used in a server.', {
