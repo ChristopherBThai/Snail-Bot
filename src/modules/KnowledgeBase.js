@@ -1167,11 +1167,23 @@ function unwrapJsonResponse(content) {
 
 function parseAnswerResponse(content) {
     const rawAnswer = String(content ?? '').trim();
+    const jsonResponse = unwrapJsonResponse(content);
     let parsed;
     try {
-        parsed = JSON.parse(unwrapJsonResponse(content));
+        parsed = JSON.parse(jsonResponse);
     } catch (err) {
-        return { answer: rawAnswer, tagIds: [], parseFailed: true };
+        try {
+            parsed = JSON.parse(
+                jsonResponse.replace(/"(?:\\.|[^"\\])*"/g, (jsonString) =>
+                    jsonString.replace(
+                        /\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4})|\\([!#$%&'()*+,\-.:;<=>?@[\]^_`{|}~])/g,
+                        (match, markdownPunctuation) => markdownPunctuation ?? match
+                    )
+                )
+            );
+        } catch (recoveryErr) {
+            return { answer: rawAnswer, tagIds: [], parseFailed: true };
+        }
     }
 
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || typeof parsed.answer !== 'string') {
