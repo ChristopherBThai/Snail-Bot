@@ -23,6 +23,16 @@ export function getTargetUser(interaction) {
     return targetId ? interaction.data.resolved?.users?.[targetId] : undefined;
 }
 
+/**
+ * Gets the resolved message targeted by a message context command.
+ *
+ * @param {Interaction} interaction
+ */
+export function getTargetMessage(interaction) {
+    const targetId = interaction.data?.targetId;
+    return targetId ? interaction.data.resolved?.messages?.[targetId] : undefined;
+}
+
 /** Gets a top-level application-command option value by name. */
 export function getCommandOptionValue(interaction, name) {
     return interaction.data?.options?.find((option) => option.name === name)?.value;
