@@ -17,6 +17,7 @@ const NICK_COMMAND_DEFINITION = {
     ],
 };
 
+/** @type {import('../packages.js').PackageSetup} */
 export default function setup({ config, rest }) {
     return {
         name: 'Nick Command',

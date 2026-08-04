@@ -3,6 +3,7 @@ import giveItem from './commands/giveItem.js';
 import nick from './commands/nick.js';
 import sendUserData from './commands/sendUserData.js';
 import snail from './commands/snail.js';
+import createMessageBuilder from './systems/messageBuilder/index.js';
 
 /**
  * A camel-cased Discord interaction received through Discordeno Gateway.
@@ -42,7 +43,8 @@ import snail from './commands/snail.js';
  * A component or modal contributed by a package.
  *
  * @typedef {object} PackageInteraction
- * @property {string} id Discord custom ID.
+ * @property {string} [id] Exact Discord custom ID.
+ * @property {string} [prefix] Discord custom-ID prefix.
  * @property {(interaction: Interaction, config: Record<string, unknown>) => boolean | Promise<boolean>} [authorize] Runtime authorization check.
  * @property {InteractionHandler} handle
  */
@@ -88,7 +90,8 @@ import snail from './commands/snail.js';
  * @property {object} logging Logging manager.
  * @property {ReturnType<import('./discord/rest.js').createRest>} rest Discord REST manager.
  * @property {import('./services/index.js').Services} services Initialized external services grouped by owner.
- * @property {{ owo: { api?: string[]; mysql?: string[] } }} unavailable Normalized dependency failure reasons grouped like `services`.
+ * @property {{ snail: { mongo?: string[] }; owo: { api?: string[]; mysql?: string[] } }} unavailable Normalized dependency failure reasons grouped like `services`.
+ * @property {ReturnType<typeof createMessageBuilder>} messageBuilder Shared Message Builder system.
  */
 
 /** @typedef {(context: PackageContext) => Package} PackageSetup */
@@ -103,11 +106,16 @@ export function setupPackages({ config, logging, log, rest, services, unavailabl
     const commands = new Map();
     const components = new Map();
     const modals = new Map();
+    const componentSources = new Map();
+    const modalSources = new Map();
     const events = [];
     const features = new Set();
 
-    for (const setup of PACKAGES) {
-        const package_ = setup({ config, logging, rest, services, unavailable });
+    const messageBuilder = createMessageBuilder({ config, logging, rest, services, unavailable });
+    let packageCount = 0;
+
+    for (const package_ of createPackages({ config, logging, rest, services, unavailable, messageBuilder })) {
+        packageCount += 1;
         const missing = package_.missing ?? [];
 
         for (const command of package_.commands ?? []) {
@@ -124,20 +132,28 @@ export function setupPackages({ config, logging, log, rest, services, unavailabl
             commands.set(name, { ...command, missing });
         }
 
-        for (const component of package_.components ?? []) {
-            if (components.has(component.id)) {
-                throw new Error(`Duplicate component: ${component.id}`);
-            }
-
-            components.set(component.id, { ...component, missing });
+        for (const [index, component] of (package_.components ?? []).entries()) {
+            addInteraction({
+                interactions: components,
+                sources: componentSources,
+                interaction: component,
+                missing,
+                packageName: package_.name,
+                index,
+                type: 'component',
+            });
         }
 
-        for (const modal of package_.modals ?? []) {
-            if (modals.has(modal.id)) {
-                throw new Error(`Duplicate modal: ${modal.id}`);
-            }
-
-            modals.set(modal.id, { ...modal, missing });
+        for (const [index, modal] of (package_.modals ?? []).entries()) {
+            addInteraction({
+                interactions: modals,
+                sources: modalSources,
+                interaction: modal,
+                missing,
+                packageName: package_.name,
+                index,
+                type: 'modal',
+            });
         }
 
         if (package_.feature) {
@@ -163,7 +179,7 @@ export function setupPackages({ config, logging, log, rest, services, unavailabl
     }
 
     log.debug('Loaded packages', {
-        packages: PACKAGES.length,
+        packages: packageCount,
         features: features.size,
         commands: commands.size,
         components: components.size,
@@ -177,4 +193,45 @@ export function setupPackages({ config, logging, log, rest, services, unavailabl
         modals,
         events,
     };
+}
+
+function* createPackages(context) {
+    yield context.messageBuilder;
+    for (const setup of PACKAGES) yield setup(context);
+}
+
+function addInteraction({ interactions, sources, interaction, missing, packageName, index, type }) {
+    const number = index + 1;
+    const hasId = Boolean(interaction.id);
+    const hasPrefix = Boolean(interaction.prefix);
+
+    if (hasId === hasPrefix) {
+        const received = hasId
+            ? `received id "${interaction.id}" and prefix "${interaction.prefix}"`
+            : 'received neither';
+
+        throw new Error(`${packageName} ${type} #${number} must define exactly one of id or prefix; ${received}`);
+    }
+
+    const key = interaction.id ?? interaction.prefix;
+    const kind = interaction.id ? 'id' : 'prefix';
+
+    for (const [existingKey, existing] of interactions) {
+        const overlaps =
+            key === existingKey ||
+            (interaction.prefix && existingKey.startsWith(interaction.prefix)) ||
+            (existing.prefix && key.startsWith(existing.prefix));
+
+        if (!overlaps) continue;
+
+        const existingSource = sources.get(existingKey);
+        throw new Error(
+            `${packageName} ${type} #${number} ${kind} "${key}" overlaps ` +
+                `${existingSource.packageName} ${type} #${existingSource.number} ` +
+                `${existingSource.kind} "${existingKey}"`,
+        );
+    }
+
+    interactions.set(key, { ...interaction, missing });
+    sources.set(key, { packageName, number, kind });
 }

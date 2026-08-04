@@ -8,6 +8,7 @@ const AFK_COMMAND_DEFINITION = {
     description: 'Toggle your presence on the member list.',
 };
 
+/** @type {import('../packages.js').PackageSetup} */
 export default function setup({ config, rest }) {
     const roles = config.roles ?? {};
     const displayRoles = [roles.admin?.display, roles.manager?.display, roles.helper?.display];

@@ -55,11 +55,11 @@ export function createGateway({ config, token, logging, log, packages, rest }) {
                     handlerType = 'command';
                 } else if (interaction.type === InteractionType.MessageComponent) {
                     handlerId = interaction.data.customId;
-                    handler = packages.components.get(handlerId);
+                    handler = getInteractionHandler(packages.components, handlerId);
                     handlerType = 'component';
                 } else if (interaction.type === InteractionType.ModalSubmit) {
                     handlerId = interaction.data.customId;
-                    handler = packages.modals.get(handlerId);
+                    handler = getInteractionHandler(packages.modals, handlerId);
                     handlerType = 'modal';
                 }
 
@@ -118,6 +118,17 @@ export function createGateway({ config, token, logging, log, packages, rest }) {
             },
         },
     });
+}
+
+function getInteractionHandler(interactions, customId) {
+    const exact = interactions.get(customId);
+    if (exact) return exact;
+
+    for (const interaction of interactions.values()) {
+        if (interaction.prefix && customId.startsWith(interaction.prefix)) {
+            return interaction;
+        }
+    }
 }
 
 function createInteractionContext(rest, interaction) {

@@ -31,7 +31,19 @@ export function getTargetUser(interaction) {
  * @param {string} customId
  */
 export function getModalValue(interaction, customId) {
-    return findComponent(interaction.data?.components ?? [], customId)?.value;
+    const component = findComponent(interaction.data?.components ?? [], customId);
+    return component?.value ?? component?.values?.[0];
+}
+
+/** Returns a copy of a component tree with every interactive component disabled. */
+export function disableComponents(components) {
+    return components.map((component) => ({
+        ...component,
+        ...(component.customId ? { disabled: true } : {}),
+        ...(component.components ? { components: disableComponents(component.components) } : {}),
+        ...(component.accessory ? { accessory: disableComponents([component.accessory])[0] } : {}),
+        ...(component.component ? { component: disableComponents([component.component])[0] } : {}),
+    }));
 }
 
 function findComponent(components, customId) {

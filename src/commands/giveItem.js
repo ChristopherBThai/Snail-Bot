@@ -9,7 +9,7 @@ import {
     TextInputStyle,
 } from 'discord-api-types/v10';
 import { hasOwnerAccess } from '../discord/auth.js';
-import { getModalValue, getTargetUser } from '../discord/interactions.js';
+import { disableComponents, getModalValue, getTargetUser } from '../discord/interactions.js';
 
 const PANEL_IDLE_TIME = 120_000;
 
@@ -57,6 +57,7 @@ const GIVE_ITEM_COMMAND_DEFINITION = {
     contexts: [InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel],
 };
 
+/** @type {import('../packages.js').PackageSetup} */
 export default function setup({ config, logging, rest, services, unavailable }) {
     const log = logging.createLogger('giveItem');
     const missing = [
@@ -394,20 +395,6 @@ function buildPanel(state, { disabled = false, notice } = {}) {
                 ],
             },
         ],
-    };
-}
-
-function disableComponents(components) {
-    return components.map(disableComponent);
-}
-
-function disableComponent(component) {
-    return {
-        ...component,
-        ...(component.customId ? { disabled: true } : {}),
-        ...(component.components ? { components: disableComponents(component.components) } : {}),
-        ...(component.accessory ? { accessory: disableComponent(component.accessory) } : {}),
-        ...(component.component ? { component: disableComponent(component.component) } : {}),
     };
 }
 

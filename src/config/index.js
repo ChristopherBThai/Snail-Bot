@@ -36,6 +36,9 @@ export async function loadConfig() {
         environment: {
             token,
             services: {
+                snail: {
+                    mongoUri: process.env.SNAIL_MONGO_URI?.trim() || undefined,
+                },
                 owo: {
                     apiPassword: process.env.OWO_API_PASSWORD?.trim() || undefined,
                     apiUri: process.env.OWO_API_URI?.trim() || undefined,

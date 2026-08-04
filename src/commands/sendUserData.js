@@ -9,6 +9,7 @@ const SEND_USER_DATA_COMMAND_DEFINITION = {
     contexts: [InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel],
 };
 
+/** @type {import('../packages.js').PackageSetup} */
 export default function setup({ config, logging, services, unavailable }) {
     const log = logging.createLogger('sendUserData');
     const missing = [];
