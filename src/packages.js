@@ -2,6 +2,7 @@ import afk from './commands/afk.js';
 import echo from './commands/echo.js';
 import edit from './commands/edit.js';
 import giveItem from './commands/giveItem.js';
+import logs from './commands/logs.js';
 import nick from './commands/nick.js';
 import sendUserData from './commands/sendUserData.js';
 import snail from './commands/snail.js';
@@ -99,7 +100,7 @@ import createMessageBuilder from './systems/messageBuilder/index.js';
 /** @typedef {(context: PackageContext) => Package} PackageSetup */
 
 /** @type {PackageSetup[]} */
-const PACKAGES = [snail, nick, afk, giveItem, sendUserData, echo, edit];
+const PACKAGES = [snail, nick, afk, giveItem, sendUserData, echo, edit, logs];
 
 /**
  * Sets up installed packages and indexes their Discord contributions.

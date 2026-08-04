@@ -1,6 +1,7 @@
 import { ApplicationCommandType, ApplicationIntegrationType, InteractionContextType } from 'discord-api-types/v10';
 import { hasOwnerAccess } from '../discord/auth.js';
 import { getTargetUser } from '../discord/interactions.js';
+import { getTimestampForFilename } from '../utils/files.js';
 
 const SEND_USER_DATA_COMMAND_DEFINITION = {
     type: ApplicationCommandType.User,
@@ -38,8 +39,7 @@ export default function setup({ config, logging, services, unavailable }) {
                     log.info('Exporting OwO user data', { userId: user.id });
                     const { data, rowCount, tableCount } = await exportUserData(mysql, user.id);
                     const bytes = Buffer.byteLength(data);
-                    const timestamp = new Date().toISOString().replaceAll(':', '-');
-                    const name = `user-data-${user.id}-${timestamp}.txt`;
+                    const name = `user-data-${user.id}-${getTimestampForFilename()}.txt`;
 
                     log.info('Exported OwO user data', {
                         userId: user.id,

@@ -12,6 +12,8 @@ const LEVELS = Object.freeze({
     error: 50,
 });
 
+export const LOG_LEVELS = Object.freeze(Object.keys(LEVELS));
+
 const DEFAULT_LEVEL = 'info';
 const LOG_LIMIT = 2_500;
 const TIME_FORMAT = new Intl.DateTimeFormat(undefined, {
@@ -39,7 +41,9 @@ const TIME_FORMAT = new Intl.DateTimeFormat(undefined, {
  *
  * @typedef {object} Logger
  * @property {string} name Unique logger name.
- * @property {LogLevel} level Minimum retained level. Assigning an unknown level throws.
+ * @property {LogLevel} level Minimum retained level.
+ * @property {number} limit Maximum number of retained records.
+ * @property {number} size Number of currently retained records.
  * @property {ReadonlyArray<Log>} logs Snapshot of retained records in chronological order.
  * @property {(message: string, data?: unknown) => void} trace Writes a trace record.
  * @property {(message: string, data?: unknown) => void} debug Writes a debug record.
@@ -54,10 +58,12 @@ const TIME_FORMAT = new Intl.DateTimeFormat(undefined, {
  */
 export function createLogging() {
     const loggers = new Map();
+    const configuredLevels = new Map();
 
     return {
         createLogger,
         getLoggers,
+        setLevel,
     };
 
     /**
@@ -73,7 +79,6 @@ export function createLogging() {
             throw new Error(`Logger already exists: ${name}`);
         }
 
-        let level = DEFAULT_LEVEL;
         const logs = [];
 
         const logger = {
@@ -84,21 +89,15 @@ export function createLogging() {
             },
 
             get level() {
-                return level;
+                return configuredLevels.get(name) ?? DEFAULT_LEVEL;
             },
 
-            /**
-             * Changes the minimum retained level.
-             *
-             * @param {LogLevel} value
-             * @throws {TypeError} If `value` is not recognized.
-             */
-            set level(value) {
-                if (!Object.hasOwn(LEVELS, value)) {
-                    throw new TypeError(`Unknown log level: ${value}`);
-                }
+            get limit() {
+                return LOG_LIMIT;
+            },
 
-                level = value;
+            get size() {
+                return logs.length;
             },
 
             /**
@@ -156,5 +155,22 @@ export function createLogging() {
      */
     function getLoggers() {
         return [...loggers.values()];
+    }
+
+    /**
+     * Sets the minimum retained level for a logger name.
+     *
+     * The setting also applies if the logger is created later.
+     *
+     * @param {string} name
+     * @param {LogLevel} level
+     * @throws {TypeError} If `level` is not recognized.
+     */
+    function setLevel(name, level) {
+        if (!Object.hasOwn(LEVELS, level)) {
+            throw new TypeError(`Unknown log level: ${level}`);
+        }
+
+        configuredLevels.set(name, level);
     }
 }

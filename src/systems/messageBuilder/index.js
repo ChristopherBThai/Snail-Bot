@@ -5,6 +5,7 @@ import { suppressMentions } from '../../discord/messages.js';
 import {
     addComponent,
     addItem,
+    countComponents,
     createComponent,
     createDraft,
     deleteComponent,
@@ -98,8 +99,10 @@ export default function createMessageBuilder({ config, logging, rest, services, 
         if (!user) throw new Error('Could not resolve Message Builder user');
 
         let hydrated;
+        let source;
         if (options.sourceMessage) {
             hydrated = hydrateMessage(options.sourceMessage);
+            source = 'message';
         } else if (options.components) {
             hydrated = hydrateDraft(
                 { components: options.components, allowMentions: options.allowMentions === true },
@@ -107,11 +110,16 @@ export default function createMessageBuilder({ config, logging, rest, services, 
                     allowIncomplete: true,
                 },
             );
+            source = 'components';
         } else {
             const stored = await repository.load(user.id);
             hydrated = stored ? hydrateDraft(stored, { allowIncomplete: true }) : { ok: true, draft: createDraft() };
+            source = stored ? 'saved' : 'new';
             if (!hydrated.ok) {
-                log.warn('Discarded invalid saved Message Builder draft', { userId: user.id });
+                log.warn('Discarded invalid saved Message Builder draft', {
+                    userId: user.id,
+                    reason: hydrated.message,
+                });
                 hydrated = { ok: true, draft: createDraft() };
             }
         }
@@ -145,7 +153,11 @@ export default function createMessageBuilder({ config, logging, rest, services, 
         session.controllerId = controller.id;
         session.timeout = setTimeout(() => closeSession(session, 'Session expired.'), session.expiresAt - Date.now());
         sessions.set(user.id, session);
-        log.debug('Message Builder session opened', { userId: user.id });
+        log.debug('Message Builder session opened', {
+            userId: user.id,
+            source,
+            components: countComponents(session.draft.components),
+        });
 
         if (previous) closeSession(previous, 'Replaced by a newer Message Builder session.');
     }
@@ -296,7 +308,10 @@ export default function createMessageBuilder({ config, logging, rest, services, 
         session.selection = result.selection;
         await context.editResponse(buildController(session));
         await rest.editOriginalInteractionResponse(session.token, buildPreview(session.draft));
-        log.debug('Message Builder draft updated', { userId: session.userId });
+        log.debug('Message Builder draft updated', {
+            userId: session.userId,
+            components: countComponents(session.draft.components),
+        });
     }
 
     async function submit(context, session) {
@@ -320,7 +335,10 @@ export default function createMessageBuilder({ config, logging, rest, services, 
 
         clearTimeout(session.timeout);
         if (sessions.get(session.userId) === session) sessions.delete(session.userId);
-        log.info('Message Builder submission completed', { userId: session.userId });
+        log.info('Message Builder submission completed', {
+            userId: session.userId,
+            components: countComponents(session.draft.components),
+        });
 
         try {
             await context.editResponse(buildController(session, { disabled: true, notice: 'Submitted.' }));
@@ -394,6 +412,7 @@ export default function createMessageBuilder({ config, logging, rest, services, 
     function closeSession(session, notice) {
         clearTimeout(session.timeout);
         if (sessions.get(session.userId) === session) sessions.delete(session.userId);
+        log.debug('Message Builder session closed', { userId: session.userId, reason: notice });
         if (!session.controllerId) return;
 
         rest.editFollowupMessage(

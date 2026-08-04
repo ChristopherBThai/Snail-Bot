@@ -148,7 +148,17 @@ export default function setup({ config, logging, rest, services, unavailable }) 
             return;
         }
 
-        await addItem(mysql, uid, item.value, grantCount);
+        try {
+            await addItem(mysql, uid, item.value, grantCount);
+        } catch (error) {
+            log.error('OwO item grant failed', {
+                error,
+                userId: user.id,
+                item: item.value,
+                count: grantCount,
+            });
+            throw error;
+        }
 
         const emoji = `<:${item.emoji.name}:${item.emoji.id}>`;
         try {

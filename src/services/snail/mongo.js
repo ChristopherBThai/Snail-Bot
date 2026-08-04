@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createSettingModel } from './setting.js';
 import { createUserModel } from './user.js';
 
 export async function connectSnailMongo(uri) {
@@ -13,6 +14,7 @@ export async function connectSnailMongo(uri) {
 
     return {
         connection,
+        Setting: createSettingModel(connection),
         User: createUserModel(connection),
     };
 }
