@@ -1,13 +1,8 @@
 import { createGatewayManager } from '@discordeno/gateway';
-import {
-    ComponentType,
-    GatewayDispatchEvents,
-    InteractionResponseType,
-    InteractionType,
-    MessageFlags,
-} from 'discord-api-types/v10';
+import { GatewayDispatchEvents, InteractionResponseType, InteractionType, MessageFlags } from 'discord-api-types/v10';
 import { getInteractionUser } from './interactions.js';
 import { createDiscordenoLogger } from './logger.js';
+import { normalizeMessage } from './messages.js';
 
 /**
  * Creates Snail's Discord gateway manager and interaction dispatcher.
@@ -215,19 +210,5 @@ function createInteractionContext(rest, interaction) {
             responseState = 'responded';
             return response;
         },
-    };
-}
-
-function normalizeMessage(message, { ephemeral = false } = {}) {
-    if (typeof message === 'string') {
-        return {
-            components: [{ type: ComponentType.TextDisplay, content: message }],
-            flags: MessageFlags.IsComponentsV2 | (ephemeral ? MessageFlags.Ephemeral : 0),
-        };
-    }
-
-    return {
-        ...message,
-        flags: (message.flags ?? 0) | (ephemeral ? MessageFlags.Ephemeral : 0),
     };
 }

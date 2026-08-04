@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { ButtonStyle, ComponentType, MessageFlags, SeparatorSpacingSize } from 'discord-api-types/v10';
-import { disableComponents, getInteractionUser, getModalValue } from '../../discord/interactions.js';
+import { disableComponents, getInteractionUser, getModalValue, getSelectValue } from '../../discord/interactions.js';
+import { suppressMentions } from '../../discord/messages.js';
 import {
     addComponent,
     addItem,
@@ -151,7 +152,7 @@ export default function createMessageBuilder({ config, logging, rest, services, 
 
     async function selectTopLevel(context) {
         await withSession(context, async (session) => {
-            const value = context.interaction.data.values?.[0];
+            const value = getSelectValue(context.interaction);
             session.selection = { path: value === 'root' ? [] : [Number(value)] };
             await context.update(buildController(session));
         });
@@ -159,7 +160,7 @@ export default function createMessageBuilder({ config, logging, rest, services, 
 
     async function selectChild(context) {
         await withSession(context, async (session) => {
-            const value = context.interaction.data.values?.[0];
+            const value = getSelectValue(context.interaction);
             session.selection =
                 value === 'root'
                     ? { path: [session.selection.path[0]] }
@@ -170,14 +171,14 @@ export default function createMessageBuilder({ config, logging, rest, services, 
 
     async function selectItem(context) {
         await withSession(context, async (session) => {
-            session.selection.item = Number(context.interaction.data.values?.[0]);
+            session.selection.item = Number(getSelectValue(context.interaction));
             await context.update(buildController(session));
         });
     }
 
     async function add(context) {
         await withSession(context, async (session) => {
-            const type = Number(context.interaction.data.values?.[0]);
+            const type = Number(getSelectValue(context.interaction));
             if ([ComponentType.TextDisplay, ComponentType.Separator, ComponentType.Section].includes(type)) {
                 await context.openModal(buildEditModal(session, modalAction(type, 'add'), createComponent(type)));
                 return;
@@ -386,7 +387,7 @@ export default function createMessageBuilder({ config, logging, rest, services, 
 
     async function expireInteraction(context) {
         const components = disableComponents(context.interaction.message?.components ?? []);
-        await context.update({ flags: MessageFlags.IsComponentsV2, components, allowedMentions: { parse: [] } });
+        await context.update(suppressMentions({ flags: MessageFlags.IsComponentsV2, components }));
         await context.respond('That Message Builder session has expired.', { ephemeral: true });
     }
 

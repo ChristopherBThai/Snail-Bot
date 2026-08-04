@@ -9,7 +9,8 @@ import {
     TextInputStyle,
 } from 'discord-api-types/v10';
 import { hasOwnerAccess } from '../discord/auth.js';
-import { disableComponents, getModalValue, getTargetUser } from '../discord/interactions.js';
+import { disableComponents, getModalValue, getSelectValue, getTargetUser } from '../discord/interactions.js';
+import { suppressMentions } from '../discord/messages.js';
 
 const PANEL_IDLE_TIME = 120_000;
 
@@ -121,7 +122,7 @@ export default function setup({ config, logging, rest, services, unavailable }) 
         const panel = await getPanel(context);
         if (!panel) return;
 
-        selected = context.interaction.data.values?.[0];
+        selected = getSelectValue(context.interaction);
         await context.update(renderPanel(panel));
         panel.token = context.interaction.token;
     }
@@ -275,11 +276,12 @@ export default function setup({ config, logging, rest, services, unavailable }) 
 
         const components = context.interaction.message?.components;
         if (components?.length) {
-            await context.update({
-                flags: MessageFlags.IsComponentsV2,
-                allowedMentions: { parse: [] },
-                components: disableComponents(components),
-            });
+            await context.update(
+                suppressMentions({
+                    flags: MessageFlags.IsComponentsV2,
+                    components: disableComponents(components),
+                }),
+            );
         }
 
         await context.respond('That Give Item panel has expired.', { ephemeral: true });
@@ -311,9 +313,8 @@ export default function setup({ config, logging, rest, services, unavailable }) 
 }
 
 function buildPanel(state, { disabled = false, notice } = {}) {
-    return {
+    return suppressMentions({
         flags: MessageFlags.IsComponentsV2,
-        allowedMentions: { parse: [] },
         components: [
             {
                 type: ComponentType.Container,
@@ -395,7 +396,7 @@ function buildPanel(state, { disabled = false, notice } = {}) {
                 ],
             },
         ],
-    };
+    });
 }
 
 function getUniqueName(user) {

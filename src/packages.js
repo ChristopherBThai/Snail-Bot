@@ -1,4 +1,5 @@
 import afk from './commands/afk.js';
+import echo from './commands/echo.js';
 import giveItem from './commands/giveItem.js';
 import nick from './commands/nick.js';
 import sendUserData from './commands/sendUserData.js';
@@ -97,7 +98,7 @@ import createMessageBuilder from './systems/messageBuilder/index.js';
 /** @typedef {(context: PackageContext) => Package} PackageSetup */
 
 /** @type {PackageSetup[]} */
-const PACKAGES = [snail, nick, afk, giveItem, sendUserData];
+const PACKAGES = [snail, nick, afk, giveItem, sendUserData, echo];
 
 /**
  * Sets up installed packages and indexes their Discord contributions.

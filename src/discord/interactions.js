@@ -23,6 +23,16 @@ export function getTargetUser(interaction) {
     return targetId ? interaction.data.resolved?.users?.[targetId] : undefined;
 }
 
+/** Gets a top-level application-command option value by name. */
+export function getCommandOptionValue(interaction, name) {
+    return interaction.data?.options?.find((option) => option.name === name)?.value;
+}
+
+/** Gets the first value submitted by a select component. */
+export function getSelectValue(interaction) {
+    return interaction.data?.values?.[0];
+}
+
 /**
  * Gets a text input value from a submitted modal, including inputs nested under
  * Labels or legacy Action Rows.

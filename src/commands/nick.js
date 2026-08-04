@@ -1,5 +1,6 @@
 import { ApplicationCommandOptionType, ApplicationCommandType } from 'discord-api-types/v10';
 import { hasManagerAccess } from '../discord/auth.js';
+import { getCommandOptionValue } from '../discord/interactions.js';
 
 const NICK_COMMAND_DEFINITION = {
     type: ApplicationCommandType.ChatInput,
@@ -18,10 +19,9 @@ const NICK_COMMAND_DEFINITION = {
 };
 
 /** @type {import('../packages.js').PackageSetup} */
-export default function setup({ config, rest }) {
+export default function setup({ rest }) {
     return {
         name: 'Nick Command',
-        missing: config.roles?.manager?.permission ? [] : ['roles.manager.permission (config)'],
         commands: [
             {
                 definition: NICK_COMMAND_DEFINITION,
@@ -35,7 +35,7 @@ export default function setup({ config, rest }) {
                         return;
                     }
 
-                    const value = interaction.data.options?.find((option) => option.name === 'nickname')?.value;
+                    const value = getCommandOptionValue(interaction, 'nickname');
                     const nickname = typeof value === 'string' ? value.trim() : '';
 
                     await rest.editBotMember(interaction.guildId, { nick: nickname || null });

@@ -1,4 +1,5 @@
 import { ButtonStyle, ComponentType, MessageFlags, SeparatorSpacingSize, TextInputStyle } from 'discord-api-types/v10';
+import { suppressMentions } from '../../discord/messages.js';
 import {
     canAddComponent,
     canMoveComponent,
@@ -43,13 +44,12 @@ const ADD_OPTIONS = [
 ];
 
 export function buildPreview(draft) {
-    return {
+    return suppressMentions({
         flags: MessageFlags.IsComponentsV2,
-        allowedMentions: { parse: [] },
         components: draft.components.length
             ? draft.components.map(previewComponent)
             : [placeholder('Your preview is empty.')],
-    };
+    });
 }
 
 export function buildMessage(draft) {
@@ -215,11 +215,10 @@ export function buildController(session, { disabled = false, notice } = {}) {
 
     selectionComponents.push(spacing(), ...editingComponents);
 
-    return {
+    return suppressMentions({
         flags: MessageFlags.IsComponentsV2,
-        allowedMentions: { parse: [] },
         components: [{ type: ComponentType.Container, components: selectionComponents }],
-    };
+    });
 }
 
 export function buildEditModal(session, action, component = getComponent(session.draft, session.selection.path)) {
