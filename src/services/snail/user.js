@@ -19,6 +19,16 @@ const messageBuilderSchema = new mongoose.Schema(
     { _id: false },
 );
 
+const remindersSchema = new mongoose.Schema(
+    {
+        luck: {
+            type: Boolean,
+            default: false,
+        },
+    },
+    { _id: false },
+);
+
 const userSchema = new mongoose.Schema(
     {
         _id: {
@@ -27,6 +37,10 @@ const userSchema = new mongoose.Schema(
         },
         messageBuilder: {
             type: messageBuilderSchema,
+            default: undefined,
+        },
+        reminders: {
+            type: remindersSchema,
             default: undefined,
         },
     },

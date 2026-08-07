@@ -1,25 +1,58 @@
 import { createOwOAPI } from './owo/api.js';
+import { connectOwOMongo } from './owo/mongo.js';
 import { connectOwOMySQL } from './owo/mysql.js';
+import { connectOwORedis } from './owo/redis.js';
 import { connectSnailMongo } from './snail/mongo.js';
 
 /**
- * Snail's initialized external services, grouped by owner.
- *
+ * @typedef {object} SnailServices
+ * @property {Awaited<ReturnType<typeof connectSnailMongo>> | undefined} mongo
+ */
+
+/**
+ * @typedef {object} OwOServices
+ * @property {ReturnType<typeof createOwOAPI> | undefined} api
+ * @property {Awaited<ReturnType<typeof connectOwOMongo>> | undefined} mongo
+ * @property {import('mysql2/promise').Pool | undefined} mysql
+ * @property {Awaited<ReturnType<typeof connectOwORedis>> | undefined} redis
+ */
+
+/**
  * @typedef {object} Services
- * @property {{ mongo: Awaited<ReturnType<typeof connectSnailMongo>> | undefined }} snail Snail-owned services.
- * @property {{ api: ReturnType<typeof createOwOAPI> | undefined; mysql: import('mysql2/promise').Pool | undefined }} owo OwO-owned services.
+ * @property {SnailServices} snail Snail-owned services.
+ * @property {OwOServices} owo OwO-owned services.
+ */
+
+/**
+ * @typedef {object} ServiceConfig
+ * @property {{ mongoUri: string | undefined }} snail
+ * @property {{
+ *     apiPassword: string | undefined;
+ *     apiUri: string | undefined;
+ *     mongoUri: string | undefined;
+ *     mysqlUri: string | undefined;
+ *     redisUrl: string | undefined;
+ * }} owo
+ */
+
+/**
+ * @typedef {object} UnavailableServices
+ * @property {{ mongo?: string[] }} snail
+ * @property {{ api?: string[]; mongo?: string[]; mysql?: string[]; redis?: string[] }} owo
  */
 
 /**
  * Initializes every configured external service used by the current runtime.
  *
- * @param {{ snail: { mongoUri: string | undefined }; owo: { apiPassword: string | undefined; apiUri: string | undefined; mysqlUri: string | undefined } }} config
+ * @param {ServiceConfig} config
  * @param {object} log
- * @returns {Promise<{ services: Services; unavailable: { snail: { mongo?: string[] }; owo: { api?: string[]; mysql?: string[] } } }>}
+ * @returns {Promise<{ services: Services; unavailable: UnavailableServices }>}
  */
 export async function createServices({ snail, owo }, log) {
     let mysql;
     let mongo;
+    let owoMongo;
+    let redis;
     const unavailable = { snail: {}, owo: {} };
 
     if (!snail.mongoUri) {
@@ -48,6 +81,32 @@ export async function createServices({ snail, owo }, log) {
         }
     }
 
+    if (!owo.mongoUri) {
+        unavailable.owo.mongo = ['OWO_MONGO_URI (.env)'];
+    } else {
+        try {
+            log.info('Connecting to OwO Mongo');
+            owoMongo = await connectOwOMongo(owo.mongoUri);
+            log.info('Connected to OwO Mongo');
+        } catch (error) {
+            unavailable.owo.mongo = ['OwO Mongo (service)'];
+            log.warn('OwO Mongo unavailable', { error });
+        }
+    }
+
+    if (!owo.redisUrl) {
+        unavailable.owo.redis = ['OWO_REDIS_URL (.env)'];
+    } else {
+        try {
+            log.info('Connecting to OwO Redis');
+            redis = await connectOwORedis(owo.redisUrl);
+            log.info('Connected to OwO Redis');
+        } catch (error) {
+            unavailable.owo.redis = ['OwO Redis (service)'];
+            log.warn('OwO Redis unavailable', { error });
+        }
+    }
+
     if (!owo.apiUri) {
         unavailable.owo.api ??= [];
         unavailable.owo.api.push('OWO_API_URI (.env)');
@@ -67,7 +126,9 @@ export async function createServices({ snail, owo }, log) {
             },
             owo: {
                 api,
+                mongo: owoMongo,
                 mysql,
+                redis,
             },
         },
         unavailable,

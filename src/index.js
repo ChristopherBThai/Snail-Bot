@@ -8,20 +8,24 @@ import { createServices } from './services/index.js';
 
 const logging = createLogging();
 const log = logging.createLogger('snail', true);
+const startupTimer = log.time();
 
 async function start() {
     log.info('Starting Snail');
 
     const { name, config, environment } = await loadConfig();
+    startupTimer.checkpoint('config');
     log.debug('Loaded configuration', {
         name,
         guildId: config.guildId,
     });
 
     const rest = createRest({ token: environment.token, logging });
+    startupTimer.checkpoint('rest');
     log.debug('Created REST manager');
 
     const { services, unavailable } = await createServices(environment.services, log);
+    startupTimer.checkpoint('services');
 
     if (services.snail.mongo) {
         try {
@@ -38,8 +42,10 @@ async function start() {
             log.warn('Could not load configured log levels', { error });
         }
     }
+    startupTimer.checkpoint('logging');
 
-    const packages = setupPackages({ config, logging, log, rest, services, unavailable });
+    const packages = await setupPackages({ config, logging, log, rest, services, unavailable });
+    startupTimer.checkpoint('packages');
 
     await synchronizeCommands({
         rest,
@@ -47,6 +53,7 @@ async function start() {
         commands: packages.commands,
         log,
     });
+    startupTimer.checkpoint('commands');
 
     const gateway = createGateway({
         config,
@@ -58,9 +65,11 @@ async function start() {
     });
     log.info('Connecting to Discord gateway');
     await gateway.spawnShards();
+    startupTimer.checkpoint('gateway');
+    startupTimer.info('Snail started');
 }
 
 start().catch((error) => {
-    log.error('Startup failed', { error });
+    startupTimer.error('Startup failed', { error });
     process.exit(1);
 });

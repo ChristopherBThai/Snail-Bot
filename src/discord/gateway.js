@@ -1,5 +1,11 @@
 import { createGatewayManager } from '@discordeno/gateway';
-import { GatewayDispatchEvents, InteractionResponseType, InteractionType, MessageFlags } from 'discord-api-types/v10';
+import {
+    GatewayDispatchEvents,
+    GatewayIntentBits,
+    InteractionResponseType,
+    InteractionType,
+    MessageFlags,
+} from 'discord-api-types/v10';
 import { getInteractionUser } from './interactions.js';
 import { createDiscordenoLogger } from './logger.js';
 import { normalizeMessage } from './messages.js';
@@ -10,12 +16,15 @@ import { normalizeMessage } from './messages.js';
 export function createGateway({ config, token, logging, log, packages, rest }) {
     return createGatewayManager({
         token,
+        intents: GatewayIntentBits.Guilds | GatewayIntentBits.GuildMessages,
         logger: createDiscordenoLogger(logging.createLogger('gateway', true)),
         resharding: { enabled: false },
         events: {
             async message(_, payload) {
                 for (const event of packages.events) {
                     if (event.event !== payload.t) continue;
+                    const feature = packages.features.get(event.featureId);
+                    if (!feature.enabled) continue;
 
                     try {
                         await event.handle(payload.d);
@@ -40,11 +49,12 @@ export function createGateway({ config, token, logging, log, packages, rest }) {
 
                 const interaction = payload.d;
                 const context = createInteractionContext(rest, interaction);
+                const autocomplete = interaction.type === InteractionType.ApplicationCommandAutocomplete;
                 let handler;
                 let handlerId;
                 let handlerType;
 
-                if (interaction.type === InteractionType.ApplicationCommand) {
+                if (interaction.type === InteractionType.ApplicationCommand || autocomplete) {
                     handlerId = interaction.data.name;
                     handler = packages.commands.get(handlerId);
                     handlerType = 'command';
@@ -68,11 +78,17 @@ export function createGateway({ config, token, logging, log, packages, rest }) {
                         type: interaction.type,
                         handlerId,
                     });
+                    if (autocomplete) await context.autocomplete([]);
                     return;
                 }
 
                 try {
                     if (handler.missing.length) {
+                        if (autocomplete) {
+                            await context.autocomplete([]);
+                            return;
+                        }
+
                         await context.respond(
                             `This interaction is unavailable. Missing: ${handler.missing.map((value) => `\`${value}\``).join(', ')}`,
                             { ephemeral: true },
@@ -81,6 +97,11 @@ export function createGateway({ config, token, logging, log, packages, rest }) {
                     }
 
                     if (handler.authorize && !(await handler.authorize(interaction, config))) {
+                        if (autocomplete) {
+                            await context.autocomplete([]);
+                            return;
+                        }
+
                         log.warn('Interaction unauthorized', {
                             type: handlerType,
                             id: handlerId,
@@ -92,6 +113,22 @@ export function createGateway({ config, token, logging, log, packages, rest }) {
                         return;
                     }
 
+                    const feature = packages.features.get(handler.featureId);
+                    if (feature && !feature.enabled && !handler.availableWhenDisabled) {
+                        if (autocomplete) {
+                            await context.autocomplete([]);
+                            return;
+                        }
+
+                        await context.respond(`${feature.name} is disabled.`, { ephemeral: true });
+                        return;
+                    }
+
+                    if (autocomplete) {
+                        await context.autocomplete((await handler.autocomplete?.(context)) ?? []);
+                        return;
+                    }
+
                     await handler.handle(context);
                 } catch (error) {
                     log.error('Interaction handler failed', {
@@ -100,9 +137,13 @@ export function createGateway({ config, token, logging, log, packages, rest }) {
                     });
 
                     try {
-                        await context.respond('Something went wrong while handling this interaction.', {
-                            ephemeral: true,
-                        });
+                        if (autocomplete) {
+                            await context.autocomplete([]);
+                        } else {
+                            await context.respond('Something went wrong while handling this interaction.', {
+                                ephemeral: true,
+                            });
+                        }
                     } catch (responseError) {
                         log.error('Interaction error response failed', {
                             error: responseError,
@@ -206,6 +247,18 @@ function createInteractionContext(rest, interaction) {
             const response = await rest.sendInteractionResponse(interaction.id, interaction.token, {
                 type: InteractionResponseType.Modal,
                 data: modal,
+            });
+            responseState = 'responded';
+            return response;
+        },
+        async autocomplete(choices) {
+            if (responseState !== 'pending') {
+                throw new Error('Interaction has already been acknowledged');
+            }
+
+            const response = await rest.sendInteractionResponse(interaction.id, interaction.token, {
+                type: InteractionResponseType.ApplicationCommandAutocompleteResult,
+                data: { choices },
             });
             responseState = 'responded';
             return response;

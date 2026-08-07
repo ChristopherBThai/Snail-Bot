@@ -38,6 +38,11 @@ export function getCommandOptionValue(interaction, name) {
     return interaction.data?.options?.find((option) => option.name === name)?.value;
 }
 
+/** Gets the portion of a component custom ID after its registered prefix. */
+export function getCustomIdSuffix(interaction, prefix) {
+    return interaction.data.customId.slice(prefix.length);
+}
+
 /** Gets the first value submitted by a select component. */
 export function getSelectValue(interaction) {
     return interaction.data?.values?.[0];
@@ -53,6 +58,11 @@ export function getSelectValue(interaction) {
 export function getModalValue(interaction, customId) {
     const component = findComponent(interaction.data?.components ?? [], customId);
     return component?.value ?? component?.values?.[0];
+}
+
+/** Gets every value from a select submitted inside a modal. */
+export function getModalValues(interaction, customId) {
+    return findComponent(interaction.data?.components ?? [], customId)?.values ?? [];
 }
 
 /** Returns a copy of a component tree with every interactive component disabled. */

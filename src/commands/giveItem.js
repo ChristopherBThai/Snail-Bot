@@ -14,14 +14,16 @@ import { suppressMentions } from '../discord/messages.js';
 
 const PANEL_IDLE_TIME = 120_000;
 
-const ITEM_SELECT_ID = 'giveItem:item';
-const EDIT_RECIPIENT_BUTTON_ID = 'giveItem:userId';
-const RECIPIENT_MODAL_ID = 'giveItem:userModal';
-const RECIPIENT_INPUT_ID = 'giveItem:userInput';
-const GIVE_BUTTON_ID = 'giveItem:give';
-const EDIT_COUNT_BUTTON_ID = 'giveItem:changeCount';
-const COUNT_MODAL_ID = 'giveItem:countModal';
-const COUNT_INPUT_ID = 'giveItem:count';
+const IDS = Object.freeze({
+    itemSelect: 'giveItem:item',
+    editRecipient: 'giveItem:userId',
+    recipientModal: 'giveItem:userModal',
+    recipientInput: 'giveItem:userInput',
+    give: 'giveItem:give',
+    editCount: 'giveItem:changeCount',
+    countModal: 'giveItem:countModal',
+    countInput: 'giveItem:count',
+});
 
 const ITEMS = Object.freeze([
     {
@@ -106,12 +108,12 @@ export default function setup({ config, logging, rest, services, unavailable }) 
             },
         ],
         components: [
-            interaction(ITEM_SELECT_ID, selectItem),
-            interaction(EDIT_RECIPIENT_BUTTON_ID, openUserModal),
-            interaction(GIVE_BUTTON_ID, giveItem),
-            interaction(EDIT_COUNT_BUTTON_ID, openCountModal),
+            interaction(IDS.itemSelect, selectItem),
+            interaction(IDS.editRecipient, openUserModal),
+            interaction(IDS.give, giveItem),
+            interaction(IDS.editCount, openCountModal),
         ],
-        modals: [interaction(RECIPIENT_MODAL_ID, changeUser), interaction(COUNT_MODAL_ID, changeCount)],
+        modals: [interaction(IDS.recipientModal, changeUser), interaction(IDS.countModal, changeCount)],
     };
 
     function interaction(id, handle) {
@@ -142,16 +144,19 @@ export default function setup({ config, logging, rest, services, unavailable }) 
         await context.deferUpdate();
         panel.token = context.interaction.token;
 
+        const timer = log.time();
         const uid = await getOwOUID(mysql, user.id);
         if (!uid) {
             await context.respond('This user does not have an OwO account.', { ephemeral: true });
             return;
         }
+        timer.checkpoint('account');
 
         try {
             await addItem(mysql, uid, item.value, grantCount);
         } catch (error) {
-            log.error('OwO item grant failed', {
+            timer.checkpoint('mysql');
+            timer.error('OwO item grant failed', {
                 error,
                 userId: user.id,
                 item: item.value,
@@ -159,6 +164,7 @@ export default function setup({ config, logging, rest, services, unavailable }) 
             });
             throw error;
         }
+        timer.checkpoint('mysql');
 
         const emoji = `<:${item.emoji.name}:${item.emoji.id}>`;
         try {
@@ -167,7 +173,8 @@ export default function setup({ config, logging, rest, services, unavailable }) 
                 `🎁 **|** OwO, What's this? You have been gifted ${grantCount} ${emoji} **${item.name}**`,
             );
         } catch (error) {
-            log.error('OwO API notification failed after giving item', {
+            timer.checkpoint('owoApi');
+            timer.error('OwO API notification failed after giving item', {
                 error,
                 userId: user.id,
                 item: item.value,
@@ -179,14 +186,16 @@ export default function setup({ config, logging, rest, services, unavailable }) 
             );
             return;
         }
+        timer.checkpoint('owoApi');
 
-        log.info('Gave OwO item', {
+        await context.respond(`🎁 **|** Sent ${grantCount} ${emoji} **${item.name}** to **${getUniqueName(user)}**.`, {
+            ephemeral: true,
+        });
+        timer.checkpoint('discord');
+        timer.info('Gave OwO item', {
             userId: user.id,
             item: item.value,
             count: grantCount,
-        });
-        await context.respond(`🎁 **|** Sent ${grantCount} ${emoji} **${item.name}** to **${getUniqueName(user)}**.`, {
-            ephemeral: true,
         });
     }
 
@@ -196,14 +205,14 @@ export default function setup({ config, logging, rest, services, unavailable }) 
 
         await context.openModal({
             title: 'How many items?',
-            customId: COUNT_MODAL_ID,
+            customId: IDS.countModal,
             components: [
                 {
                     type: ComponentType.Label,
                     label: 'Count',
                     component: {
                         type: ComponentType.TextInput,
-                        customId: COUNT_INPUT_ID,
+                        customId: IDS.countInput,
                         style: TextInputStyle.Short,
                         required: true,
                         minLength: 1,
@@ -221,7 +230,7 @@ export default function setup({ config, logging, rest, services, unavailable }) 
 
         await context.openModal({
             title: 'Change recipient',
-            customId: RECIPIENT_MODAL_ID,
+            customId: IDS.recipientModal,
             components: [
                 {
                     type: ComponentType.Label,
@@ -229,7 +238,7 @@ export default function setup({ config, logging, rest, services, unavailable }) 
                     description: 'Enter the ID of the user who should receive the item.',
                     component: {
                         type: ComponentType.TextInput,
-                        customId: RECIPIENT_INPUT_ID,
+                        customId: IDS.recipientInput,
                         style: TextInputStyle.Short,
                         required: true,
                         minLength: 17,
@@ -244,7 +253,7 @@ export default function setup({ config, logging, rest, services, unavailable }) 
         const panel = await getPanel(context);
         if (!panel) return;
 
-        const userId = String(getModalValue(context.interaction, RECIPIENT_INPUT_ID) ?? '').trim();
+        const userId = String(getModalValue(context.interaction, IDS.recipientInput) ?? '').trim();
         if (!/^\d{17,20}$/.test(userId)) {
             await context.respond('Enter a valid Discord user ID.', { ephemeral: true });
             return;
@@ -267,7 +276,7 @@ export default function setup({ config, logging, rest, services, unavailable }) 
         const panel = await getPanel(context);
         if (!panel) return;
 
-        const requestedCount = String(getModalValue(context.interaction, COUNT_INPUT_ID) ?? '').trim();
+        const requestedCount = String(getModalValue(context.interaction, IDS.countInput) ?? '').trim();
         if (!/^\d{1,3}$/.test(requestedCount) || Number(requestedCount) < 1) {
             await context.respond('Enter a number from 1 to 999.', { ephemeral: true });
             return;
@@ -343,7 +352,7 @@ function buildPanel(state, { disabled = false, notice } = {}) {
                         ],
                         accessory: {
                             type: ComponentType.Button,
-                            customId: EDIT_RECIPIENT_BUTTON_ID,
+                            customId: IDS.editRecipient,
                             label: 'Edit',
                             style: ButtonStyle.Secondary,
                             disabled,
@@ -359,7 +368,7 @@ function buildPanel(state, { disabled = false, notice } = {}) {
                         ],
                         accessory: {
                             type: ComponentType.Button,
-                            customId: EDIT_COUNT_BUTTON_ID,
+                            customId: IDS.editCount,
                             label: 'Edit',
                             style: ButtonStyle.Secondary,
                             disabled,
@@ -374,7 +383,7 @@ function buildPanel(state, { disabled = false, notice } = {}) {
                         components: [
                             {
                                 type: ComponentType.StringSelect,
-                                customId: ITEM_SELECT_ID,
+                                customId: IDS.itemSelect,
                                 placeholder: 'Choose an item',
                                 disabled,
                                 options: ITEMS.map((item) => ({
@@ -396,7 +405,7 @@ function buildPanel(state, { disabled = false, notice } = {}) {
                         components: [
                             {
                                 type: ComponentType.Button,
-                                customId: GIVE_BUTTON_ID,
+                                customId: IDS.give,
                                 label: 'Give Item',
                                 style: ButtonStyle.Primary,
                                 disabled,

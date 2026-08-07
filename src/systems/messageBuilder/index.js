@@ -302,13 +302,17 @@ export default function createMessageBuilder({ config, logging, rest, services, 
             return;
         }
 
+        const timer = log.time();
         await context.deferUpdate();
         await repository.save(session.userId, result.draft);
+        timer.checkpoint('snailMongo');
         session.draft = result.draft;
         session.selection = result.selection;
         await context.editResponse(buildController(session));
+        timer.checkpoint('controller');
         await rest.editOriginalInteractionResponse(session.token, buildPreview(session.draft));
-        log.debug('Message Builder draft updated', {
+        timer.checkpoint('preview');
+        timer.debug('Message Builder draft updated', {
             userId: session.userId,
             components: countComponents(session.draft.components),
         });
@@ -321,25 +325,23 @@ export default function createMessageBuilder({ config, logging, rest, services, 
             return;
         }
 
+        const timer = log.time();
         await context.deferUpdate();
         const result = await session.submit(buildMessage(session.draft));
+        timer.checkpoint('submission');
         if (!result || typeof result.ok !== 'boolean' || typeof result.message !== 'string') {
             throw new TypeError('Message Builder submit must return { ok, message }');
         }
 
         if (!result.ok) {
-            log.warn('Message Builder submission rejected', { userId: session.userId });
             await context.respond(result.message, { ephemeral: true });
+            timer.checkpoint('response');
+            timer.warn('Message Builder submission rejected', { userId: session.userId });
             return;
         }
 
         clearTimeout(session.timeout);
         if (sessions.get(session.userId) === session) sessions.delete(session.userId);
-        log.info('Message Builder submission completed', {
-            userId: session.userId,
-            components: countComponents(session.draft.components),
-        });
-
         try {
             await context.editResponse(buildController(session, { disabled: true, notice: 'Submitted.' }));
         } catch (error) {
@@ -348,6 +350,7 @@ export default function createMessageBuilder({ config, logging, rest, services, 
                 userId: session.userId,
             });
         }
+        timer.checkpoint('controller');
 
         try {
             await context.respond(result.message, { ephemeral: true });
@@ -357,6 +360,11 @@ export default function createMessageBuilder({ config, logging, rest, services, 
                 userId: session.userId,
             });
         }
+        timer.checkpoint('response');
+        timer.info('Message Builder submission completed', {
+            userId: session.userId,
+            components: countComponents(session.draft.components),
+        });
     }
 
     async function withSession(context, handle) {

@@ -42,7 +42,9 @@ export async function loadConfig() {
                 owo: {
                     apiPassword: process.env.OWO_API_PASSWORD?.trim() || undefined,
                     apiUri: process.env.OWO_API_URI?.trim() || undefined,
+                    mongoUri: process.env.OWO_MONGO_URI?.trim() || undefined,
                     mysqlUri: process.env.OWO_MYSQL_URI?.trim() || undefined,
+                    redisUrl: process.env.OWO_REDIS_URL?.trim() || undefined,
                 },
             },
         },

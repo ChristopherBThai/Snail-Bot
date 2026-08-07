@@ -37,35 +37,33 @@ export default function setup({ config, logging, services, unavailable }) {
                     await defer({ ephemeral: true });
 
                     log.info('Exporting OwO user data', { userId: user.id });
-                    const { data, rowCount, tableCount } = await exportUserData(mysql, user.id);
+                    const timer = log.time();
+                    const { data, rowCount, tableCount } = await exportUserData(mysql, user.id, timer);
                     const bytes = Buffer.byteLength(data);
                     const name = `user-data-${user.id}-${getTimestampForFilename()}.txt`;
 
-                    log.info('Exported OwO user data', {
+                    if (!bytes) {
+                        await editResponse('No data found for that user.');
+                    } else if (bytes > interaction.attachmentSizeLimit) {
+                        await editResponse('The exported user data is too large to send through Discord.');
+                    } else {
+                        await editResponse({
+                            content: `Data request for \`${user.id}\`.`,
+                            files: [
+                                {
+                                    name,
+                                    blob: new Blob([data], { type: 'text/plain' }),
+                                },
+                            ],
+                        });
+                    }
+
+                    timer.checkpoint('discord');
+                    timer.info('Exported OwO user data', {
                         userId: user.id,
                         bytes,
                         rows: rowCount,
                         tables: tableCount,
-                    });
-
-                    if (!bytes) {
-                        await editResponse('No data found for that user.');
-                        return;
-                    }
-
-                    if (bytes > interaction.attachmentSizeLimit) {
-                        await editResponse('The exported user data is too large to send through Discord.');
-                        return;
-                    }
-
-                    await editResponse({
-                        content: `Data request for \`${user.id}\`.`,
-                        files: [
-                            {
-                                name,
-                                blob: new Blob([data], { type: 'text/plain' }),
-                            },
-                        ],
                     });
                 },
             },
@@ -73,7 +71,7 @@ export default function setup({ config, logging, services, unavailable }) {
     };
 }
 
-async function exportUserData(mysql, userId) {
+async function exportUserData(mysql, userId, timer) {
     const [constraints] = await mysql.query(`
         SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
         FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
@@ -139,6 +137,7 @@ async function exportUserData(mysql, userId) {
             });
         }
     }
+    timer.checkpoint('mysql');
 
     let data = '';
     let rowCount = 0;
@@ -147,6 +146,7 @@ async function exportUserData(mysql, userId) {
         data += `${table}\n${JSON.stringify(rows)}\n\n`;
         rowCount += rows.length;
     }
+    timer.checkpoint('serialization');
 
     return {
         data,

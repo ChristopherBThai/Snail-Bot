@@ -1,4 +1,5 @@
 import {
+    ApplicationCommandOptionType,
     ApplicationCommandType,
     ButtonStyle,
     ComponentType,
@@ -6,7 +7,7 @@ import {
     SeparatorSpacingSize,
 } from 'discord-api-types/v10';
 import { hasManagerAccess } from '../discord/auth.js';
-import { getSelectValue } from '../discord/interactions.js';
+import { getCommandOptionValue, getCustomIdSuffix, getSelectValue } from '../discord/interactions.js';
 import { suppressMentions } from '../discord/messages.js';
 import { serializeLoggerLogs, serializeLogs } from '../logging/export.js';
 import { LOG_LEVELS } from '../logging/index.js';
@@ -17,11 +18,20 @@ const SOURCE_SELECT_ID = 'logs:source';
 const EXPORT_ALL_ID = 'logs:exportAll';
 const EXPORT_PREFIX = 'logs:export:';
 const LEVEL_PREFIX = 'logs:level:';
+const AUTOCOMPLETE_LIMIT = 25;
 
 const LOGS_COMMAND_DEFINITION = {
     type: ApplicationCommandType.ChatInput,
     name: 'logs',
     description: 'Open runtime log controls.',
+    options: [
+        {
+            type: ApplicationCommandOptionType.String,
+            name: 'logger',
+            description: 'Logger to select.',
+            autocomplete: true,
+        },
+    ],
 };
 
 /** @type {import('../packages.js').PackageSetup} */
@@ -37,8 +47,11 @@ export default function setup({ logging, services, unavailable }) {
                 definition: LOGS_COMMAND_DEFINITION,
                 staff: true,
                 authorize: hasManagerAccess,
+                autocomplete,
                 async handle(context) {
-                    await context.respond(buildPanel(logging), { ephemeral: true });
+                    await context.respond(buildPanel(logging, getCommandOptionValue(context.interaction, 'logger')), {
+                        ephemeral: true,
+                    });
                 },
             },
         ],
@@ -58,6 +71,17 @@ export default function setup({ logging, services, unavailable }) {
         };
     }
 
+    function autocomplete(context) {
+        const value = String(getCommandOptionValue(context.interaction, 'logger') ?? '').toLowerCase();
+
+        return logging
+            .getLoggers()
+            .filter((logger) => logger.name.toLowerCase().includes(value))
+            .toSorted((left, right) => left.name.localeCompare(right.name))
+            .slice(0, AUTOCOMPLETE_LIMIT)
+            .map((logger) => ({ name: logger.name, value: logger.name }));
+    }
+
     async function selectSource(context) {
         const logger = getLogger(logging, getSelectValue(context.interaction));
         if (!logger) {
@@ -69,7 +93,7 @@ export default function setup({ logging, services, unavailable }) {
     }
 
     async function setLevel(context) {
-        const logger = getLogger(logging, getCustomIdValue(context.interaction, LEVEL_PREFIX));
+        const logger = getLogger(logging, getCustomIdSuffix(context.interaction, LEVEL_PREFIX));
         const level = getSelectValue(context.interaction);
 
         if (!logger) {
@@ -89,17 +113,23 @@ export default function setup({ logging, services, unavailable }) {
     }
 
     async function exportSource(context) {
-        const logger = getLogger(logging, getCustomIdValue(context.interaction, EXPORT_PREFIX));
+        const logger = getLogger(logging, getCustomIdSuffix(context.interaction, EXPORT_PREFIX));
         if (!logger) {
             await context.respond('Choose a valid logger.', { ephemeral: true });
             return;
         }
 
-        await exportLogs(context, `${logger.name}-logs`, serializeLoggerLogs(logger));
+        await context.defer({ ephemeral: true });
+        await exportLogs(context, `${logger.name}-logs`, serializeLoggerLogs(logger, Infinity));
     }
 
     async function exportAll(context) {
-        await exportLogs(context, 'all-logs', serializeLogs(logging.getLoggers()));
+        await context.defer({ ephemeral: true });
+        await exportLogs(
+            context,
+            'all-logs',
+            serializeLogs(logging.getLoggers(), context.interaction.attachmentSizeLimit),
+        );
     }
 }
 
@@ -124,7 +154,7 @@ function buildPanel(logging, selectedName) {
                     {
                         type: ComponentType.TextDisplay,
                         content: selected
-                            ? `-# Logger · ${selected.size.toLocaleString()}/${selected.limit.toLocaleString()} logs`
+                            ? `-# Logger · ${formatBytes(selected.bytes)}/${formatBytes(selected.byteLimit)} · ${selected.size.toLocaleString()} logs`
                             : '-# Logger',
                     },
                     {
@@ -209,19 +239,13 @@ function getLogger(logging, name) {
     return logging.getLoggers().find((logger) => logger.name === name);
 }
 
-function getCustomIdValue(interaction, prefix) {
-    return interaction.data.customId.slice(prefix.length);
-}
-
-async function exportLogs(context, prefix, data) {
-    const bytes = Buffer.byteLength(data);
-
-    if (bytes > context.interaction.attachmentSizeLimit) {
-        await context.respond('The requested logs are too large to send through Discord.', { ephemeral: true });
-        return;
-    }
-
+async function exportLogs(context, prefix, { data, exported, total }) {
     await context.respond({
+        ...(exported < total
+            ? {
+                  content: `Only the most recent ${exported.toLocaleString()}/${total.toLocaleString()} logs were uploaded.`,
+              }
+            : {}),
         flags: MessageFlags.Ephemeral,
         files: [
             {
@@ -230,4 +254,10 @@ async function exportLogs(context, prefix, data) {
             },
         ],
     });
+}
+
+function formatBytes(bytes) {
+    return bytes >= 1_024 * 1_024
+        ? `${(bytes / (1_024 * 1_024)).toFixed(2)} MiB`
+        : `${Math.ceil(bytes / 1_024).toLocaleString()} KiB`;
 }
