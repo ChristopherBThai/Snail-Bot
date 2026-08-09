@@ -1,6 +1,6 @@
 import { QUEST_TYPES } from './quests.js';
 
-const SETTING_PREFIX = 'questList:';
+const SETTING_NAMESPACE = 'questList';
 const QUEST_PROJECTION = {
     _id: 1,
     userId: 1,
@@ -98,12 +98,11 @@ export function createQuestListRepository({ Quest, UserQuest, User, Setting, red
     }
 
     async function loadSettings() {
-        const settings = await Setting.find({ _id: { $regex: `^${SETTING_PREFIX}` } }).lean();
-        return Object.fromEntries(settings.map((setting) => [setting._id.slice(SETTING_PREFIX.length), setting.value]));
+        return Setting.loadValues(SETTING_NAMESPACE);
     }
 
     async function saveSetting(name, value) {
-        await Setting.updateOne({ _id: `${SETTING_PREFIX}${name}` }, { $set: { value } }, { upsert: true });
+        await Setting.saveValue(SETTING_NAMESPACE, name, value);
     }
 
     async function loadPrayCurseReminderUsers() {

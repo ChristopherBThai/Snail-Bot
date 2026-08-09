@@ -29,6 +29,25 @@ const remindersSchema = new mongoose.Schema(
     { _id: false },
 );
 
+const ticketMarketSchema = new mongoose.Schema(
+    {
+        activeAd: {
+            type: {
+                availabilityDeadline: { type: Date, default: undefined },
+                accentColor: { type: Number, default: undefined },
+                channelId: { type: String, required: true },
+                messageId: { type: String, required: true },
+                note: { type: String, default: undefined },
+                price: { type: Number, required: true },
+                ticketCount: { type: Number, required: true },
+            },
+            default: undefined,
+        },
+        lastAdPostedAt: { type: Date, default: undefined },
+    },
+    { _id: false },
+);
+
 const userSchema = new mongoose.Schema(
     {
         _id: {
@@ -41,6 +60,10 @@ const userSchema = new mongoose.Schema(
         },
         reminders: {
             type: remindersSchema,
+            default: undefined,
+        },
+        ticketMarket: {
+            type: ticketMarketSchema,
             default: undefined,
         },
     },

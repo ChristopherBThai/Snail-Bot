@@ -8,6 +8,7 @@ import sendUserData from './commands/sendUserData.js';
 import settingsCommand, { renderFeatureSettings } from './commands/settings.js';
 import snail from './commands/snail.js';
 import questList from './features/questList/index.js';
+import ticketMarket from './features/ticketMarket/index.js';
 import createMessageBuilder from './systems/messageBuilder/index.js';
 
 /**
@@ -146,7 +147,7 @@ import createMessageBuilder from './systems/messageBuilder/index.js';
 /** @typedef {(context: PackageContext) => Package} PackageSetup */
 
 /** @type {PackageSetup[]} */
-const PACKAGES = [snail, nick, afk, giveItem, sendUserData, echo, edit, logs, settingsCommand, questList];
+const PACKAGES = [snail, nick, afk, giveItem, sendUserData, echo, edit, logs, settingsCommand, questList, ticketMarket];
 
 /**
  * Sets up installed packages and indexes their Discord contributions.
@@ -374,21 +375,14 @@ function addInteraction({ interactions, sources, interaction, missing, packageNa
     sources.set(key, { packageName, number, kind });
 }
 
-const FEATURE_ENABLED_PREFIX = 'feature:enabled:';
+const FEATURE_ENABLED_NAMESPACE = 'feature:enabled';
 
 async function loadFeatureEnabledStates(Setting) {
     if (!Setting) return {};
 
-    const settings = await Setting.find({ _id: { $regex: `^${FEATURE_ENABLED_PREFIX}` } }).lean();
-    return Object.fromEntries(
-        settings.map((setting) => [setting._id.slice(FEATURE_ENABLED_PREFIX.length), setting.value]),
-    );
+    return Setting.loadValues(FEATURE_ENABLED_NAMESPACE);
 }
 
 async function saveFeatureEnabledState(Setting, featureId, enabled) {
-    await Setting.updateOne(
-        { _id: `${FEATURE_ENABLED_PREFIX}${featureId}` },
-        { $set: { value: enabled } },
-        { upsert: true },
-    );
+    await Setting.saveValue(FEATURE_ENABLED_NAMESPACE, featureId, enabled);
 }
