@@ -12,6 +12,7 @@ const {
     isAskCommandMessage,
     isSnailAskAnswerMessage,
     isSnailAskThreadChannel,
+    isThreadChannel,
 } = require('./knowledge-base/AskConversationHistory.js');
 
 const SYSTEM_PROMPT =
@@ -151,6 +152,11 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
     async onMessage(message) {
         if (message.author?.bot) return;
+        if (
+            message.type === Eris.Constants.MessageTypes.REPLY &&
+            !isSnailAskThreadChannel(message.channel, this.bot.user?.id)
+        )
+            return;
         const mentioned = message.mentions?.some((u) => u.id === this.bot.user?.id);
         if (!mentioned && isAskCommandMessage(message.content, this.askCommandPrefixes)) return;
 
@@ -1544,10 +1550,6 @@ function normalizedTagData(group) {
         .replace(/[ \t]+\n/g, '\n')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
-}
-
-function isThreadChannel(channel) {
-    return Boolean(channel?.threadMetadata || (channel?.parentID && !channel?.createThreadWithMessage));
 }
 
 function buildPlainAnswerContent(answer, sources) {

@@ -1,3 +1,5 @@
+const Eris = require('eris');
+
 const ASK_HISTORY_FETCH_LIMIT = 100;
 const ASK_HISTORY_MAX_TURNS = 5;
 const ASK_HISTORY_MAX_CHARS = 6000;
@@ -5,13 +7,7 @@ const ASK_RETRIEVAL_HISTORY_MAX_CHARS = 1200;
 const ASK_WARNING_PREFIX = '> -# ⚠️ Snail may be incorrect. This feature is still a work in progress!';
 
 function isSnailAskThreadChannel(channel, botUserId) {
-    return (
-        isThreadChannel(channel) &&
-        Boolean(botUserId && channel?.ownerID === botUserId) &&
-        String(channel?.name ?? '')
-            .toLowerCase()
-            .startsWith('snail ask')
-    );
+    return isThreadChannel(channel) && Boolean(botUserId && channel?.ownerID === botUserId);
 }
 
 function buildAskConversationHistory(messages, botUserId, prefixes = []) {
@@ -133,7 +129,11 @@ function isSnailAskAnswerMessage(message, botUserId) {
 }
 
 function isThreadChannel(channel) {
-    return Boolean(channel?.threadMetadata || (channel?.parentID && !channel?.createThreadWithMessage));
+    return [
+        Eris.Constants.ChannelTypes.GUILD_NEWS_THREAD,
+        Eris.Constants.ChannelTypes.GUILD_PUBLIC_THREAD,
+        Eris.Constants.ChannelTypes.GUILD_PRIVATE_THREAD,
+    ].includes(channel?.type);
 }
 
 function isReplyToSnailAskAnswerMessage(message, botUserId, askAnswerMessageIds) {
@@ -216,4 +216,5 @@ module.exports = {
     isAskCommandMessage,
     isSnailAskAnswerMessage,
     isSnailAskThreadChannel,
+    isThreadChannel,
 };
