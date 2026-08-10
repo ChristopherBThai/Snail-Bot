@@ -6,14 +6,17 @@ const { ephemeralInteractionResponse } = require('../utils/sender.js');
 const { Qdrant } = require('../utils/kb.js');
 const {
     ASK_HISTORY_FETCH_LIMIT,
-    ASK_WARNING_PREFIX,
+    buildAskAnswerContent,
     buildAskConversationHistory,
+    buildAskFeedbackComponents,
+    disableAskFeedbackComponents,
     formatRetrievalQuery,
+    getAskFeedbackRating,
     isAskCommandMessage,
     isSnailAskAnswerMessage,
     isSnailAskThreadChannel,
     isThreadChannel,
-} = require('./knowledge-base/AskConversationHistory.js');
+} = require('./knowledge-base/AskConversation.js');
 
 const SYSTEM_PROMPT =
     'You are Snail, a friendly helper in the OwO Discord bot support server. ' +
@@ -38,8 +41,6 @@ const ASK_QDRANT_RETRY_ATTEMPTS = 2;
 const ASK_RETRY_DELAY_MS = 500;
 const DEFAULT_RERANK_CANDIDATE_LIMIT = 30;
 const ASK_FEEDBACK_IDLE_MS = 30 * 60 * 1000;
-const ASK_FEEDBACK_HELPFUL_ID = 'kb_ask_feedback_helpful';
-const ASK_FEEDBACK_NEEDS_FIX_ID = 'kb_ask_feedback_needs_fix';
 const EMBED_FIELD_VALUE_LIMIT = 1024;
 const TAG_SYNC_LOG_EVERY = 25;
 const RAW_GENERATION_RESPONSE_LOG_CHARS = 4000;
@@ -110,11 +111,11 @@ module.exports = class KnowledgeBase extends require('./Module') {
     async onceReady() {
         const persistedThreadsEnabled = await this.bot.getConfiguration(`${this.id}_threads_enabled`);
         if (typeof persistedThreadsEnabled === 'boolean') this.threadsEnabled = persistedThreadsEnabled;
+        const persistedFeedbackChannel = await this.bot.getConfiguration(`${this.id}_ask_feedback_channel`);
+        if (persistedFeedbackChannel) this.askFeedbackChannel = persistedFeedbackChannel;
 
         await super.onceReady();
 
-        const persistedFeedbackChannel = await this.bot.getConfiguration(`${this.id}_ask_feedback_channel`);
-        if (persistedFeedbackChannel) this.askFeedbackChannel = persistedFeedbackChannel;
         await this.openrouter.loadPersistedConfiguration();
 
         if (this.enabled) {
@@ -217,7 +218,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
         await deliveryChannel.sendTyping().catch(() => {});
         const { answer, sources } = await this.ask(question, { message });
         const collectorModule = this.bot.modules['interactioncollector'];
-        const components = this.askFeedbackChannel && collectorModule?.create ? buildAskFeedbackComponents() : [];
+        const components = buildAskFeedbackComponents();
         const feedback = {
             originalMessage: message,
             question,
@@ -230,7 +231,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
             content = this.buildFallbackAnswerContent(answer, sources, components, message);
         } else {
             content = {
-                content: buildPlainAnswerContent(answer, sources),
+                content: buildAskAnswerContent(answer, sources),
                 components,
                 allowedMentions: { repliedUser: false, everyone: false, roles: false, users: false },
             };
@@ -246,7 +247,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
             answerMessage = await message.channel.createMessage(content);
         }
 
-        if (this.askFeedbackChannel && collectorModule?.create) {
+        if (collectorModule?.create) {
             this.collectAskFeedback(collectorModule, answerMessage, content, feedback);
         }
     }
@@ -261,7 +262,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
         if (isThreadChannel(message.channel)) {
             return {
                 ...base,
-                content: buildPlainAnswerContent(answer, sources),
+                content: buildAskAnswerContent(answer, sources),
             };
         }
 
@@ -270,7 +271,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
             embeds: [
                 {
                     color: this.bot.config.embedcolor,
-                    description: buildPlainAnswerContent(answer, sources),
+                    description: buildAskAnswerContent(answer, sources),
                 },
             ],
         };
@@ -286,7 +287,9 @@ module.exports = class KnowledgeBase extends require('./Module') {
             if (!rating) return;
 
             try {
-                await this.forwardAskFeedback(answerMessage, feedback, rating);
+                if (this.askFeedbackChannel) {
+                    await this.forwardAskFeedback(answerMessage, feedback, rating);
+                }
                 submitted = true;
                 content.components = buildAskFeedbackComponents(rating.id);
                 await answerMessage.edit(content).catch(() => {});
@@ -302,7 +305,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
         collector.on('end', async () => {
             if (submitted) return;
-            content.components = disableComponents(content.components);
+            content.components = disableAskFeedbackComponents(content.components);
             await answerMessage.edit(content).catch(() => {});
         });
     }
@@ -1460,46 +1463,6 @@ async function leanQuery(query) {
     return query;
 }
 
-function buildAskFeedbackComponents(selectedId) {
-    return [
-        {
-            type: 1,
-            components: [
-                {
-                    type: 2,
-                    custom_id: ASK_FEEDBACK_HELPFUL_ID,
-                    style: selectedId === ASK_FEEDBACK_HELPFUL_ID ? 3 : 2,
-                    label: selectedId === ASK_FEEDBACK_HELPFUL_ID ? 'Helpful ✓' : 'Helpful',
-                    disabled: Boolean(selectedId),
-                },
-                {
-                    type: 2,
-                    custom_id: ASK_FEEDBACK_NEEDS_FIX_ID,
-                    style: selectedId === ASK_FEEDBACK_NEEDS_FIX_ID ? 4 : 2,
-                    label: selectedId === ASK_FEEDBACK_NEEDS_FIX_ID ? 'Needs Fix ✓' : 'Needs Fix',
-                    disabled: Boolean(selectedId),
-                },
-            ],
-        },
-    ];
-}
-
-function getAskFeedbackRating(customId) {
-    switch (customId) {
-        case ASK_FEEDBACK_HELPFUL_ID:
-            return { id: ASK_FEEDBACK_HELPFUL_ID, label: 'Helpful', color: 10412190 };
-        case ASK_FEEDBACK_NEEDS_FIX_ID:
-            return { id: ASK_FEEDBACK_NEEDS_FIX_ID, label: 'Needs Fix', color: 16737891 };
-    }
-}
-
-function disableComponents(components) {
-    return components.map((row) => ({
-        ...row,
-        components: row.components.map((component) => ({ ...component, disabled: true })),
-    }));
-}
-
 function buildDiscordMessageLink(message) {
     const guildId = message.guildID || message.channel?.guild?.id;
     if (!guildId || !message.channel?.id || !message.id) return;
@@ -1551,15 +1514,6 @@ function normalizedTagData(group) {
         .replace(/[ \t]+\n/g, '\n')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
-}
-
-function buildPlainAnswerContent(answer, sources) {
-    let content = `${ASK_WARNING_PREFIX}\n\n`;
-    content += String(answer ?? '');
-    const publicSources = (sources ?? []).filter((source) => source?.visibility !== 'kb_only');
-
-    if (!publicSources.length) return content;
-    return `${content}\n\n> -# Tags: ${publicSources.slice(0, 5).map(formatSource).join(', ')}`;
 }
 
 function buildAskThreadName(question) {
