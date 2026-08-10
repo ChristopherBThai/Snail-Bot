@@ -162,7 +162,7 @@ function formatHistoryForPrompt(history, maxChars) {
 function isAskFlowUserMessage(message, botUserId, askAnswerMessageIds, prefixes) {
     if (message.author?.bot) return false;
     if (isAskCommandMessage(message.content, prefixes)) return true;
-    if (mentionsBot(message, botUserId)) return true;
+    if (hasExplicitBotMention(message.content, botUserId)) return true;
     return isReplyToSnailAskAnswerMessage(message, botUserId, askAnswerMessageIds);
 }
 
@@ -216,10 +216,9 @@ function getReferencedMessageId(message) {
     return message?.messageReference?.messageID || message?.messageReference?.message_id;
 }
 
-function mentionsBot(message, botUserId) {
+function hasExplicitBotMention(content, botUserId) {
     if (!botUserId) return false;
-    if (message.mentions?.some((user) => user.id === botUserId)) return true;
-    return new RegExp(`<@!?${botUserId}>`).test(String(message.content ?? ''));
+    return new RegExp(`<@!?${botUserId}>`).test(String(content ?? ''));
 }
 
 function isBotMessage(message, botUserId) {
@@ -274,6 +273,7 @@ module.exports = {
     disableAskFeedbackComponents,
     formatRetrievalQuery,
     getAskFeedbackRating,
+    hasExplicitBotMention,
     isAskCommandMessage,
     isSnailAskAnswerMessage,
     isSnailAskThreadChannel,
