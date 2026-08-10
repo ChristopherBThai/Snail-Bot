@@ -12,6 +12,7 @@ const {
     disableAskFeedbackComponents,
     formatRetrievalQuery,
     getAskFeedbackRating,
+    hasExplicitBotMention,
     isAskCommandMessage,
     isSnailAskAnswerMessage,
     isSnailAskThreadChannel,
@@ -153,17 +154,17 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
     async onMessage(message) {
         if (message.author?.bot) return;
-        const mentioned = message.mentions?.some((u) => u.id === this.bot.user?.id);
+        const explicitMention = hasExplicitBotMention(message.content, this.bot.user?.id);
         if (
             message.type === Eris.Constants.MessageTypes.REPLY &&
-            !mentioned &&
+            !explicitMention &&
             !isSnailAskThreadChannel(message.channel, this.bot.user?.id)
         )
             return;
-        if (!mentioned && isAskCommandMessage(message.content, this.askCommandPrefixes)) return;
+        if (!explicitMention && isAskCommandMessage(message.content, this.askCommandPrefixes)) return;
 
-        const askThreadReply = mentioned ? false : await this.isAskThreadReplyMessage(message);
-        if (!mentioned && !askThreadReply) return;
+        const askThreadReply = explicitMention ? false : await this.isAskThreadReplyMessage(message);
+        if (!explicitMention && !askThreadReply) return;
 
         const channelIds = [...new Set([message.channel.id, message.channel.parentID].filter(Boolean))];
         const channels = await Promise.all(
