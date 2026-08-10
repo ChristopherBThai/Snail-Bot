@@ -48,6 +48,16 @@ const ticketMarketSchema = new mongoose.Schema(
     { _id: false },
 );
 
+const supporterRolesSchema = new mongoose.Schema(
+    {
+        optout: {
+            type: Boolean,
+            default: false,
+        },
+    },
+    { _id: false },
+);
+
 const userSchema = new mongoose.Schema(
     {
         _id: {
@@ -60,6 +70,10 @@ const userSchema = new mongoose.Schema(
         },
         reminders: {
             type: remindersSchema,
+            default: undefined,
+        },
+        supporterRoles: {
+            type: supporterRolesSchema,
             default: undefined,
         },
         ticketMarket: {

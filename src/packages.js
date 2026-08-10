@@ -8,6 +8,7 @@ import sendUserData from './commands/sendUserData.js';
 import settingsCommand, { renderFeatureSettings } from './commands/settings.js';
 import snail from './commands/snail.js';
 import questList from './features/questList/index.js';
+import supporterRoles from './features/supporterRoles/index.js';
 import ticketMarket from './features/ticketMarket/index.js';
 import createMessageBuilder from './systems/messageBuilder/index.js';
 
@@ -147,7 +148,20 @@ import createMessageBuilder from './systems/messageBuilder/index.js';
 /** @typedef {(context: PackageContext) => Package} PackageSetup */
 
 /** @type {PackageSetup[]} */
-const PACKAGES = [snail, nick, afk, giveItem, sendUserData, echo, edit, logs, settingsCommand, questList, ticketMarket];
+const PACKAGES = [
+    snail,
+    nick,
+    afk,
+    giveItem,
+    sendUserData,
+    echo,
+    edit,
+    logs,
+    settingsCommand,
+    questList,
+    ticketMarket,
+    supporterRoles,
+];
 
 /**
  * Sets up installed packages and indexes their Discord contributions.
