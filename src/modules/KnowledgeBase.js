@@ -152,12 +152,13 @@ module.exports = class KnowledgeBase extends require('./Module') {
 
     async onMessage(message) {
         if (message.author?.bot) return;
+        const mentioned = message.mentions?.some((u) => u.id === this.bot.user?.id);
         if (
             message.type === Eris.Constants.MessageTypes.REPLY &&
+            !mentioned &&
             !isSnailAskThreadChannel(message.channel, this.bot.user?.id)
         )
             return;
-        const mentioned = message.mentions?.some((u) => u.id === this.bot.user?.id);
         if (!mentioned && isAskCommandMessage(message.content, this.askCommandPrefixes)) return;
 
         const askThreadReply = mentioned ? false : await this.isAskThreadReplyMessage(message);
