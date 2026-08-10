@@ -5,6 +5,69 @@ const ASK_HISTORY_MAX_TURNS = 5;
 const ASK_HISTORY_MAX_CHARS = 6000;
 const ASK_RETRIEVAL_HISTORY_MAX_CHARS = 1200;
 const ASK_WARNING_PREFIX = '> -# ⚠️ Snail may be incorrect. This feature is still a work in progress!';
+const ASK_FEEDBACK_HELPFUL_ID = 'kb_ask_feedback_helpful';
+const ASK_FEEDBACK_NEEDS_FIX_ID = 'kb_ask_feedback_needs_fix';
+
+function buildAskAnswerContent(answer, sources) {
+    const content = `${String(answer ?? '')}\n\n${ASK_WARNING_PREFIX}`;
+    const publicSources = (sources ?? []).filter((source) => source?.visibility !== 'kb_only');
+
+    if (!publicSources.length) return content;
+    return `${content}\n> -# Tags: ${publicSources
+        .slice(0, 5)
+        .map((source) => `\`${source.tagId}\``)
+        .join(', ')}`;
+}
+
+function extractAskAnswerContent(content) {
+    const text = String(content ?? '').trim();
+    const footerStart = text.lastIndexOf(`\n\n${ASK_WARNING_PREFIX}`);
+    if (footerStart < 0) return text;
+
+    const footer = text.slice(footerStart + 2);
+    if (footer !== ASK_WARNING_PREFIX && !footer.startsWith(`${ASK_WARNING_PREFIX}\n> -# Tags:`)) return text;
+    return text.slice(0, footerStart).trim();
+}
+
+function buildAskFeedbackComponents(selectedId) {
+    return [
+        {
+            type: 1,
+            components: [
+                {
+                    type: 2,
+                    custom_id: ASK_FEEDBACK_HELPFUL_ID,
+                    style: selectedId === ASK_FEEDBACK_HELPFUL_ID ? 3 : 2,
+                    label: selectedId === ASK_FEEDBACK_HELPFUL_ID ? 'Helpful ✓' : 'Helpful',
+                    disabled: Boolean(selectedId),
+                },
+                {
+                    type: 2,
+                    custom_id: ASK_FEEDBACK_NEEDS_FIX_ID,
+                    style: selectedId === ASK_FEEDBACK_NEEDS_FIX_ID ? 4 : 2,
+                    label: selectedId === ASK_FEEDBACK_NEEDS_FIX_ID ? 'Needs Fix ✓' : 'Needs Fix',
+                    disabled: Boolean(selectedId),
+                },
+            ],
+        },
+    ];
+}
+
+function getAskFeedbackRating(customId) {
+    switch (customId) {
+        case ASK_FEEDBACK_HELPFUL_ID:
+            return { id: ASK_FEEDBACK_HELPFUL_ID, label: 'Helpful', color: 10412190 };
+        case ASK_FEEDBACK_NEEDS_FIX_ID:
+            return { id: ASK_FEEDBACK_NEEDS_FIX_ID, label: 'Needs Fix', color: 16737891 };
+    }
+}
+
+function disableAskFeedbackComponents(components) {
+    return components.map((row) => ({
+        ...row,
+        components: row.components.map((component) => ({ ...component, disabled: true })),
+    }));
+}
 
 function isSnailAskThreadChannel(channel, botUserId) {
     return isThreadChannel(channel) && Boolean(botUserId && channel?.ownerID === botUserId);
@@ -30,7 +93,7 @@ function buildAskConversationHistory(messages, botUserId, prefixes = []) {
 
             turns.push({
                 user: pendingUser?.content,
-                assistant: cleanAskAnswerContent(message.content),
+                assistant: extractAskAnswerContent(message.content),
             });
             continue;
         }
@@ -125,7 +188,13 @@ function isAskCommandMessage(content, prefixes = []) {
 
 function isSnailAskAnswerMessage(message, botUserId) {
     if (!isBotMessage(message, botUserId)) return false;
-    return String(message.content ?? '').startsWith(ASK_WARNING_PREFIX);
+    const buttonIds = new Set(
+        (message.components ?? [])
+            .flatMap((row) => row.components ?? [])
+            .filter((component) => component?.type === 2)
+            .map((component) => component.custom_id)
+    );
+    return buttonIds.has(ASK_FEEDBACK_HELPFUL_ID) && buttonIds.has(ASK_FEEDBACK_NEEDS_FIX_ID);
 }
 
 function isThreadChannel(channel) {
@@ -179,13 +248,6 @@ function cleanUserMessageContent(content, botUserId, prefixes) {
     return text;
 }
 
-function cleanAskAnswerContent(content) {
-    return String(content ?? '')
-        .replace(new RegExp(`^${escapeRegExp(ASK_WARNING_PREFIX)}\\s*`, 'i'), '')
-        .replace(/\n\n> -# Tags:.*$/s, '')
-        .trim();
-}
-
 function truncateForHistory(content, maxChars) {
     const text = String(content ?? '').trim();
     if (text.length <= maxChars) return text;
@@ -204,15 +266,14 @@ function compareDiscordMessageIds(a, b) {
     }
 }
 
-function escapeRegExp(value) {
-    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 module.exports = {
     ASK_HISTORY_FETCH_LIMIT,
-    ASK_WARNING_PREFIX,
+    buildAskAnswerContent,
     buildAskConversationHistory,
+    buildAskFeedbackComponents,
+    disableAskFeedbackComponents,
     formatRetrievalQuery,
+    getAskFeedbackRating,
     isAskCommandMessage,
     isSnailAskAnswerMessage,
     isSnailAskThreadChannel,
