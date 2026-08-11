@@ -67,78 +67,91 @@ module.exports = class CommandHandler extends require('./Module') {
         const command = this.commands[message.command];
         if (!command) return;
 
-        // Check if that command has been disabled in this channel or its parent
-        const channelIds = [...new Set([message.channel.id, message.channel.parentID].filter(Boolean))];
-        const channels = await Promise.all(
-            channelIds.map((channelId) => this.bot.snail_db.Channel.findById(channelId))
-        );
-        if (channels.some((channel) => channel?.disabledCommands.includes(command.alias[0]))) {
-            if (this.disabledCooldowns[message.author.id + message.command]) return;
+        const elasticApm = this.bot.modules.elasticapm;
+        const transaction = elasticApm?.startTransaction(`command:${message.command}`, 'bot');
+        let outcome = 'success';
 
-            this.disabledCooldowns[message.author.id + message.command] = true;
-            setTimeout(() => {
-                delete this.disabledCooldowns[message.author.id + message.command];
-            }, DISABLED_WARNING_TIMEOUT);
-            await ephemeralResponse(
-                message,
-                `🚫 **| ${getUniqueUsername(message.author)}**, that command has been disabled in this channel!`,
-                DISABLED_WARNING_TIMEOUT
+        try {
+            // Check if that command has been disabled in this channel or its parent
+            const channelIds = [...new Set([message.channel.id, message.channel.parentID].filter(Boolean))];
+            const channels = await Promise.all(
+                channelIds.map((channelId) => this.bot.snail_db.Channel.findById(channelId))
             );
-            return;
-        }
+            if (channels.some((channel) => channel?.disabledCommands.includes(command.alias[0]))) {
+                if (this.disabledCooldowns[message.author.id + message.command]) return;
 
-        const context = {
-            message,
-            command,
-            config: this.bot.config,
-            snail_db: this.bot.snail_db,
-            bot: this.bot,
-            commands: this.commands,
-            send: async (msg) => {
-                return message.channel.createMessage(msg);
-            },
-            error: async (errorMessage) => {
-                return await ephemeralResponse(
+                this.disabledCooldowns[message.author.id + message.command] = true;
+                setTimeout(() => {
+                    delete this.disabledCooldowns[message.author.id + message.command];
+                }, DISABLED_WARNING_TIMEOUT);
+                await ephemeralResponse(
                     message,
-                    `🚫 **| ${getUniqueUsername(message.author)}**, ${errorMessage}`
+                    `🚫 **| ${getUniqueUsername(message.author)}**, that command has been disabled in this channel!`,
+                    DISABLED_WARNING_TIMEOUT
                 );
-            },
-        };
-
-        if (command.sendTyping) await message.channel.sendTyping();
-
-        if (command.auth(message.member)) {
-            // Staff are not bound by the chains of cooldowns >:)
-            if (!isStaff(message.member)) {
-                const commandName = command.alias[0];
-                const key = `${message.author.id}_${commandName}`;
-
-                const cooldown = this.cooldowns[key] ?? { lastused: new Date(0), warned: false };
-                const now = Date.now();
-
-                // Difference in milliseconds
-                const diff = now - cooldown.lastused;
-
-                // If still on cooldown
-                if (diff < (command.cooldown ?? 0)) {
-                    // If not already warned, warn, otherwise ignore
-                    if (cooldown.warned) return;
-
-                    this.cooldowns[key].warned = true;
-                    await context.error(
-                        `slow down and try the command again **<t:${((command.cooldown - diff + now) / 1000).toFixed(
-                            0
-                        )}:R>**`
-                    );
-                    return;
-                } else {
-                    this.cooldowns[key] = { lastused: now, warned: false };
-                }
+                return;
             }
 
-            await command.execute.bind(context)();
-        } else {
-            await context.error('you do not have permission to use this command!');
+            const context = {
+                message,
+                command,
+                config: this.bot.config,
+                snail_db: this.bot.snail_db,
+                bot: this.bot,
+                commands: this.commands,
+                send: async (msg) => {
+                    return message.channel.createMessage(msg);
+                },
+                error: async (errorMessage) => {
+                    return await ephemeralResponse(
+                        message,
+                        `🚫 **| ${getUniqueUsername(message.author)}**, ${errorMessage}`
+                    );
+                },
+            };
+
+            if (command.sendTyping) await message.channel.sendTyping();
+
+            if (command.auth(message.member)) {
+                // Staff are not bound by the chains of cooldowns >:)
+                if (!isStaff(message.member)) {
+                    const commandName = command.alias[0];
+                    const key = `${message.author.id}_${commandName}`;
+
+                    const cooldown = this.cooldowns[key] ?? { lastused: new Date(0), warned: false };
+                    const now = Date.now();
+
+                    // Difference in milliseconds
+                    const diff = now - cooldown.lastused;
+
+                    // If still on cooldown
+                    if (diff < (command.cooldown ?? 0)) {
+                        // If not already warned, warn, otherwise ignore
+                        if (cooldown.warned) return;
+
+                        this.cooldowns[key].warned = true;
+                        await context.error(
+                            `slow down and try the command again **<t:${(
+                                (command.cooldown - diff + now) /
+                                1000
+                            ).toFixed(0)}:R>**`
+                        );
+                        return;
+                    } else {
+                        this.cooldowns[key] = { lastused: now, warned: false };
+                    }
+                }
+
+                await command.execute.bind(context)();
+            } else {
+                await context.error('you do not have permission to use this command!');
+            }
+        } catch (err) {
+            outcome = 'failure';
+            throw err;
+        } finally {
+            transaction?.setOutcome(outcome);
+            transaction?.end();
         }
     }
 };
