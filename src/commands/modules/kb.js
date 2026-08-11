@@ -516,7 +516,7 @@ async function showQuestions(KB) {
     if (!collectorModule?.create) return;
 
     const filter = (user) => this.message.author.id === user.id;
-    const collector = collectorModule.create(message, filter, { idle: 120000 });
+    const collector = collectorModule.create(message, filter, { idle: 30 * 60 * 1000 });
     collector.on('collect', async (data, interaction) => {
         let acknowledged = false;
         try {
