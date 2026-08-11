@@ -31,6 +31,11 @@ const COMPONENTS = [
         ],
     },
 ];
+const INTERACTION_TRANSACTION_IDS = {
+    questlist_queue_position: 'questlist:queue-position',
+    questlist_reload_mentions: 'questlist:reload-mentions',
+    questlist_toggle_reminders: 'questlist:toggle-reminders',
+};
 
 module.exports = class QuestList extends require('./Module') {
     constructor(bot) {
@@ -284,72 +289,91 @@ module.exports = class QuestList extends require('./Module') {
         // If not a component interaction, ignore
         if (type != 3) return;
 
-        switch (custom_id) {
-            case 'questlist_queue_position': {
-                const USERS_ON_LIST = Object.fromEntries(Object.keys(QUEST_DATA).map((type) => [type, new Array()]));
+        const transactionId = INTERACTION_TRANSACTION_IDS[custom_id];
+        if (!transactionId) return;
 
-                for (const { type, discordID } of this.quests) {
-                    if (!USERS_ON_LIST[type].includes(discordID)) USERS_ON_LIST[type].push(discordID);
+        const elasticApm = this.bot.modules.elasticapm;
+        const transaction = elasticApm?.startTransaction(`interaction:${transactionId}`, 'bot');
+        let outcome = 'success';
+
+        try {
+            switch (custom_id) {
+                case 'questlist_queue_position': {
+                    const USERS_ON_LIST = Object.fromEntries(
+                        Object.keys(QUEST_DATA).map((type) => [type, new Array()])
+                    );
+
+                    for (const { type, discordID } of this.quests) {
+                        if (!USERS_ON_LIST[type].includes(discordID)) USERS_ON_LIST[type].push(discordID);
+                    }
+
+                    const POSITIONS = {};
+
+                    for (const type in USERS_ON_LIST) {
+                        POSITIONS[type] = USERS_ON_LIST[type].findIndex((userID) => userID == MEMBER_ID);
+                    }
+
+                    let content = Object.entries(POSITIONS)
+                        .map(([type, position]) => {
+                            let base = `__**${QUEST_DATA[type].name}:**__`;
+
+                            if (position == -1) return `${base} You are not on this list`;
+
+                            const MAX = this.capacity[type] ?? Infinity;
+
+                            if (position < MAX) return `${base} Your quest is currently being shown`;
+
+                            return `${base} Your quest is in the queue at position ${position - MAX + 1}`;
+                        })
+                        .join('\n');
+
+                    await interaction.createMessage({ content, flags: 1 << 6 });
+                    break;
                 }
+                case 'questlist_reload_mentions': {
+                    const USERS_ON_LIST = Object.fromEntries(
+                        Object.keys(QUEST_DATA).map((type) => [type, new Array()])
+                    );
 
-                const POSITIONS = {};
+                    for (const { type, discordID } of this.quests) {
+                        if (!USERS_ON_LIST[type].includes(discordID)) USERS_ON_LIST[type].push(discordID);
+                    }
 
-                for (const type in USERS_ON_LIST) {
-                    POSITIONS[type] = USERS_ON_LIST[type].findIndex((userID) => userID == MEMBER_ID);
+                    let content = Object.entries(USERS_ON_LIST)
+                        .map(([type, userIDs]) => {
+                            let base = `__**${QUEST_DATA[type].name}:**__`;
+
+                            const MAX = this.capacity[type] ?? userIDs.length;
+                            const USERS_ON_DISPLAY = userIDs.splice(0, MAX);
+
+                            return `${base} ${USERS_ON_DISPLAY.map((userID) => `<@${userID}>`).join(' ')}`;
+                        })
+                        .join('\n');
+
+                    await interaction.createMessage({ content, flags: 1 << 6 });
+                    break;
                 }
+                case 'questlist_toggle_reminders': {
+                    let enabled = (await this.bot.snail_db.User.findById(MEMBER_ID))?.reminders?.luck?.enabled;
+                    await this.bot.snail_db.User.updateOne(
+                        { _id: MEMBER_ID },
+                        { reminders: { luck: { enabled: !(enabled ?? false) } } },
+                        { upsert: true }
+                    );
 
-                let content = Object.entries(POSITIONS)
-                    .map(([type, position]) => {
-                        let base = `__**${QUEST_DATA[type].name}:**__`;
-
-                        if (position == -1) return `${base} You are not on this list`;
-
-                        const MAX = this.capacity[type] ?? Infinity;
-
-                        if (position < MAX) return `${base} Your quest is currently being shown`;
-
-                        return `${base} Your quest is in the queue at position ${position - MAX + 1}`;
-                    })
-                    .join('\n');
-
-                await interaction.createMessage({ content, flags: 1 << 6 });
-                break;
-            }
-            case 'questlist_reload_mentions': {
-                const USERS_ON_LIST = Object.fromEntries(Object.keys(QUEST_DATA).map((type) => [type, new Array()]));
-
-                for (const { type, discordID } of this.quests) {
-                    if (!USERS_ON_LIST[type].includes(discordID)) USERS_ON_LIST[type].push(discordID);
+                    await interaction.createMessage({
+                        content: `You have ${enabled ? 'disabled' : 'enabled'} pray/curse reminders.`,
+                        flags: 1 << 6,
+                    });
+                    break;
                 }
-
-                let content = Object.entries(USERS_ON_LIST)
-                    .map(([type, userIDs]) => {
-                        let base = `__**${QUEST_DATA[type].name}:**__`;
-
-                        const MAX = this.capacity[type] ?? userIDs.length;
-                        const USERS_ON_DISPLAY = userIDs.splice(0, MAX);
-
-                        return `${base} ${USERS_ON_DISPLAY.map((userID) => `<@${userID}>`).join(' ')}`;
-                    })
-                    .join('\n');
-
-                await interaction.createMessage({ content, flags: 1 << 6 });
-                break;
             }
-            case 'questlist_toggle_reminders': {
-                let enabled = (await this.bot.snail_db.User.findById(MEMBER_ID))?.reminders?.luck?.enabled;
-                await this.bot.snail_db.User.updateOne(
-                    { _id: MEMBER_ID },
-                    { reminders: { luck: { enabled: !(enabled ?? false) } } },
-                    { upsert: true }
-                );
-
-                await interaction.createMessage({
-                    content: `You have ${enabled ? 'disabled' : 'enabled'} pray/curse reminders.`,
-                    flags: 1 << 6,
-                });
-                break;
-            }
+        } catch (err) {
+            outcome = 'failure';
+            throw err;
+        } finally {
+            transaction?.setOutcome(outcome);
+            transaction?.end();
         }
     }
 

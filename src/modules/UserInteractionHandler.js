@@ -37,34 +37,46 @@ module.exports = class UserInteractionHandler extends require('./Module') {
             return;
         }
 
-        const context = {
-            interaction,
-            target: this.getTargetUser(interaction),
-            config: this.bot.config,
-            snail_db: this.bot.snail_db,
-            bot: this.bot,
-            send: async (msg) => {
-                return await interaction.createMessage(msg);
-            },
-            sendEphemeral: async (msg) => {
-                const ephemeralMsg = ephemeralInteractionResponse(msg);
-                return await interaction.createMessage(ephemeralMsg);
-            },
-            error: async (errorMsg) => {
-                errorMsg = `🚫 **| ${getUniqueUsername(interaction.user)}**, ${errorMsg}`;
-                const ephemeralMessage = ephemeralInteractionResponse(errorMsg);
-                return await interaction.createMessage(ephemeralMessage);
-            },
-            createInteractionCollector: (msg, filter, opt) => {
-                return this.bot.modules['interactioncollector'].create(msg, filter, opt);
-            },
-        };
+        const elasticApm = this.bot.modules.elasticapm;
+        const transaction = elasticApm?.startTransaction(`interaction:user:${userInteraction.transactionId}`, 'bot');
+        let outcome = 'success';
 
-        if (userInteraction.ownerOnly && !isOwnerUser(interaction.user)) {
-            await context.error('this user command is for owners only!');
-            return;
+        try {
+            const context = {
+                interaction,
+                target: this.getTargetUser(interaction),
+                config: this.bot.config,
+                snail_db: this.bot.snail_db,
+                bot: this.bot,
+                send: async (msg) => {
+                    return await interaction.createMessage(msg);
+                },
+                sendEphemeral: async (msg) => {
+                    const ephemeralMsg = ephemeralInteractionResponse(msg);
+                    return await interaction.createMessage(ephemeralMsg);
+                },
+                error: async (errorMsg) => {
+                    errorMsg = `🚫 **| ${getUniqueUsername(interaction.user)}**, ${errorMsg}`;
+                    const ephemeralMessage = ephemeralInteractionResponse(errorMsg);
+                    return await interaction.createMessage(ephemeralMessage);
+                },
+                createInteractionCollector: (msg, filter, opt) => {
+                    return this.bot.modules['interactioncollector'].create(msg, filter, opt);
+                },
+            };
+
+            if (userInteraction.ownerOnly && !isOwnerUser(interaction.user)) {
+                await context.error('this user command is for owners only!');
+                return;
+            }
+            await userInteraction.execute.bind(context)();
+        } catch (err) {
+            outcome = 'failure';
+            throw err;
+        } finally {
+            transaction?.setOutcome(outcome);
+            transaction?.end();
         }
-        await userInteraction.execute.bind(context)();
     }
 
     getTargetUser({ data }) {

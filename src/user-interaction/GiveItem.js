@@ -45,6 +45,7 @@ let previousSelection;
 
 module.exports = new UserInteraction({
     name: 'Give Item',
+    transactionId: 'give-item',
 
     ownerOnly: true,
 
@@ -56,7 +57,10 @@ module.exports = new UserInteraction({
         await this.sendEphemeral(content);
 
         const filter = (user) => this.interaction.user.id === user.id;
-        const collector = this.createInteractionCollector(this.interaction, filter, { idle: 120000 });
+        const collector = this.createInteractionCollector(this.interaction, filter, {
+            idle: 120000,
+            getTransactionId: getGiveItemTransactionId,
+        });
 
         let selected = content.components[0].components[0].options.find((option) => option.default)?.value;
         collector.on('collect', async (data, interaction, _user) => {
@@ -78,7 +82,7 @@ module.exports = new UserInteraction({
                     return;
                 case cancelId:
                     await interaction.acknowledge();
-                    collector.stop('stop');
+                    await collector.stop('stop');
                     return;
                 case changeCountId:
                     modal = getCountModal(count, this.interaction.id);
@@ -127,6 +131,28 @@ module.exports = new UserInteraction({
         });
     },
 });
+
+function getGiveItemTransactionId(data) {
+    if (data.isModal) {
+        const customId = data.components?.[0]?.components?.[0]?.custom_id;
+        if (customId === countModalId) return 'give-item:save-count';
+        if (customId === userModalId) return 'give-item:save-user';
+        return;
+    }
+
+    switch (data.custom_id) {
+        case selectId:
+            return 'give-item:select';
+        case sendId:
+            return 'give-item:send';
+        case cancelId:
+            return 'give-item:cancel';
+        case changeCountId:
+            return 'give-item:change-count';
+        case changeUserId:
+            return 'give-item:change-user';
+    }
+}
 
 function getContent(user, count) {
     const options = [];

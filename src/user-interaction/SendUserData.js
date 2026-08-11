@@ -5,6 +5,7 @@ const query = require('../databases/mysql/mysql.js');
 
 module.exports = new UserInteraction({
     name: 'Send User Data',
+    transactionId: 'send-user-data',
 
     ownerOnly: true,
 

@@ -281,7 +281,10 @@ module.exports = class KnowledgeBase extends require('./Module') {
     collectAskFeedback(collectorModule, answerMessage, content, feedback) {
         let submitted = false;
         const filter = (user) => user?.id === feedback.originalMessage.author?.id;
-        const collector = collectorModule.create(answerMessage, filter, { idle: ASK_FEEDBACK_IDLE_MS });
+        const collector = collectorModule.create(answerMessage, filter, {
+            idle: ASK_FEEDBACK_IDLE_MS,
+            getTransactionId: (data) => getAskFeedbackTransactionId(data.custom_id),
+        });
 
         collector.on('collect', async (data, interaction) => {
             const rating = getAskFeedbackRating(data.custom_id);
@@ -295,7 +298,7 @@ module.exports = class KnowledgeBase extends require('./Module') {
                 content.components = buildAskFeedbackComponents(rating.id);
                 await answerMessage.edit(content).catch(() => {});
                 await interaction.createMessage(ephemeralInteractionResponse(`✅ **|** Thank you for your feedback!`));
-                collector.stop('submitted');
+                await collector.stop('submitted');
             } catch (err) {
                 console.error('[KB] ask feedback forward failed:', err.message);
                 await interaction
@@ -352,19 +355,21 @@ module.exports = class KnowledgeBase extends require('./Module') {
     }
 
     async ask(question, { message } = {}) {
-        const transaction = this.elasticApm.startTransaction('snail.ask.fetch', 'bot');
+        const trace = this.elasticApm.currentTransaction
+            ? this.elasticApm.startSpan('snail.ask.fetch', 'bot')
+            : this.elasticApm.startTransaction('snail.ask.fetch', 'bot');
 
         try {
-            transaction?.setLabel('question_length', question.length);
+            trace?.setLabel('question_length', question.length);
             const result = await this.fetchAskAnswer(question, { message });
-            transaction?.setOutcome('success');
+            trace?.setOutcome('success');
             return result;
         } catch (err) {
-            transaction?.setOutcome('failure');
+            trace?.setOutcome('failure');
             this.elasticApm.captureError(err);
             throw err;
         } finally {
-            transaction?.end();
+            trace?.end();
         }
     }
 
@@ -1015,6 +1020,12 @@ module.exports = class KnowledgeBase extends require('./Module') {
         );
     }
 };
+
+function getAskFeedbackTransactionId(customId) {
+    const rating = getAskFeedbackRating(customId);
+    if (rating?.id === 'kb_ask_feedback_helpful') return 'kb:feedback:helpful';
+    if (rating?.id === 'kb_ask_feedback_needs_fix') return 'kb:feedback:needs-fix';
+}
 
 // ─── Pure helpers ───────────────────────────────────────────────────────
 

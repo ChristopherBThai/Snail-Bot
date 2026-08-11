@@ -516,7 +516,10 @@ async function showQuestions(KB) {
     if (!collectorModule?.create) return;
 
     const filter = (user) => this.message.author.id === user.id;
-    const collector = collectorModule.create(message, filter, { idle: 30 * 60 * 1000 });
+    const collector = collectorModule.create(message, filter, {
+        idle: 30 * 60 * 1000,
+        getTransactionId: getQuestionEditorTransactionId,
+    });
     collector.on('collect', async (data, interaction) => {
         let acknowledged = false;
         try {
@@ -532,7 +535,7 @@ async function showQuestions(KB) {
                         await answerMessage.delete().catch(() => {});
                         answerMessage = null;
                     }
-                    collector.stop('missing');
+                    await collector.stop('missing');
                     return;
                 }
                 editor = result.editor;
@@ -568,7 +571,7 @@ async function showQuestions(KB) {
                             await answerMessage.delete().catch(() => {});
                             answerMessage = null;
                         }
-                        collector.stop('missing');
+                        await collector.stop('missing');
                         return;
                     }
 
@@ -608,6 +611,19 @@ async function showQuestions(KB) {
         disableComponents(content);
         await message.edit(content).catch(() => {});
     });
+}
+
+function getQuestionEditorTransactionId(data) {
+    if (
+        data.isModal &&
+        data.components?.some((row) =>
+            row.components?.some((component) => component.custom_id === QUESTION_MODAL_INPUT_ID)
+        )
+    ) {
+        return 'kb:questions:save';
+    }
+    if (data.custom_id === QUESTIONS_EDIT_ID) return 'kb:questions:edit';
+    if (data.custom_id === QUESTIONS_GENERATE_ID) return 'kb:questions:regenerate';
 }
 
 function renderQuestionEditorMessages(command, editor, notice = '') {
