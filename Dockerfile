@@ -8,4 +8,4 @@ RUN npm ci --omit=dev
 
 COPY . .
 
-CMD ["npm", "start"]
+CMD ["sh", "-c", "npm run migrate && exec npm start"]
