@@ -6,6 +6,7 @@
     "description": "Utility bot for the OwO Bot Support Discord server",
     "scripts": {
         "start": "node --import ./src/services/elasticApm.js src/index.js",
+        "migrate": "node src/migrate.js",
         "check": "prettier --check .",
         "check:fix": "prettier --write ."
     },
