@@ -2,6 +2,8 @@ import { ButtonStyle, ComponentType, MessageFlags, SeparatorSpacingSize, TextInp
 import { disableComponents, getModalValue } from '../../discord/interactions.js';
 import { getMessageJumpLink, suppressMentions } from '../../discord/messages.js';
 
+const ASK_QUESTION_PREFIX = '-# Asked: ';
+
 export const IDS = Object.freeze({
     feedback: 'knowledgeBase:feedback:',
     findPage: 'knowledgeBase:findPage:',
@@ -116,9 +118,14 @@ export function readQuestions(interaction) {
     return String(getModalValue(interaction, IDS.questionsInput) ?? '');
 }
 
-export function buildAnswer(answer, sources, feedbackId) {
+export function buildAskThreadStarter(question) {
+    return panel([text(`### Ask\n${question}`), text('-# Snail is answering in this thread.')]);
+}
+
+export function buildAnswer(answer, sources, feedbackId, question) {
     const publicSources = sources.filter((tag) => tag.public).slice(0, 5);
     return panel([
+        ...(question ? [text(`${ASK_QUESTION_PREFIX}${question}`)] : []),
         ...splitText(answer, 3500).map(text),
         ...(publicSources.length
             ? [text(`-# Sources: ${publicSources.map((tag) => `\`${tag._id}\``).join(', ')}`)]
@@ -134,6 +141,46 @@ export function buildAnswer(answer, sources, feedbackId) {
     ]);
 }
 
+export function isAskAnswerMessage(message, botUserId) {
+    if (!botUserId || message?.author?.id !== botUserId) return false;
+
+    const ratings = new Map();
+    visitComponents(message.components, (component) => {
+        if (component.type !== ComponentType.Button || !component.customId?.startsWith(IDS.feedback)) return;
+        const match = component.customId.slice(IDS.feedback.length).match(/^(.+):(helpful|needsFix)$/);
+        if (match) ratings.set(match[2], match[1]);
+    });
+    return ratings.has('helpful') && ratings.get('helpful') === ratings.get('needsFix');
+}
+
+export function extractAskAnswer(message) {
+    const parts = [];
+    visitComponents(message?.components, (component) => {
+        if (component.type !== ComponentType.TextDisplay) return;
+        const content = String(component.content ?? '').trim();
+        if (
+            !content ||
+            content.startsWith(ASK_QUESTION_PREFIX) ||
+            content.startsWith('-# Sources:') ||
+            content.startsWith('> -# ⚠️')
+        )
+            return;
+        parts.push(content);
+    });
+    return parts.join('\n').trim();
+}
+
+export function extractAskQuestion(message) {
+    let question = '';
+    visitComponents(message?.components, (component) => {
+        const content = component.type === ComponentType.TextDisplay ? String(component.content ?? '').trim() : '';
+        if (!question && content.startsWith(ASK_QUESTION_PREFIX)) {
+            question = content.slice(ASK_QUESTION_PREFIX.length).trim();
+        }
+    });
+    return question;
+}
+
 export function disableFeedbackMessage(message, selectedId) {
     const components = disableComponents(message.components ?? []);
     for (const component of components) {
@@ -142,16 +189,24 @@ export function disableFeedbackMessage(message, selectedId) {
     return suppressMentions({ flags: MessageFlags.IsComponentsV2, components });
 }
 
-export function buildFeedbackReport({ rating, userId, question, answer, sources, message }) {
+export function buildFeedbackReport({ rating, userId, question, questionMessage, answer, sources, message }) {
     const link = getMessageJumpLink({
         guildId: message.guildId,
         channelId: message.channelId,
         messageId: message.id,
     });
+    const questionLink = questionMessage
+        ? getMessageJumpLink({
+              guildId: questionMessage.guildId,
+              channelId: questionMessage.channelId,
+              messageId: questionMessage.id,
+          })
+        : undefined;
     const report =
         `## Ask Feedback · ${rating === 'helpful' ? 'Helpful' : 'Needs Fix'}\n` +
         `**User:** <@${userId}> (${userId})\n` +
         `**Question:** ${question}\n` +
+        (questionLink ? `**Original:** ${questionLink}\n` : '') +
         `**Answer:** ${link}\n` +
         `**Response:** ${answer}\n` +
         `**Resources:** ${sources.length ? sources.map((tag) => `\`${tag._id}\``).join(', ') : 'None'}`;
@@ -237,6 +292,14 @@ function markSelected(component, selectedId) {
     if (component.customId === selectedId) component.style = ButtonStyle.Primary;
     for (const child of component.components ?? []) markSelected(child, selectedId);
     if (component.accessory) markSelected(component.accessory, selectedId);
+}
+
+function visitComponents(components, visit) {
+    for (const component of components ?? []) {
+        visit(component);
+        visitComponents(component.components, visit);
+        if (component.accessory) visitComponents([component.accessory], visit);
+    }
 }
 
 function packFindPages(blocks) {

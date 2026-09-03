@@ -10,10 +10,12 @@ const QUESTION_PROMPT_VERSION = 'tag-question-v3';
 const QUESTION_SYSTEM_PROMPT = 'You generate retrieval scaffolding questions for OwO Discord bot support tags.';
 const QUESTION_PROMPT_SOURCE = `${QUESTION_PROMPT_VERSION}:${QUESTION_SYSTEM_PROMPT}`;
 const FALLBACK_ANSWER = "I don't know that one yet — please ask a helper or rephrase your question.";
+const RETRIEVAL_HISTORY_MAX_CHARS = 1_200;
 
 const ANSWER_SYSTEM_PROMPT =
     'You are Snail, a friendly helper in the OwO Discord bot support server. ' +
     "Answer the user's question directly using ONLY the provided support notes. " +
+    'Prior conversation may clarify what the user means, but it is not a source of truth. ' +
     'Only answer questions related to the OwO bot or this support server. ' +
     'Do not guess, infer missing details, or use outside knowledge. ' +
     'If the notes only contain related info but not the exact answer, say the exact answer is not specified. ' +
@@ -128,11 +130,11 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
         find(question) {
             return find(question, true);
         },
-        ask(question) {
+        ask(question, history = []) {
             const transaction = elasticApm.startTransaction('snail.ask.fetch', 'bot');
             transaction?.setLabel('question_length', question.length);
 
-            return ask(question)
+            return ask(question, history)
                 .then((result) => {
                     transaction?.setOutcome('success');
                     return result;
@@ -464,12 +466,13 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
         }
     }
 
-    async function find(question, includeBelowThreshold = false) {
+    async function find(question, includeBelowThreshold = false, history = []) {
         await resetOperation;
         const timer = log.time();
         const matchedTerms = matchTerms(question, terms);
         const expanded = formatExpandedQuery(question, matchedTerms);
-        const [vector] = await openRouter.embed([formatQuery(expanded, config.queryInstruction)]);
+        const retrievalQuestion = formatRetrievalQuestion(expanded, history);
+        const [vector] = await openRouter.embed([formatQuery(retrievalQuestion, config.queryInstruction)]);
         timer.checkpoint('embedding');
         const result = await qdrant.query(config.collection, {
             query: vector,
@@ -482,7 +485,7 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
         const groups = materializeGroups(hits);
         timer.checkpoint('cache');
         const eligible = groups.filter((group) => group.score >= config.scoreThreshold);
-        const ranked = await rerank(expanded, eligible);
+        const ranked = await rerank(retrievalQuestion, eligible);
         timer.debug('Retrieved Knowledge Base candidates', {
             rawHits: hits.length,
             tags: groups.length,
@@ -534,8 +537,8 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
         }
     }
 
-    async function ask(question) {
-        const result = await find(question);
+    async function ask(question, history) {
+        const result = await find(question, false, history);
         if (!result.groups.length) return { answer: FALLBACK_ANSWER, sources: [] };
 
         const notes = result.groups.map((group) => `[Tag: ${group.tagId}]\n${group.tag.text}`).join('\n\n');
@@ -544,7 +547,7 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
             `Support notes:\n${notes}\n\n` +
             (termLines ? `OwO bot terms:\n${termLines}\n\n` : '') +
             `User question:\n${question}`;
-        const raw = await openRouter.chat(ANSWER_SYSTEM_PROMPT, prompt);
+        const raw = await openRouter.chat(ANSWER_SYSTEM_PROMPT, prompt, history);
         const parsed = parseAnswer(raw);
         const groupsById = new Map(result.groups.map((group) => [group.tagId, group]));
         const sourceIds = parsed.failed ? [result.groups[0].tagId] : parsed.tagIds;
@@ -611,6 +614,22 @@ function formatQuery(question, instruction) {
 function formatExpandedQuery(question, terms) {
     if (!terms.length) return question;
     return `${question}\n\nKnown terms:\n${terms.map((term) => `${term.id}: ${term.meaning}`).join('\n')}`;
+}
+
+function formatRetrievalQuestion(question, history) {
+    const lines = [];
+    let chars = 0;
+    for (const message of [...(history ?? [])].toReversed()) {
+        const content = String(message?.content ?? '').trim();
+        if (!content) continue;
+        const line = `${message.role === 'assistant' ? 'Snail' : 'User'}: ${content}`;
+        if (lines.length && chars + line.length > RETRIEVAL_HISTORY_MAX_CHARS) break;
+        const value = line.slice(0, RETRIEVAL_HISTORY_MAX_CHARS);
+        lines.unshift(value);
+        chars += value.length;
+    }
+    if (!lines.length) return question;
+    return `Previous ask conversation:\n${lines.join('\n')}\n\nCurrent user question:\n${question}`;
 }
 
 function tagFilter(tagIds) {
