@@ -49,8 +49,8 @@ export function getSelectValue(interaction) {
 }
 
 /**
- * Gets a text input value from a submitted modal, including inputs nested under
- * Labels or legacy Action Rows.
+ * Gets a text input value or the first selected value from a submitted modal,
+ * including inputs nested under Labels or legacy Action Rows.
  *
  * @param {Interaction} interaction
  * @param {string} customId
@@ -58,11 +58,6 @@ export function getSelectValue(interaction) {
 export function getModalValue(interaction, customId) {
     const component = findComponent(interaction.data?.components ?? [], customId);
     return component?.value ?? component?.values?.[0];
-}
-
-/** Gets every value from a select submitted inside a modal. */
-export function getModalValues(interaction, customId) {
-    return findComponent(interaction.data?.components ?? [], customId)?.values ?? [];
 }
 
 /** Returns a copy of a component tree with every interactive component disabled. */

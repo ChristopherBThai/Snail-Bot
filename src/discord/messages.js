@@ -1,6 +1,6 @@
 import { ComponentType, MessageFlags } from 'discord-api-types/v10';
 
-export function normalizeMessage(message, { ephemeral = false } = {}) {
+export function normalizeMessage(message, ephemeral = false) {
     if (typeof message === 'string') {
         return {
             allowedMentions: { parse: [] },

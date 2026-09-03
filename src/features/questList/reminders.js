@@ -3,7 +3,7 @@ import { notification } from './render.js';
 const CHECK_INTERVAL_MS = 4.5 * 60 * 1000;
 const PRAY_COOLDOWN_MS = 5 * 60 * 1000;
 
-export function createPrayCurseReminders({ repository, rest, log, getChannelId }) {
+export function createPrayCurseReminders({ User, redis, rest, log, getChannelId }) {
     const users = new Set();
     const cooldowns = new Map();
     let active = false;
@@ -18,10 +18,10 @@ export function createPrayCurseReminders({ repository, rest, log, getChannelId }
     async function activate() {
         active = true;
         users.clear();
-        const loadedUsers = await repository.loadPrayCurseReminderUsers();
+        const loadedUsers = await User.find({ 'reminders.luck': true }, { _id: 1 }).lean();
         if (!active) return;
 
-        for (const userId of loadedUsers) users.add(userId);
+        for (const user of loadedUsers) users.add(user._id);
 
         log.debug('Loaded pray/curse reminder users', { users: users.size });
         await check(false).catch(logCheckFailure);
@@ -42,7 +42,7 @@ export function createPrayCurseReminders({ repository, rest, log, getChannelId }
 
     async function toggle(userId) {
         const enabled = !users.has(userId);
-        await repository.savePrayCurseReminderEnabled(userId, enabled);
+        await User.updateOne({ _id: userId }, { $set: { 'reminders.luck': enabled } }, { upsert: true });
 
         if (enabled) {
             users.add(userId);
@@ -64,7 +64,9 @@ export function createPrayCurseReminders({ repository, rest, log, getChannelId }
         if (!active || !userIds.length) return;
 
         const timer = log.time();
-        const results = await repository.getPrayCurseCooldowns(userIds);
+        const pipeline = redis.multi();
+        for (const userId of userIds) pipeline.hGetAll(`cd_pray_${userId}`);
+        const results = await pipeline.execAsPipeline();
         if (!active) return;
 
         let changed = 0;

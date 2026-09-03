@@ -12,7 +12,6 @@ const EDIT_COMMAND_DEFINITION = {
 export default function setup({ messageBuilder, rest }) {
     return {
         name: 'Edit Command',
-        missing: messageBuilder.missing.length ? ['Message Builder (system)'] : [],
         commands: [
             {
                 definition: EDIT_COMMAND_DEFINITION,

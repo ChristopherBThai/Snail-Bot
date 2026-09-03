@@ -27,6 +27,10 @@ settingSchema.statics.saveValue = function (namespace, key, value) {
     return this.updateOne({ _id: `${namespace}:${key}` }, { $set: { value } }, { upsert: true });
 };
 
+settingSchema.statics.deleteValue = function (namespace, key) {
+    return this.deleteOne({ _id: `${namespace}:${key}` });
+};
+
 export function createSettingModel(connection) {
     return connection.model('Setting', settingSchema);
 }

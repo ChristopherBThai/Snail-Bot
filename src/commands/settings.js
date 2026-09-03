@@ -35,12 +35,11 @@ const SETTINGS_COMMAND_DEFINITION = {
 };
 
 /** @type {import('../packages.js').PackageSetup} */
-export default function setup({ features, logging, unavailable }) {
+export default function setup({ features, logging, services }) {
     const log = logging.createLogger('settings');
 
     return {
         name: 'Settings Command',
-        missing: unavailable.snail.mongo ?? [],
         commands: [
             {
                 definition: SETTINGS_COMMAND_DEFINITION,
@@ -116,23 +115,44 @@ export default function setup({ features, logging, unavailable }) {
             return;
         }
 
-        if (!feature.available) {
-            await context.respond(
-                `${feature.name} is unavailable. Missing: ${feature.missing.map((value) => `\`${value}\``).join(', ')}`,
-                { ephemeral: true },
-            );
+        if (feature.missing.length) {
+            await context.respond(`${feature.name} is currently unavailable.`, { ephemeral: true });
             return;
         }
 
         const timer = log.time();
         await context.deferUpdate();
-        await feature.setEnabled(action === 'enable');
+        const requestedEnabled = action === 'enable';
+        try {
+            await feature.setEnabled(requestedEnabled);
+        } catch (error) {
+            timer.error('Feature enabled state update failed', {
+                error,
+                featureId,
+                requestedEnabled,
+                enabled: feature.enabled,
+            });
+            await context.editResponse(
+                `${feature.name} could not finish ${requestedEnabled ? 'enabling' : 'disabling'}. ` +
+                    `Its ${services.snail.mongo ? 'saved' : 'current runtime'} state is ` +
+                    `${feature.enabled ? 'enabled' : 'disabled'}; check the logs for details.`,
+            );
+            return;
+        }
         timer.checkpoint('stateChange');
         const message = await feature.renderSettings(pageId);
         timer.checkpoint('render');
         await context.editResponse(message);
+        const persisted = Boolean(services.snail.mongo);
+        if (!persisted) {
+            await context.respond(
+                `${feature.name} was ${requestedEnabled ? 'enabled' : 'disabled'} for the current runtime. ` +
+                    `This change could not be saved and will reset when Snail restarts. Check the runtime logs for details.`,
+                { ephemeral: true },
+            );
+        }
         timer.checkpoint('discord');
-        timer.info('Changed feature enabled state', { featureId, enabled: action === 'enable' });
+        timer.info('Changed feature enabled state', { featureId, enabled: requestedEnabled, persisted });
     }
 }
 
@@ -144,7 +164,7 @@ export default function setup({ features, logging, unavailable }) {
  * @returns {Promise<import('@discordeno/types').InteractionCallbackData>}
  */
 export async function renderFeatureSettings(feature, pageId) {
-    if (!feature.available) return renderUnavailableFeature(feature);
+    if (feature.missing.length) return renderUnavailableFeature(feature);
 
     const page = getPage(feature, pageId);
     const content = page ? await page.render() : [];
@@ -173,6 +193,7 @@ export async function renderFeatureSettings(feature, pageId) {
 function featureHeader(feature, page) {
     const content = `# ${feature.name}\n-# ${feature.description}`;
     if (typeof feature.setEnabled !== 'function') return text(content);
+    const unavailable = Boolean(feature.missing.length);
 
     return {
         type: ComponentType.Section,
@@ -180,9 +201,9 @@ function featureHeader(feature, page) {
         accessory: {
             type: ComponentType.Button,
             customId: `${IDS.toggle}${feature.id}:${page?.id ?? ''}:${feature.enabled ? 'disable' : 'enable'}`,
-            label: feature.available ? (feature.enabled ? 'Disable' : 'Enable') : 'Unavailable',
-            style: !feature.available || feature.enabled ? ButtonStyle.Danger : ButtonStyle.Success,
-            disabled: !feature.available,
+            label: unavailable ? 'Unavailable' : feature.enabled ? 'Disable' : 'Enable',
+            style: unavailable || feature.enabled ? ButtonStyle.Danger : ButtonStyle.Success,
+            disabled: unavailable,
         },
     };
 }
@@ -193,8 +214,8 @@ function renderUnavailableFeature(feature) {
         separator(true),
         text(
             `## ⚠️ Feature Unavailable\n` +
-                `This feature cannot be configured or enabled because it is missing:\n` +
-                feature.missing.map((missing) => `- ${missing}`).join('\n'),
+                `This feature is currently unavailable and cannot be configured or enabled.\n` +
+                `-# Check the runtime logs for missing configuration or unavailable services.`,
         ),
         separator(true),
         homeNavigation(),
@@ -271,11 +292,7 @@ function renderSettingsHome(features, requestedPage) {
 }
 
 function featureSection(feature) {
-    const status = feature.available
-        ? feature.enabled
-            ? 'Enabled'
-            : 'Disabled'
-        : `Unavailable · Missing ${feature.missing.join(', ')}`;
+    const status = feature.missing.length ? 'Unavailable' : feature.enabled ? 'Enabled' : 'Disabled';
 
     return {
         type: ComponentType.Section,

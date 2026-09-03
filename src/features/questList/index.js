@@ -1,7 +1,7 @@
 import { GatewayDispatchEvents } from 'discord-api-types/v10';
 import { hasManagerAccess } from '../../discord/auth.js';
 import { getInteractionUser, getSelectValue } from '../../discord/interactions.js';
-import { QUEST_TYPES } from './quests.js';
+import { createQuestSource, QUEST_TYPES } from './quests.js';
 import { createPrayCurseReminders } from './reminders.js';
 import {
     ADD_QUESTS_ID,
@@ -14,17 +14,20 @@ import {
     TOGGLE_REMINDERS_ID,
     VISIBLE_MENTIONS_ID,
 } from './render.js';
-import { createQuestListRepository } from './repository.js';
 import {
     buildCapacityModal,
     buildConfiguration,
     buildEmptyMessageModal,
+    buildFindUsersModal,
+    buildInvalidUserIdResponses,
     buildManageQueueModal,
     buildOverview,
-    buildQueueRemovalResponse,
+    buildQueueRemovalResponses,
     buildRepostIntervalModal,
+    buildUserPositionResponses,
     readCapacity,
     readEmptyMessage,
+    readFindUsers,
     readManageQueue,
     readRepostInterval,
     SETTINGS_IDS,
@@ -32,58 +35,66 @@ import {
 import { createQuestListUpdates } from './updates.js';
 
 /** @type {import('../../packages.js').PackageSetup} */
-export default function setup({ features, logging, rest, services, unavailable }) {
+export default async function setup({ features, logging, rest, services }) {
     const log = logging.createLogger('questList');
-    const repository =
-        services.snail.mongo && services.owo.mongo && services.owo.redis
-            ? createQuestListRepository({
-                  Quest: services.snail.mongo.Quest,
-                  UserQuest: services.owo.mongo.UserQuest,
-                  User: services.snail.mongo.User,
-                  Setting: services.snail.mongo.Setting,
-                  redis: services.owo.redis,
+    const mongo = services.snail.mongo;
+    const owoMongo = services.owo.mongo;
+    const redis = services.owo.redis;
+    const liveMissing = [!owoMongo && 'OwO Mongo', !redis && 'OwO Redis'].filter(Boolean);
+    const questSource =
+        mongo && owoMongo && redis ? createQuestSource({ UserQuest: owoMongo.UserQuest, redis }) : undefined;
+    const updates = mongo
+        ? createQuestListUpdates({
+              Quest: mongo.Quest,
+              Setting: mongo.Setting,
+              questSource,
+              rest,
+              log,
+              isEnabled,
+          })
+        : undefined;
+    await updates?.initialize();
+    const reminders =
+        mongo && redis
+            ? createPrayCurseReminders({
+                  User: mongo.User,
+                  redis,
+                  rest,
+                  log,
+                  getChannelId: () => updates.state.channelId,
               })
             : undefined;
-    const updates = createQuestListUpdates({ repository, rest, log, isEnabled });
-    const reminders = createPrayCurseReminders({
-        repository,
-        rest,
-        log,
-        getChannelId: () => updates.state.channelId,
-    });
 
     return {
         name: 'Quest List',
-        missing: [
-            ...(unavailable.snail.mongo ?? []),
-            ...(unavailable.owo.mongo ?? []),
-            ...(unavailable.owo.redis ?? []),
-        ],
+        missing: mongo ? [] : ['Snail Mongo'],
         components: [
-            { id: ADD_QUESTS_ID, handle: addQuests },
-            { id: MY_POSITION_ID, handle: showPosition },
-            { id: VISIBLE_MENTIONS_ID, handle: showVisibleMentions },
-            { id: TOGGLE_REMINDERS_ID, handle: toggleReminders },
+            { id: ADD_QUESTS_ID, missing: liveMissing, handle: addQuests },
+            { id: MY_POSITION_ID, missing: liveMissing, handle: showPosition },
+            { id: VISIBLE_MENTIONS_ID, missing: liveMissing, handle: showVisibleMentions },
+            { id: TOGGLE_REMINDERS_ID, missing: redis ? [] : ['OwO Redis'], handle: toggleReminders },
             interaction(SETTINGS_IDS.channel, setChannel),
             interaction(SETTINGS_IDS.editCapacity, openCapacityModal),
             interaction(SETTINGS_IDS.editRepostInterval, openRepostIntervalModal),
             interaction(SETTINGS_IDS.editEmptyMessage, openEmptyMessageModal),
-            interaction(SETTINGS_IDS.manageQueue, openManageQueueModal),
-            interaction(SETTINGS_IDS.forceRepost, forceRepost, false),
+            { ...interaction(SETTINGS_IDS.findUsers, openFindUsersModal), missing: liveMissing },
+            { ...interaction(SETTINGS_IDS.manageQueue, openManageQueueModal), missing: liveMissing },
+            { ...interaction(SETTINGS_IDS.forceRepost, forceRepost, false), missing: liveMissing },
         ],
         modals: [
             interaction(SETTINGS_IDS.capacityModal, setCapacity),
             interaction(SETTINGS_IDS.repostIntervalModal, setRepostInterval),
             interaction(SETTINGS_IDS.emptyMessageModal, setEmptyMessage),
-            interaction(SETTINGS_IDS.manageQueueModal, manageQueue),
+            { ...interaction(SETTINGS_IDS.findUsersModal, findUsers), missing: liveMissing },
+            { ...interaction(SETTINGS_IDS.manageQueueModal, manageQueue), missing: liveMissing },
         ],
         feature: {
             id: 'questList',
             description: 'Maintains the shared OwO social quest queue.',
             toggleable: true,
             activate,
-            deactivate: reminders.deactivate,
-            events: [{ event: GatewayDispatchEvents.MessageCreate, handle: updates.messageCreated }],
+            deactivate: () => reminders?.deactivate(),
+            events: questSource ? [{ event: GatewayDispatchEvents.MessageCreate, handle: updates.messageCreated }] : [],
             settings: {
                 pages: [
                     { id: 'overview', label: 'Overview', render: renderOverview },
@@ -99,16 +110,12 @@ export default function setup({ features, logging, rest, services, unavailable }
 
     function isEnabled() {
         const feature = features.get('questList');
-        return Boolean(feature?.available && feature.enabled);
-    }
-
-    function isRunning() {
-        return Boolean(isEnabled() && updates.state.channelId);
+        return Boolean(feature?.enabled && !feature.missing.length);
     }
 
     async function activate() {
         await updates.activate();
-        if (isEnabled()) await reminders.activate();
+        if (isEnabled()) await reminders?.activate();
     }
 
     async function addQuests(context) {
@@ -161,13 +168,14 @@ export default function setup({ features, logging, rest, services, unavailable }
         );
     }
 
-    async function renderOverview() {
-        await updates.loadSettings();
-        return buildOverview(updates.state, isRunning());
+    function renderOverview() {
+        return buildOverview(updates.state, {
+            running: updates.isRunning(),
+            questUpdatesAvailable: Boolean(questSource),
+        });
     }
 
-    async function renderConfiguration() {
-        await updates.loadSettings();
+    function renderConfiguration() {
         return buildConfiguration(updates.state);
     }
 
@@ -237,20 +245,48 @@ export default function setup({ features, logging, rest, services, unavailable }
         await context.editResponse(await renderQuestListSettings('configuration'));
     }
 
+    async function openFindUsersModal(context) {
+        await context.openModal(buildFindUsersModal());
+    }
+
+    async function findUsers(context) {
+        const { userIds, invalidValues } = readFindUsers(context.interaction);
+        if (!userIds.size && !invalidValues.length) {
+            await context.respond('Enter one or more valid Discord user IDs separated by whitespace.', {
+                ephemeral: true,
+            });
+            return;
+        }
+
+        await context.defer({ ephemeral: true });
+        await updates.refreshPositions();
+        await respondAll(context, [
+            ...buildUserPositionResponses(updates.state, userIds),
+            ...buildInvalidUserIdResponses(invalidValues),
+        ]);
+    }
+
     async function openManageQueueModal(context) {
         await context.openModal(buildManageQueueModal());
     }
 
     async function manageQueue(context) {
-        const { questType, userIds } = readManageQueue(context.interaction);
+        const { questType, userIds, invalidValues } = readManageQueue(context.interaction);
         if (questType !== 'all' && !QUEST_TYPES[questType]) {
             await context.respond('Choose a valid quest type.', { ephemeral: true });
+            return;
+        }
+        if (!userIds.size && invalidValues.length) {
+            await respondAll(context, buildInvalidUserIdResponses(invalidValues));
             return;
         }
 
         await context.deferUpdate();
         const result = await updates.removeQuests(questType, userIds);
-        const response = buildQueueRemovalResponse(questType, userIds, result.quests);
+        const responses = [
+            ...buildQueueRemovalResponses(questType, userIds, result.quests),
+            ...buildInvalidUserIdResponses(invalidValues),
+        ];
 
         try {
             await context.editResponse(await renderQuestListSettings('overview'));
@@ -259,11 +295,10 @@ export default function setup({ features, logging, rest, services, unavailable }
                 error,
                 quests: result.quests.length,
             });
-            await context.respond(`${response}\n\nThe settings panel could not be refreshed.`, { ephemeral: true });
-            return;
+            responses.push('The settings panel could not be refreshed.');
         }
 
-        await context.respond(response, { ephemeral: true });
+        await respondAll(context, responses);
     }
 
     async function forceRepost(context) {
@@ -280,4 +315,8 @@ export default function setup({ features, logging, rest, services, unavailable }
     function renderQuestListSettings(pageId) {
         return features.get('questList').renderSettings(pageId);
     }
+}
+
+async function respondAll(context, responses) {
+    for (const response of responses) await context.respond(response, { ephemeral: true });
 }

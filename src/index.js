@@ -1,40 +1,47 @@
+import { createRestManager } from '@discordeno/rest';
+import { PermissionFlagsBits } from 'discord-api-types/v10';
 import { loadConfig } from './config/index.js';
 import { createGateway } from './discord/gateway.js';
-import { createRest, synchronizeCommands } from './discord/rest.js';
+import { createDiscordenoLogger } from './discord/logger.js';
 import { createLogging } from './logging/index.js';
 import { loadLoggingLevels } from './logging/repository.js';
 import { setupPackages } from './packages.js';
 import { createServices } from './services/index.js';
 
-const logging = createLogging();
-const log = logging.createLogger('snail', true);
-const startupTimer = log.time();
-
 async function start() {
-    log.info('Starting Snail');
-
     const { name, config, environment } = await loadConfig();
-    startupTimer.checkpoint('config');
+    const logging = createLogging(config.logging);
+    const log = logging.createLogger('snail');
+    const startupTimer = log.time();
+
+    log.info('Starting Snail');
     log.debug('Loaded configuration', {
         name,
         guildId: config.guildId,
     });
 
-    const rest = createRest({ token: environment.token, logging });
+    const rest = createRestManager({
+        token: environment.token,
+        logger: createDiscordenoLogger(logging.createLogger('rest')),
+    });
     startupTimer.checkpoint('rest');
     log.debug('Created REST manager');
 
-    const { services, unavailable } = await createServices(environment.services, log);
+    const services = await createServices({
+        environment: environment.services,
+        openRouter: config.openRouter,
+        log,
+    });
     startupTimer.checkpoint('services');
 
     if (services.snail.mongo) {
         try {
             const levels = await loadLoggingLevels(services.snail.mongo.Setting);
-            for (const [name, level] of Object.entries(levels)) {
+            for (const [loggerName, level] of Object.entries(levels)) {
                 try {
-                    logging.setLevel(name, level);
+                    logging.setLevel(loggerName, level);
                 } catch (error) {
-                    log.warn('Ignored invalid configured log level', { error, logger: name, level });
+                    log.warn('Ignored invalid configured log level', { error, logger: loggerName, level });
                 }
             }
             log.debug('Loaded configured log levels', { loggerCount: Object.keys(levels).length });
@@ -44,15 +51,10 @@ async function start() {
     }
     startupTimer.checkpoint('logging');
 
-    const packages = await setupPackages({ config, logging, log, rest, services, unavailable });
+    const packages = await setupPackages({ config, logging, log, rest, services });
     startupTimer.checkpoint('packages');
 
-    await synchronizeCommands({
-        rest,
-        guildId: config.guildId,
-        commands: packages.commands,
-        log,
-    });
+    await synchronizeCommands(rest, config.guildId, packages.commands, log);
     startupTimer.checkpoint('commands');
 
     const gateway = createGateway({
@@ -69,7 +71,29 @@ async function start() {
     startupTimer.info('Snail started');
 }
 
+async function synchronizeCommands(rest, guildId, commands, log) {
+    const globalCommands = [];
+    const guildCommands = [];
+
+    for (const command of commands.values()) {
+        const definition = {
+            ...command.definition,
+            ...(command.staff ? { defaultMemberPermissions: PermissionFlagsBits.BypassSlowmode.toString() } : {}),
+        };
+
+        (command.global ? globalCommands : guildCommands).push(definition);
+    }
+
+    log.info('Synchronizing global application commands', { commandCount: globalCommands.length });
+    await rest.upsertGlobalApplicationCommands(globalCommands);
+    log.info('Global application commands synchronized', { commandCount: globalCommands.length });
+
+    log.info('Synchronizing guild application commands', { guildId, commandCount: guildCommands.length });
+    await rest.upsertGuildApplicationCommands(guildId, guildCommands);
+    log.info('Guild application commands synchronized', { guildId, commandCount: guildCommands.length });
+}
+
 start().catch((error) => {
-    startupTimer.error('Startup failed', { error });
+    console.error('Startup failed', error);
     process.exit(1);
 });

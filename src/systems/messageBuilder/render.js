@@ -5,10 +5,10 @@ import {
     canMoveComponent,
     countComponents,
     createComponent,
-    getChildren,
     getComponent,
     getComponentName,
     getItems,
+    MAX_COMPONENTS,
 } from './draft.js';
 
 export const IDS = Object.freeze({
@@ -62,7 +62,8 @@ export function buildMessage(draft) {
 
 export function buildController(session, { disabled = false, notice } = {}) {
     const selected = getComponent(session.draft, session.selection.path);
-    const children = getChildren(session.draft.components[session.selection.path[0]]);
+    const topLevel = session.draft.components[session.selection.path[0]];
+    const children = topLevel?.type === ComponentType.Container ? topLevel.components : undefined;
     const items = getItems(selected);
     const selectionComponents = [
         {
@@ -77,7 +78,7 @@ export function buildController(session, { disabled = false, notice } = {}) {
         spacing(),
         {
             type: ComponentType.TextDisplay,
-            content: `-# Components\n${countComponents(session.draft.components)}/40`,
+            content: `-# Components\n${countComponents(session.draft.components)}/${MAX_COMPONENTS}`,
         },
         spacing(),
         {

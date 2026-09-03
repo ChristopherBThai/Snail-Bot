@@ -39,29 +39,14 @@ const SUPPORTER_QUERY = (placeholders) => `
     JOIN patreon_discord pd ON pd.uid = t.uid
 `;
 
-const USER_ID_PROJECTION = { _id: 1 };
+export async function loadSupporterPerks(mysql, userIds) {
+    const perksByUserId = new Map(userIds.map((userId) => [userId, createPerks()]));
+    if (!userIds.length) return perksByUserId;
 
-export function createSupporterRolesRepository({ mysql, User }) {
-    return {
-        async getPerks(userIds) {
-            const perksByUserId = new Map(userIds.map((userId) => [userId, createPerks()]));
-            if (!userIds.length) return perksByUserId;
-
-            const placeholders = userIds.map(() => '?').join(', ');
-            const [rows] = await mysql.execute(SUPPORTER_QUERY(placeholders), userIds);
-            normalizePerks(rows, perksByUserId);
-            return perksByUserId;
-        },
-
-        async getOptedOutUserIds() {
-            const users = await User.find({ 'supporterRoles.optout': true }, USER_ID_PROJECTION).lean();
-            return users.map((user) => user._id);
-        },
-
-        async setOptedOut(userId, optedOut) {
-            await User.updateOne({ _id: userId }, { $set: { 'supporterRoles.optout': optedOut } }, { upsert: true });
-        },
-    };
+    const placeholders = userIds.map(() => '?').join(', ');
+    const [rows] = await mysql.execute(SUPPORTER_QUERY(placeholders), userIds);
+    normalizePerks(rows, perksByUserId);
+    return perksByUserId;
 }
 
 function normalizePerks(rows, perksByUserId) {
@@ -81,16 +66,9 @@ function normalizePerks(rows, perksByUserId) {
 
 function createPerks() {
     return {
-        ticket: createPerk(),
-        patreon: createPerk(),
-        discord: createPerk(),
-    };
-}
-
-function createPerk() {
-    return {
-        rank: 0,
-        expiration: undefined,
+        ticket: { rank: 0, expiration: undefined },
+        patreon: { rank: 0, expiration: undefined },
+        discord: { rank: 0, expiration: undefined },
     };
 }
 

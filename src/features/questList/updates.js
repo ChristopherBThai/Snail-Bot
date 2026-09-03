@@ -1,6 +1,7 @@
-import { hydrateQueuedQuests, QUEST_TYPES, toQueuedQuest } from './quests.js';
+import { QUEST_TYPES, toQueuedQuest } from './quests.js';
 import { ADD_QUESTS_ID, buildQuestListMessage, MAX_EMPTY_MESSAGE_LENGTH, MAX_VISIBLE_QUESTS } from './render.js';
 
+const SETTING_NAMESPACE = 'questList';
 const DEFAULT_CAPACITY = Object.freeze(
     Object.fromEntries(Object.entries(QUEST_TYPES).map(([type, quest]) => [type, quest.capacity])),
 );
@@ -19,7 +20,7 @@ function createEmptyPendingState() {
     };
 }
 
-export function createQuestListUpdates({ repository, rest, log, isEnabled }) {
+export function createQuestListUpdates({ Quest, Setting, questSource, rest, log, isEnabled }) {
     const botId = String(rest.applicationId);
     const state = {
         channelId: undefined,
@@ -34,14 +35,12 @@ export function createQuestListUpdates({ repository, rest, log, isEnabled }) {
     let messagesSinceRepost = 0;
     let updateRunning = false;
     let pending = createEmptyPendingState();
-    let settingsLoaded = false;
-    let queueLoaded = false;
-    let queueLoading;
 
     return {
         state,
         activate,
-        loadSettings,
+        initialize,
+        isRunning,
         messageCreated,
         addQuests,
         setChannel,
@@ -49,61 +48,77 @@ export function createQuestListUpdates({ repository, rest, log, isEnabled }) {
         setRepostInterval,
         setEmptyMessage,
         removeQuests,
+        refreshPositions,
         forceRepost,
     };
 
     async function activate() {
-        await loadPersistedSettings();
-        await queueChange({ type: 'reloadQueue' }, { refreshReason: 'activate', repost: Boolean(state.channelId) });
+        if (questSource) {
+            await queueChange({ type: 'activate' }, { refreshReason: 'activate', repost: Boolean(state.channelId) });
+        }
 
-        log.debug('Loaded Quest List settings', {
+        log.debug('Loaded Quest List state', {
             channelId: state.channelId,
             capacity: state.capacity,
             repostInterval: state.repostInterval,
-            customEmptyMessage: state.emptyMessage !== DEFAULT_EMPTY_MESSAGE,
             quests: state.quests.length,
+            liveQuestData: Boolean(questSource),
         });
 
         if (!state.channelId) log.warn('Quest List channel is not configured');
     }
 
-    async function loadSettings() {
-        if (!repository) return;
+    async function initialize() {
+        const [stored, quests] = await Promise.all([
+            Setting.loadValues(SETTING_NAMESPACE),
+            Quest.find({}).sort({ addedAt: 1 }).lean(),
+        ]);
 
-        await loadPersistedSettings();
-        if (!isEnabled() || !state.channelId) await loadQueue();
+        if (typeof stored.channelId === 'string') state.channelId = stored.channelId;
+        if (isCapacity(stored.capacity)) state.capacity = stored.capacity;
+        if (isPositiveInteger(stored.repostInterval)) state.repostInterval = stored.repostInterval;
+        if (
+            typeof stored.emptyMessage === 'string' &&
+            stored.emptyMessage.trim() &&
+            stored.emptyMessage.length <= MAX_EMPTY_MESSAGE_LENGTH
+        ) {
+            state.emptyMessage = stored.emptyMessage;
+        }
+
+        setQuests(quests);
     }
 
-    async function loadPersistedSettings() {
-        if (!settingsLoaded) {
-            const stored = await repository.loadSettings();
-            if (typeof stored.channelId === 'string') state.channelId = stored.channelId;
-            if (isCapacity(stored.capacity)) state.capacity = stored.capacity;
-            if (isPositiveInteger(stored.repostInterval)) state.repostInterval = stored.repostInterval;
-            if (
-                typeof stored.emptyMessage === 'string' &&
-                stored.emptyMessage.trim() &&
-                stored.emptyMessage.length <= MAX_EMPTY_MESSAGE_LENGTH
-            ) {
-                state.emptyMessage = stored.emptyMessage;
-            }
-            settingsLoaded = true;
-        }
+    async function saveSetting(name, value) {
+        await Setting.saveValue(SETTING_NAMESPACE, name, value);
+        state[name] = value;
     }
 
-    async function loadQueue() {
-        if (queueLoaded || !repository) return;
+    async function insertQueuedQuests(quests) {
+        if (!quests.length) return [];
 
-        queueLoading ??= repository.loadQueuedQuests().then((quests) => {
-            setQuests(quests);
-            queueLoaded = true;
-        });
+        const result = await Quest.bulkWrite(
+            quests.map((quest) => ({
+                updateOne: {
+                    filter: { questId: quest.questId },
+                    update: {
+                        $setOnInsert: {
+                            userId: quest.userId,
+                            questId: quest.questId,
+                            questCreatedAt: quest.questCreatedAt,
+                            addedAt: quest.addedAt,
+                        },
+                    },
+                    upsert: true,
+                },
+            })),
+            { ordered: false },
+        );
+        const inserted = new Set(Object.keys(result.upsertedIds ?? {}).map(Number));
+        return quests.filter((_quest, index) => inserted.has(index));
+    }
 
-        try {
-            await queueLoading;
-        } finally {
-            queueLoading = undefined;
-        }
+    async function deleteQueuedQuests(questIds) {
+        if (questIds.length) await Quest.deleteMany({ questId: { $in: questIds } });
     }
 
     function messageCreated(message) {
@@ -134,9 +149,9 @@ export function createQuestListUpdates({ repository, rest, log, isEnabled }) {
 
     function addQuests(userId) {
         const result = new Promise((resolve, reject) => {
-            const request = pending.adds.get(userId) ?? { waiters: [] };
-            request.waiters.push({ resolve, reject, timer: log.time() });
-            pending.adds.set(userId, request);
+            const waiters = pending.adds.get(userId) ?? [];
+            waiters.push({ resolve, reject, timer: log.time() });
+            pending.adds.set(userId, waiters);
         });
         requestUpdate({ refreshReason: 'addQuests' });
         return result;
@@ -145,7 +160,7 @@ export function createQuestListUpdates({ repository, rest, log, isEnabled }) {
     function setChannel(channelId) {
         return queueChange(
             { type: 'channel', channelId },
-            isEnabled() ? { refreshReason: 'channelChanged', repost: true } : undefined,
+            questSource && isEnabled() ? { refreshReason: 'channelChanged', repost: true } : undefined,
         );
     }
 
@@ -161,9 +176,12 @@ export function createQuestListUpdates({ repository, rest, log, isEnabled }) {
         return queueChange({ type: 'emptyMessage', emptyMessage }, { publish: isRunning() });
     }
 
-    async function removeQuests(questType, userIds) {
-        await loadQueue();
+    function removeQuests(questType, userIds) {
         return queueChange({ type: 'remove', questType, userIds }, { refreshReason: 'manageQueue' });
+    }
+
+    function refreshPositions() {
+        return queueChange({ type: 'positionLookup' }, { refreshReason: 'positionLookup' });
     }
 
     function forceRepost() {
@@ -228,18 +246,18 @@ export function createQuestListUpdates({ repository, rest, log, isEnabled }) {
     function hasPendingUpdate() {
         return Boolean(
             pending.refreshReasons.size ||
-                pending.publish ||
-                pending.repost ||
-                pending.messageCount ||
-                pending.adds.size ||
-                pending.changes.length,
+            pending.publish ||
+            pending.repost ||
+            pending.messageCount ||
+            pending.adds.size ||
+            pending.changes.length,
         );
     }
 
     function takePendingUpdate() {
         pending.timer.checkpoint('queue');
-        for (const request of pending.adds.values()) {
-            for (const waiter of request.waiters) waiter.timer.checkpoint('queue');
+        for (const waiters of pending.adds.values()) {
+            for (const waiter of waiters) waiter.timer.checkpoint('queue');
         }
         const batch = {
             refresh: Boolean(pending.refreshReasons.size),
@@ -267,13 +285,6 @@ export function createQuestListUpdates({ repository, rest, log, isEnabled }) {
         }
 
         let quests = state.quests;
-        if (
-            batch.changes.some((change) => change.type === 'reloadQueue') ||
-            (!queueLoaded && batch.changes.some((change) => change.type === 'channel'))
-        ) {
-            quests = await repository.loadQueuedQuests();
-            queueLoaded = true;
-        }
         const [refreshResult, pendingAdditions] = await Promise.all([
             batch.refresh ? refresh(quests, batch.reasons) : { quests, changed: false },
             preparePendingAdditions(batch.adds),
@@ -299,9 +310,9 @@ export function createQuestListUpdates({ repository, rest, log, isEnabled }) {
         }
 
         const questIds = new Set(state.quests.map((quest) => quest.questId));
-        for (const [userId, request] of batch.adds) {
+        for (const [userId, waiters] of batch.adds) {
             const added = (additions.addedByUser.get(userId) ?? []).filter((quest) => questIds.has(quest.questId));
-            for (const [index, waiter] of request.waiters.entries()) {
+            for (const [index, waiter] of waiters.entries()) {
                 waiter.timer.checkpoint('processing');
                 waiter.timer.trace('Processed Add My Quests request', {
                     userId,
@@ -322,22 +333,18 @@ export function createQuestListUpdates({ repository, rest, log, isEnabled }) {
     async function applyConfigurationChanges(changes) {
         for (const change of changes) {
             if (change.type === 'channel') {
-                await repository.saveSetting('channelId', change.channelId);
-                state.channelId = change.channelId;
+                await saveSetting('channelId', change.channelId);
                 messageId = undefined;
                 messagesSinceRepost = 0;
                 log.info('Changed Quest List channel', { channelId: change.channelId });
             } else if (change.type === 'capacity') {
-                await repository.saveSetting('capacity', change.capacity);
-                state.capacity = change.capacity;
+                await saveSetting('capacity', change.capacity);
                 log.info('Changed Quest List visible limits', { capacity: change.capacity });
             } else if (change.type === 'repostInterval') {
-                await repository.saveSetting('repostInterval', change.repostInterval);
-                state.repostInterval = change.repostInterval;
+                await saveSetting('repostInterval', change.repostInterval);
                 log.info('Changed Quest List repost interval', { repostInterval: change.repostInterval });
             } else if (change.type === 'emptyMessage') {
-                await repository.saveSetting('emptyMessage', change.emptyMessage);
-                state.emptyMessage = change.emptyMessage;
+                await saveSetting('emptyMessage', change.emptyMessage);
                 log.info('Changed Quest List empty message');
             }
         }
@@ -347,9 +354,9 @@ export function createQuestListUpdates({ repository, rest, log, isEnabled }) {
         const userIds = [...requests.keys()];
         if (!userIds.length) return { userIds, candidates: [], hydrated: { quests: [], removed: [] } };
 
-        const documents = await repository.getUserQuests(userIds);
+        const documents = await questSource.loadUserQuests(userIds);
         const candidates = documents.map((quest) => toQueuedQuest(quest));
-        const hydrated = await hydrateQueuedQuests(repository, candidates, documents);
+        const hydrated = await questSource.hydrate(candidates, documents);
         return { userIds, candidates, hydrated };
     }
 
@@ -358,7 +365,7 @@ export function createQuestListUpdates({ repository, rest, log, isEnabled }) {
 
         const generations = new Set(quests.map(generationKey));
         const newQuests = hydrated.quests.filter((quest) => !generations.has(generationKey(quest)));
-        const added = await repository.insertQueuedQuests(newQuests);
+        const added = await insertQueuedQuests(newQuests);
         const candidatesByUser = groupQuestsByUser(candidates);
         const rejectedByUser = new Map();
         for (const { quest, reason } of hydrated.removed) {
@@ -396,7 +403,7 @@ export function createQuestListUpdates({ repository, rest, log, isEnabled }) {
                     (change.questType === 'all' || quest.questType === change.questType) &&
                     (!change.userIds.size || change.userIds.has(quest.userId)),
             );
-            await repository.deleteQueuedQuests(removed.map((quest) => quest.questId));
+            await deleteQueuedQuests(removed.map((quest) => quest.questId));
             const removedIds = new Set(removed.map((quest) => quest.questId));
             quests = quests.filter((quest) => !removedIds.has(quest.questId));
             change.result = { quests: removed };
@@ -415,8 +422,8 @@ export function createQuestListUpdates({ repository, rest, log, isEnabled }) {
     }
 
     function rejectUpdate(batch, error) {
-        for (const request of batch.adds.values()) {
-            for (const waiter of request.waiters) {
+        for (const waiters of batch.adds.values()) {
+            for (const waiter of waiters) {
                 waiter.timer.checkpoint('processing');
                 waiter.timer.trace('Failed Add My Quests request', { error });
                 waiter.reject(error);
@@ -427,11 +434,10 @@ export function createQuestListUpdates({ repository, rest, log, isEnabled }) {
 
     async function refresh(queued, reasons) {
         const timer = log.time();
-        const refreshReasons = [...new Set(reasons)];
         const previous = new Map(queued.map((quest) => [quest.questId, { count: quest.count, total: quest.total }]));
-        const { quests, removed, timing } = await hydrateQueuedQuests(repository, queued);
+        const { quests, removed, timing } = await questSource.hydrate(queued);
         timer.checkpoint('hydration');
-        await repository.deleteQueuedQuests(removed.map(({ quest }) => quest.questId));
+        await deleteQueuedQuests(removed.map(({ quest }) => quest.questId));
         timer.checkpoint('snailMongo');
         const updated = quests
             .filter((quest) => {
@@ -451,7 +457,7 @@ export function createQuestListUpdates({ repository, rest, log, isEnabled }) {
 
         if (removed.length) {
             log.info('Removed quests from Quest List', {
-                reasons: refreshReasons,
+                reasons,
                 quests: removed.map(({ quest, reason: removalReason }) => ({
                     questId: quest.questId,
                     userId: quest.userId,
@@ -461,7 +467,7 @@ export function createQuestListUpdates({ repository, rest, log, isEnabled }) {
         }
 
         timer.debug('Refreshed Quest List', {
-            reasons: refreshReasons,
+            reasons,
             quests: quests.length,
             users: new Set(quests.map((quest) => quest.userId)).size,
             updated: updated.length,
@@ -471,7 +477,7 @@ export function createQuestListUpdates({ repository, rest, log, isEnabled }) {
         });
         if (changed) {
             log.trace('Quest List refresh changes', {
-                reasons: refreshReasons,
+                reasons,
                 updated,
                 removed: removed.map(({ quest, reason: removalReason }) => ({
                     ...questLogData(quest),
@@ -526,7 +532,7 @@ export function createQuestListUpdates({ repository, rest, log, isEnabled }) {
     }
 
     function isRunning() {
-        return Boolean(isEnabled() && state.channelId);
+        return Boolean(questSource && isEnabled() && state.channelId);
     }
 }
 

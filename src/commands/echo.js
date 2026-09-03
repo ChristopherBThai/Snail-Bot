@@ -28,7 +28,6 @@ const ECHO_COMMAND_DEFINITION = {
 export default function setup({ messageBuilder, rest }) {
     return {
         name: 'Echo Command',
-        missing: messageBuilder.missing.length ? ['Message Builder (system)'] : [],
         commands: [
             {
                 definition: ECHO_COMMAND_DEFINITION,

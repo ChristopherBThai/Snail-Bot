@@ -17,25 +17,26 @@ export function createGateway({ config, token, logging, log, packages, rest }) {
     return createGatewayManager({
         token,
         intents: GatewayIntentBits.Guilds | GatewayIntentBits.GuildMessages,
-        logger: createDiscordenoLogger(logging.createLogger('gateway', true)),
+        logger: createDiscordenoLogger(logging.createLogger('gateway')),
         resharding: { enabled: false },
         events: {
             async message(_, payload) {
-                for (const event of packages.events) {
-                    if (event.event !== payload.t) continue;
-                    const feature = packages.features.get(event.featureId);
-                    if (!feature.enabled) continue;
+                await Promise.all(
+                    (packages.events.get(payload.t) ?? []).map(async (event) => {
+                        const feature = packages.features.get(event.featureId);
+                        if (!feature.enabled) return;
 
-                    try {
-                        await event.handle(payload.d);
-                    } catch (error) {
-                        log.error('Feature event handler failed', {
-                            error,
-                            event: event.event,
-                            feature: event.featureId,
-                        });
-                    }
-                }
+                        try {
+                            await event.handle(payload.d);
+                        } catch (error) {
+                            log.error('Feature event handler failed', {
+                                error,
+                                event: payload.t,
+                                feature: event.featureId,
+                            });
+                        }
+                    }),
+                );
 
                 if (payload.t === GatewayDispatchEvents.Ready) {
                     log.info('Gateway ready', {
@@ -83,19 +84,6 @@ export function createGateway({ config, token, logging, log, packages, rest }) {
                 }
 
                 try {
-                    if (handler.missing.length) {
-                        if (autocomplete) {
-                            await context.autocomplete([]);
-                            return;
-                        }
-
-                        await context.respond(
-                            `This interaction is unavailable. Missing: ${handler.missing.map((value) => `\`${value}\``).join(', ')}`,
-                            { ephemeral: true },
-                        );
-                        return;
-                    }
-
                     if (handler.authorize && !(await handler.authorize(interaction, config))) {
                         if (autocomplete) {
                             await context.autocomplete([]);
@@ -110,6 +98,16 @@ export function createGateway({ config, token, logging, log, packages, rest }) {
                         await context.respond('You are not authorized to use this interaction.', {
                             ephemeral: true,
                         });
+                        return;
+                    }
+
+                    if (handler.missing.length) {
+                        if (autocomplete) {
+                            await context.autocomplete([]);
+                            return;
+                        }
+
+                        await context.respond('This interaction is currently unavailable.', { ephemeral: true });
                         return;
                     }
 
@@ -170,10 +168,23 @@ function getInteractionHandler(interactions, customId) {
 function createInteractionContext(rest, interaction) {
     let responseState = 'pending';
 
+    async function acknowledge(type, data, state = 'responded') {
+        if (responseState !== 'pending') {
+            throw new Error('Interaction has already been acknowledged');
+        }
+
+        const response = await rest.sendInteractionResponse(interaction.id, interaction.token, {
+            type,
+            ...(data === undefined ? {} : { data }),
+        });
+        responseState = state;
+        return response;
+    }
+
     return {
         interaction,
         async respond(message, options) {
-            const data = normalizeMessage(message, options);
+            const data = normalizeMessage(message, options?.ephemeral);
 
             if (responseState === 'deferred') {
                 const response = await rest.editOriginalInteractionResponse(interaction.token, data);
@@ -185,35 +196,17 @@ function createInteractionContext(rest, interaction) {
                 return rest.sendFollowupMessage(interaction.token, data);
             }
 
-            const response = await rest.sendInteractionResponse(interaction.id, interaction.token, {
-                type: InteractionResponseType.ChannelMessageWithSource,
-                data,
-            });
-            responseState = 'responded';
-            return response;
+            return acknowledge(InteractionResponseType.ChannelMessageWithSource, data);
         },
         async defer({ ephemeral = false } = {}) {
-            if (responseState !== 'pending') {
-                throw new Error('Interaction has already been acknowledged');
-            }
-
-            const response = await rest.sendInteractionResponse(interaction.id, interaction.token, {
-                type: InteractionResponseType.DeferredChannelMessageWithSource,
-                data: ephemeral ? { flags: MessageFlags.Ephemeral } : undefined,
-            });
-            responseState = 'deferred';
-            return response;
+            return acknowledge(
+                InteractionResponseType.DeferredChannelMessageWithSource,
+                ephemeral ? { flags: MessageFlags.Ephemeral } : undefined,
+                'deferred',
+            );
         },
         async deferUpdate() {
-            if (responseState !== 'pending') {
-                throw new Error('Interaction has already been acknowledged');
-            }
-
-            const response = await rest.sendInteractionResponse(interaction.id, interaction.token, {
-                type: InteractionResponseType.DeferredMessageUpdate,
-            });
-            responseState = 'responded';
-            return response;
+            return acknowledge(InteractionResponseType.DeferredMessageUpdate);
         },
         async editResponse(message, options) {
             if (responseState === 'pending') {
@@ -222,46 +215,19 @@ function createInteractionContext(rest, interaction) {
 
             const response = await rest.editOriginalInteractionResponse(
                 interaction.token,
-                normalizeMessage(message, options),
+                normalizeMessage(message, options?.ephemeral),
             );
             responseState = 'responded';
             return response;
         },
         async update(message) {
-            if (responseState !== 'pending') {
-                throw new Error('Interaction has already been acknowledged');
-            }
-
-            const response = await rest.sendInteractionResponse(interaction.id, interaction.token, {
-                type: InteractionResponseType.UpdateMessage,
-                data: normalizeMessage(message),
-            });
-            responseState = 'responded';
-            return response;
+            return acknowledge(InteractionResponseType.UpdateMessage, normalizeMessage(message));
         },
         async openModal(modal) {
-            if (responseState !== 'pending') {
-                throw new Error('Interaction has already been acknowledged');
-            }
-
-            const response = await rest.sendInteractionResponse(interaction.id, interaction.token, {
-                type: InteractionResponseType.Modal,
-                data: modal,
-            });
-            responseState = 'responded';
-            return response;
+            return acknowledge(InteractionResponseType.Modal, modal);
         },
         async autocomplete(choices) {
-            if (responseState !== 'pending') {
-                throw new Error('Interaction has already been acknowledged');
-            }
-
-            const response = await rest.sendInteractionResponse(interaction.id, interaction.token, {
-                type: InteractionResponseType.ApplicationCommandAutocompleteResult,
-                data: { choices },
-            });
-            responseState = 'responded';
-            return response;
+            return acknowledge(InteractionResponseType.ApplicationCommandAutocompleteResult, { choices });
         },
     };
 }

@@ -7,6 +7,8 @@ import nick from './commands/nick.js';
 import sendUserData from './commands/sendUserData.js';
 import settingsCommand, { renderFeatureSettings } from './commands/settings.js';
 import snail from './commands/snail.js';
+import tagsPackage from './commands/tags.js';
+import knowledgeBase from './features/knowledgeBase/index.js';
 import questList from './features/questList/index.js';
 import supporterRoles from './features/supporterRoles/index.js';
 import ticketMarket from './features/ticketMarket/index.js';
@@ -43,6 +45,8 @@ import createMessageBuilder from './systems/messageBuilder/index.js';
  * @property {import('@discordeno/types').CreateApplicationCommand} definition Discord application command definition.
  * @property {boolean} [global] Whether the command is synchronized globally instead of to the configured guild.
  * @property {boolean} [staff] Whether Discord should limit default visibility to staff.
+ * @property {boolean} [availableWhenDisabled] Whether a feature-owned command remains usable while its feature is disabled.
+ * @property {string[]} [missing] Missing configuration or dependency names specific to this command.
  * @property {(interaction: Interaction, config: Record<string, unknown>) => boolean | Promise<boolean>} [authorize] Runtime authorization check.
  * @property {(context: InteractionContext) => import('discord-api-types/v10').APIApplicationCommandOptionChoice[] | Promise<import('discord-api-types/v10').APIApplicationCommandOptionChoice[]>} [autocomplete] Returns choices for an autocomplete interaction.
  * @property {InteractionHandler} handle
@@ -55,6 +59,7 @@ import createMessageBuilder from './systems/messageBuilder/index.js';
  * @property {string} [id] Exact Discord custom ID.
  * @property {string} [prefix] Discord custom-ID prefix.
  * @property {boolean} [availableWhenDisabled] Whether a feature-owned interaction remains usable while its feature is disabled.
+ * @property {string[]} [missing] Missing configuration or dependency names specific to this interaction.
  * @property {(interaction: Interaction, config: Record<string, unknown>) => boolean | Promise<boolean>} [authorize] Runtime authorization check.
  * @property {InteractionHandler} handle
  */
@@ -92,10 +97,19 @@ import createMessageBuilder from './systems/messageBuilder/index.js';
  * @property {string} id Stable feature ID; configurable feature IDs must not contain `:`.
  * @property {string} description Short human-readable description.
  * @property {boolean} [toggleable] Whether managers may enable and disable the feature.
+ * @property {string[]} [missing] Missing configuration or dependency names specific to this feature.
  * @property {() => void | Promise<void>} [activate] Starts the enabled feature's runtime behavior.
  * @property {() => void | Promise<void>} [deactivate] Stops feature-owned runtime behavior when disabled.
  * @property {FeatureEvent[]} [events]
  * @property {FeatureSettings} [settings] Settings contribution owned by the feature.
+ */
+
+/**
+ * The narrow Knowledge Base interface used to keep the Tags package's cache synchronized.
+ *
+ * @typedef {object} KnowledgeBaseTagSync
+ * @property {(tags: {_id: string, message: object, text: string, public: boolean, knowledgeBase?: object}[]) => void | Promise<void>} syncTags
+ * @property {(tagIds: string[]) => void | Promise<void>} deleteTags
  */
 
 /**
@@ -106,22 +120,22 @@ import createMessageBuilder from './systems/messageBuilder/index.js';
  * @property {string} name Human-readable feature name.
  * @property {string} description Short human-readable description.
  * @property {boolean} enabled Current persisted enabled state.
- * @property {boolean} available Whether every direct package dependency is available.
- * @property {string[]} missing Direct unavailable dependency descriptions.
+ * @property {string[]} missing Package-wide and feature-specific unavailable dependency descriptions.
  * @property {(enabled: boolean) => Promise<void>} [setEnabled] Persists and applies a new enabled state.
  * @property {(pageId?: string) => Promise<import('@discordeno/types').InteractionCallbackData>} [renderSettings] Renders this feature's Settings detail panel.
  * @property {() => void | Promise<void>} [activate] Starts the enabled feature's runtime behavior.
  * @property {() => void | Promise<void>} [deactivate] Stops runtime behavior when disabled.
- * @property {FeatureEvent[]} events Gateway events owned by the feature.
  * @property {FeatureSettings} [settings] Settings contribution owned by the feature.
  */
 
 /**
  * Contributions returned by a package setup function.
  *
- * `missing` applies to every contribution in the package. Contributions remain
- * registered so unavailable interactions can explain their missing dependencies;
- * unavailable feature events are skipped at dispatch.
+ * Package-level `missing` applies to every contribution. Commands, components,
+ * modals, and the optional feature may add narrower requirements. Contributions
+ * remain registered so unavailable interactions can respond consistently; detailed
+ * missing dependencies stay in package diagnostics. Unavailable feature events are
+ * not installed.
  *
  * @typedef {object} Package
  * @property {string} name Human-readable name used in diagnostics.
@@ -138,17 +152,16 @@ import createMessageBuilder from './systems/messageBuilder/index.js';
  * @typedef {object} PackageContext
  * @property {Record<string, unknown>} config Public configuration values.
  * @property {ReturnType<import('./logging/index.js').createLogging>} logging Logging manager.
- * @property {ReturnType<import('./discord/rest.js').createRest>} rest Discord REST manager.
+ * @property {ReturnType<typeof import('@discordeno/rest').createRestManager>} rest Discord REST manager.
  * @property {import('./services/index.js').Services} services Initialized external services grouped by owner.
- * @property {{ snail: { mongo?: string[] }; owo: { api?: string[]; mongo?: string[]; mysql?: string[]; redis?: string[] } }} unavailable Normalized dependency failure reasons grouped like `services`.
  * @property {ReturnType<typeof createMessageBuilder>} messageBuilder Shared Message Builder system.
  * @property {Map<string, Feature>} features Registered features by ID.
  */
 
-/** @typedef {(context: PackageContext) => Package} PackageSetup */
+/** @typedef {(context: PackageContext) => Package | Promise<Package>} PackageSetup */
 
 /** @type {PackageSetup[]} */
-const PACKAGES = [
+const INDEPENDENT_PACKAGES = [
     snail,
     nick,
     afk,
@@ -166,32 +179,32 @@ const PACKAGES = [
 /**
  * Sets up installed packages and indexes their Discord contributions.
  */
-export async function setupPackages({ config, logging, log, rest, services, unavailable }) {
+export async function setupPackages({ config, logging, log, rest, services }) {
     const commands = new Map();
     const components = new Map();
     const modals = new Map();
     const componentSources = new Map();
     const modalSources = new Map();
-    const events = [];
+    const events = new Map();
+    let eventCount = 0;
     const Setting = services.snail.mongo?.Setting;
     const enabledByFeatureId = await loadFeatureEnabledStates(Setting);
     /** @type {Map<string, Feature>} */
     const features = new Map();
-
-    const messageBuilder = createMessageBuilder({ config, logging, rest, services, unavailable });
+    const messageBuilder = createMessageBuilder({ config, logging, rest, services });
     let packageCount = 0;
 
-    for (const package_ of createPackages({
+    for await (const package_ of createPackages({
         config,
         features,
         logging,
         rest,
         services,
-        unavailable,
         messageBuilder,
     })) {
         packageCount += 1;
-        const missing = package_.missing ?? [];
+        const packageMissing = package_.missing ?? [];
+        const reportedMissing = new Set(packageMissing);
         const contribution = package_.feature;
         let feature;
 
@@ -202,26 +215,45 @@ export async function setupPackages({ config, logging, log, rest, services, unav
                 throw new Error(`Duplicate feature: ${contribution.id}`);
             }
 
-            const { toggleable, ...details } = contribution;
+            const { toggleable, events: featureEvents = [], missing: featureMissing, ...details } = contribution;
+            const missing = mergeMissing(packageMissing, featureMissing);
+            for (const value of missing) reportedMissing.add(value);
             feature = {
                 ...details,
                 name: package_.name,
                 enabled: toggleable === true ? enabledByFeatureId[contribution.id] !== false : true,
-                available: !missing.length,
                 missing,
-                events: contribution.events ?? [],
             };
 
             if (toggleable === true) {
                 feature.setEnabled = async (enabled) => {
-                    if (!feature.available) throw new Error(`Feature unavailable: ${feature.id}`);
+                    if (feature.missing.length) throw new Error(`Feature unavailable: ${feature.id}`);
                     if (feature.enabled === enabled) return;
 
+                    const previousEnabled = feature.enabled;
                     await saveFeatureEnabledState(Setting, feature.id, enabled);
                     feature.enabled = enabled;
 
-                    if (enabled) await feature.activate?.();
-                    else await feature.deactivate?.();
+                    if (!enabled) {
+                        await feature.deactivate?.();
+                        return;
+                    }
+
+                    try {
+                        await feature.activate?.();
+                    } catch (error) {
+                        feature.enabled = previousEnabled;
+                        try {
+                            await saveFeatureEnabledState(Setting, feature.id, previousEnabled);
+                        } catch (rollbackError) {
+                            log.error('Could not restore feature enabled state after activation failure', {
+                                error: rollbackError,
+                                featureId: feature.id,
+                                enabled: previousEnabled,
+                            });
+                        }
+                        throw error;
+                    }
                 };
             }
 
@@ -230,10 +262,21 @@ export async function setupPackages({ config, logging, log, rest, services, unav
             }
 
             features.set(feature.id, feature);
+
+            if (!feature.missing.length) {
+                for (const event of featureEvents) {
+                    const handlers = events.get(event.event) ?? [];
+                    handlers.push({ handle: event.handle, featureId: feature.id });
+                    events.set(event.event, handlers);
+                    eventCount += 1;
+                }
+            }
         }
 
         for (const command of package_.commands ?? []) {
             const name = command.definition.name;
+            const missing = mergeMissing(packageMissing, command.missing);
+            for (const value of missing) reportedMissing.add(value);
 
             if (commands.has(name)) {
                 throw new Error(`Duplicate command: ${name}`);
@@ -243,15 +286,20 @@ export async function setupPackages({ config, logging, log, rest, services, unav
                 throw new Error(`Staff command requires authorization: ${name}`);
             }
 
-            commands.set(name, { ...command, featureId: feature?.id, missing });
+            commands.set(name, {
+                ...command,
+                featureId: feature?.id,
+                missing,
+            });
         }
 
         for (const [index, component] of (package_.components ?? []).entries()) {
+            for (const value of component.missing ?? []) reportedMissing.add(value);
             addInteraction({
                 interactions: components,
                 sources: componentSources,
                 interaction: component,
-                missing,
+                packageMissing,
                 packageName: package_.name,
                 featureId: feature?.id,
                 index,
@@ -260,11 +308,12 @@ export async function setupPackages({ config, logging, log, rest, services, unav
         }
 
         for (const [index, modal] of (package_.modals ?? []).entries()) {
+            for (const value of modal.missing ?? []) reportedMissing.add(value);
             addInteraction({
                 interactions: modals,
                 sources: modalSources,
                 interaction: modal,
-                missing,
+                packageMissing,
                 packageName: package_.name,
                 featureId: feature?.id,
                 index,
@@ -272,16 +321,10 @@ export async function setupPackages({ config, logging, log, rest, services, unav
             });
         }
 
-        if (feature?.available) {
-            for (const event of feature.events) {
-                events.push({ ...event, featureId: feature.id });
-            }
-        }
-
-        if (missing.length) {
-            log.warn(`${package_.name} unavailable`, {
+        if (reportedMissing.size) {
+            log.warn(`${package_.name} ${packageMissing.length ? 'unavailable' : 'partially unavailable'}`, {
                 ...(feature ? { feature: feature.id } : {}),
-                missing,
+                missing: [...reportedMissing],
             });
         }
     }
@@ -292,11 +335,11 @@ export async function setupPackages({ config, logging, log, rest, services, unav
         commands: commands.size,
         components: components.size,
         modals: modals.size,
-        events: events.length,
+        events: eventCount,
     });
 
     for (const feature of features.values()) {
-        if (feature.available && feature.enabled) await feature.activate?.();
+        if (!feature.missing.length && feature.enabled) await feature.activate?.();
     }
 
     return {
@@ -348,12 +391,17 @@ function validateFeature(packageName, feature) {
     }
 }
 
-function* createPackages(context) {
+async function* createPackages(context) {
     yield context.messageBuilder;
-    for (const setup of PACKAGES) yield setup(context);
+    for (const setup of INDEPENDENT_PACKAGES) yield setup(context);
+
+    const tags = new Map();
+    const knowledgeBaseSetup = await knowledgeBase({ ...context, tags });
+    yield tagsPackage({ ...context, tags, tagSync: knowledgeBaseSetup.tagSync });
+    yield knowledgeBaseSetup.package;
 }
 
-function addInteraction({ interactions, sources, interaction, missing, packageName, featureId, index, type }) {
+function addInteraction({ interactions, sources, interaction, packageMissing, packageName, featureId, index, type }) {
     const number = index + 1;
     const hasId = Boolean(interaction.id);
     const hasPrefix = Boolean(interaction.prefix);
@@ -385,8 +433,16 @@ function addInteraction({ interactions, sources, interaction, missing, packageNa
         );
     }
 
-    interactions.set(key, { ...interaction, featureId, missing });
+    interactions.set(key, {
+        ...interaction,
+        featureId,
+        missing: mergeMissing(packageMissing, interaction.missing),
+    });
     sources.set(key, { packageName, number, kind });
+}
+
+function mergeMissing(packageMissing, contributionMissing = []) {
+    return [...new Set([...packageMissing, ...contributionMissing])];
 }
 
 const FEATURE_ENABLED_NAMESPACE = 'feature:enabled';
@@ -398,5 +454,7 @@ async function loadFeatureEnabledStates(Setting) {
 }
 
 async function saveFeatureEnabledState(Setting, featureId, enabled) {
+    if (!Setting) return;
+
     await Setting.saveValue(FEATURE_ENABLED_NAMESPACE, featureId, enabled);
 }

@@ -1,8 +1,11 @@
+import { createElasticApm } from './elasticApm.js';
+import { createOpenRouter } from './openRouter.js';
 import { createOwOAPI } from './owo/api.js';
-import { connectOwOMongo } from './owo/mongo.js';
+import { connectOwOMongo } from './owo/mongo/index.js';
 import { connectOwOMySQL } from './owo/mysql.js';
 import { connectOwORedis } from './owo/redis.js';
-import { connectSnailMongo } from './snail/mongo.js';
+import { connectQdrant } from './qdrant.js';
+import { connectSnailMongo } from './snail/mongo/index.js';
 
 /**
  * @typedef {object} SnailServices
@@ -19,12 +22,18 @@ import { connectSnailMongo } from './snail/mongo.js';
 
 /**
  * @typedef {object} Services
+ * @property {ReturnType<typeof createElasticApm>} elasticApm
+ * @property {ReturnType<typeof createOpenRouter> | undefined} openRouter
+ * @property {Awaited<ReturnType<typeof connectQdrant>> | undefined} qdrant
  * @property {SnailServices} snail Snail-owned services.
  * @property {OwOServices} owo OwO-owned services.
  */
 
 /**
- * @typedef {object} ServiceConfig
+ * @typedef {object} ServiceEnvironment
+ * @property {string | undefined} openRouterApiKey
+ * @property {string | undefined} qdrantApiKey
+ * @property {string | undefined} qdrantUrl
  * @property {{ mongoUri: string | undefined }} snail
  * @property {{
  *     apiPassword: string | undefined;
@@ -36,101 +45,117 @@ import { connectSnailMongo } from './snail/mongo.js';
  */
 
 /**
- * @typedef {object} UnavailableServices
- * @property {{ mongo?: string[] }} snail
- * @property {{ api?: string[]; mongo?: string[]; mysql?: string[]; redis?: string[] }} owo
+ * @typedef {object} OpenRouterConfig
+ * @property {string} embeddingModel
+ * @property {string} chatModel
+ * @property {string} rerankModel
+ * @property {number} maxTokens
+ * @property {number} temperature
+ * @property {string[]} excludedProviders
  */
 
 /**
  * Initializes every configured external service used by the current runtime.
  *
- * @param {ServiceConfig} config
- * @param {object} log
- * @returns {Promise<{ services: Services; unavailable: UnavailableServices }>}
+ * @param {object} options
+ * @param {ServiceEnvironment} options.environment
+ * @param {OpenRouterConfig | undefined} options.openRouter
+ * @param {object} options.log
+ * @returns {Promise<Services>}
  */
-export async function createServices({ snail, owo }, log) {
-    let mysql;
-    let mongo;
-    let owoMongo;
-    let redis;
-    const unavailable = { snail: {}, owo: {} };
+export async function createServices({ environment, openRouter: openRouterConfig, log }) {
+    const { openRouterApiKey, qdrantApiKey, qdrantUrl, snail, owo } = environment;
+    const elasticApm = createElasticApm(qdrantUrl);
 
-    if (!snail.mongoUri) {
-        unavailable.snail.mongo = ['SNAIL_MONGO_URI (.env)'];
-    } else {
-        try {
-            log.info('Connecting to Snail Mongo');
-            mongo = await connectSnailMongo(snail.mongoUri);
-            log.info('Connected to Snail Mongo');
-        } catch (error) {
-            unavailable.snail.mongo = ['Snail Mongo (service)'];
-            log.warn('Snail Mongo unavailable', { error });
-        }
-    }
+    const missingOpenRouterConfig = [
+        ['embeddingModel', openRouterConfig?.embeddingModel],
+        ['chatModel', openRouterConfig?.chatModel],
+        ['rerankModel', openRouterConfig?.rerankModel],
+        ['maxTokens', openRouterConfig?.maxTokens],
+        ['temperature', openRouterConfig?.temperature],
+        ['excludedProviders', openRouterConfig?.excludedProviders],
+    ]
+        .filter(([, value]) => value === undefined)
+        .map(([key]) => `openRouter.${key} (config)`);
+    const openRouterMissing = [...(!openRouterApiKey ? ['OPENROUTER_API_KEY (.env)'] : []), ...missingOpenRouterConfig];
 
-    if (!owo.mysqlUri) {
-        unavailable.owo.mysql = ['OWO_MYSQL_URI (.env)'];
-    } else {
-        try {
-            log.info('Connecting to OwO MySQL');
-            mysql = await connectOwOMySQL(owo.mysqlUri);
-            log.info('Connected to OwO MySQL');
-        } catch (error) {
-            unavailable.owo.mysql = ['OwO MySQL (service)'];
-            log.warn('OwO MySQL unavailable', { error });
-        }
-    }
+    let openRouter;
+    if (openRouterMissing.length) logMissingConfiguration('OpenRouter', openRouterMissing, log);
+    else openRouter = createOpenRouter(openRouterConfig, openRouterApiKey, elasticApm);
 
-    if (!owo.mongoUri) {
-        unavailable.owo.mongo = ['OWO_MONGO_URI (.env)'];
-    } else {
-        try {
-            log.info('Connecting to OwO Mongo');
-            owoMongo = await connectOwOMongo(owo.mongoUri);
-            log.info('Connected to OwO Mongo');
-        } catch (error) {
-            unavailable.owo.mongo = ['OwO Mongo (service)'];
-            log.warn('OwO Mongo unavailable', { error });
-        }
-    }
+    const apiMissing = [
+        ...(!owo.apiUri ? ['OWO_API_URI (.env)'] : []),
+        ...(!owo.apiPassword ? ['OWO_API_PASSWORD (.env)'] : []),
+    ];
+    let api;
+    if (apiMissing.length) logMissingConfiguration('OwO API', apiMissing, log);
+    else api = createOwOAPI(owo.apiUri, owo.apiPassword);
 
-    if (!owo.redisUrl) {
-        unavailable.owo.redis = ['OWO_REDIS_URL (.env)'];
-    } else {
-        try {
-            log.info('Connecting to OwO Redis');
-            redis = await connectOwORedis(owo.redisUrl);
-            log.info('Connected to OwO Redis');
-        } catch (error) {
-            unavailable.owo.redis = ['OwO Redis (service)'];
-            log.warn('OwO Redis unavailable', { error });
-        }
-    }
-
-    if (!owo.apiUri) {
-        unavailable.owo.api ??= [];
-        unavailable.owo.api.push('OWO_API_URI (.env)');
-    }
-
-    if (!owo.apiPassword) {
-        unavailable.owo.api ??= [];
-        unavailable.owo.api.push('OWO_API_PASSWORD (.env)');
-    }
-
-    const api = owo.apiUri && owo.apiPassword ? createOwOAPI(owo.apiUri, owo.apiPassword) : undefined;
+    const [snailMongo, qdrant, owoMySQL, owoMongo, owoRedis] = await Promise.all([
+        connectOptional({
+            missing: snail.mongoUri ? [] : ['SNAIL_MONGO_URI (.env)'],
+            name: 'Snail Mongo',
+            connect: () => connectSnailMongo(snail.mongoUri),
+            log,
+        }),
+        connectOptional({
+            missing: [!qdrantUrl && 'QDRANT_URL (.env)', !qdrantApiKey && 'QDRANT_API_KEY (.env)'].filter(Boolean),
+            name: 'Qdrant',
+            connect: () => connectQdrant(qdrantUrl, qdrantApiKey),
+            log,
+        }),
+        connectOptional({
+            missing: owo.mysqlUri ? [] : ['OWO_MYSQL_URI (.env)'],
+            name: 'OwO MySQL',
+            connect: () => connectOwOMySQL(owo.mysqlUri),
+            log,
+        }),
+        connectOptional({
+            missing: owo.mongoUri ? [] : ['OWO_MONGO_URI (.env)'],
+            name: 'OwO Mongo',
+            connect: () => connectOwOMongo(owo.mongoUri),
+            log,
+        }),
+        connectOptional({
+            missing: owo.redisUrl ? [] : ['OWO_REDIS_URL (.env)'],
+            name: 'OwO Redis',
+            connect: () => connectOwORedis(owo.redisUrl, log),
+            log,
+        }),
+    ]);
 
     return {
-        services: {
-            snail: {
-                mongo,
-            },
-            owo: {
-                api,
-                mongo: owoMongo,
-                mysql,
-                redis,
-            },
+        elasticApm,
+        openRouter,
+        qdrant,
+        snail: {
+            mongo: snailMongo,
         },
-        unavailable,
+        owo: {
+            api,
+            mongo: owoMongo,
+            mysql: owoMySQL,
+            redis: owoRedis,
+        },
     };
+}
+
+async function connectOptional({ missing, name, connect, log }) {
+    if (missing.length) {
+        logMissingConfiguration(name, missing, log);
+        return;
+    }
+
+    try {
+        log.info(`Connecting to ${name}`);
+        const value = await connect();
+        log.info(`Connected to ${name}`);
+        return value;
+    } catch (error) {
+        log.warn(`${name} unavailable`, { error });
+    }
+}
+
+function logMissingConfiguration(name, missing, log) {
+    log.warn(`${name} not configured`, { missing });
 }

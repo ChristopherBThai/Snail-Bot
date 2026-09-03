@@ -61,18 +61,16 @@ const GIVE_ITEM_COMMAND_DEFINITION = {
 };
 
 /** @type {import('../packages.js').PackageSetup} */
-export default function setup({ config, logging, rest, services, unavailable }) {
+export default function setup({ config, logging, rest, services }) {
     const log = logging.createLogger('giveItem');
-    const missing = [
-        !config.users?.owner && 'users.owner (config)',
-        ...(unavailable.owo.mysql ?? []),
-        ...(unavailable.owo.api ?? []),
-    ].filter(Boolean);
     const owoAPI = services.owo.api;
     const mysql = services.owo.mysql;
+    const missing = [!config.users?.owner && 'users.owner (config)', !mysql && 'OwO MySQL'].filter(Boolean);
     let activePanel;
     let count = 1;
     let selected;
+
+    if (!owoAPI) log.warn('Give Item notifications unavailable');
 
     return {
         name: 'Give Item Command',
@@ -167,6 +165,19 @@ export default function setup({ config, logging, rest, services, unavailable }) 
         timer.checkpoint('mysql');
 
         const emoji = `<:${item.emoji.name}:${item.emoji.id}>`;
+        if (!owoAPI) {
+            timer.warn('Gave OwO item without API notification', {
+                userId: user.id,
+                item: item.value,
+                count: grantCount,
+            });
+            await context.respond(
+                `⚠️ **|** ${grantCount} ${emoji} **${item.name}** was given to **${getUniqueName(user)}**, but the notification could not be sent.`,
+                { ephemeral: true },
+            );
+            return;
+        }
+
         try {
             await owoAPI.sendMessage(
                 user.id,
@@ -181,7 +192,7 @@ export default function setup({ config, logging, rest, services, unavailable }) 
                 count: grantCount,
             });
             await context.respond(
-                `⚠️ **|** ${grantCount} ${emoji} **${item.name}** was given to **${getUniqueName(user)}**, but the OwO API failed to notify them.`,
+                `⚠️ **|** ${grantCount} ${emoji} **${item.name}** was given to **${getUniqueName(user)}**, but the notification could not be sent.`,
                 { ephemeral: true },
             );
             return;

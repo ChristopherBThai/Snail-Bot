@@ -80,15 +80,20 @@ const LABELS = Object.freeze({
     [SETTING_KEYS.availabilityTimeout]: 'Availability Timeout',
 });
 
-export function buildOverview(settings, activeAds, enabled, guildId) {
+export function buildOverview(settings, activeAds, enabled, inventoryAvailable, guildId) {
     const missing = getMissingSettings(settings);
     const rulesMessage = settings.rulesMessage;
+    let inventoryStatus = settings.inventoryVerification ? 'Enabled' : 'Disabled';
+    if (settings.inventoryVerification && !inventoryAvailable) {
+        inventoryStatus += ' · Currently unavailable; new ads blocked';
+    }
     return [
         text(
             `### Ticket Market\n` +
                 `**Status:** ${missing.length ? `Incomplete · Missing ${missing.join(', ')}` : 'Configured'}\n` +
                 `**Active Ads:** ${activeAds.toLocaleString()}\n` +
                 `**Ticket Trading:** ${enabled && !missing.length && activeAds ? 'Open' : 'Closed'}\n` +
+                `**Inventory Verification:** ${inventoryStatus}\n` +
                 `**Rules Message:** ${rulesMessage ? getMessageJumpLink({ guildId, ...rulesMessage }) : 'Not published'}`,
         ),
         spacer(),
@@ -146,7 +151,14 @@ export function buildRules(settings) {
     ];
 }
 
-export function buildAds(settings) {
+export function buildAds(settings, inventoryAvailable) {
+    let inventoryStatus = settings.inventoryVerification ? 'Enabled' : 'Disabled';
+    if (!inventoryAvailable) {
+        inventoryStatus += settings.inventoryVerification
+            ? '\n-# Inventory verification is currently unavailable, so new ads are blocked.'
+            : '\n-# Inventory verification is currently unavailable and cannot be enabled.';
+    }
+    const inventoryButton = settings.inventoryVerification ? 'Disable' : inventoryAvailable ? 'Enable' : 'Unavailable';
     return [
         section(
             `### Maximum Price\n${settings.maxPrice.toLocaleString()} cowoncy per ticket`,
@@ -167,9 +179,10 @@ export function buildAds(settings) {
         ),
         spacer(false),
         section(
-            `### Inventory Verification\n${settings.inventoryVerification ? 'Enabled' : 'Disabled'}`,
+            `### Inventory Verification\n${inventoryStatus}`,
             SETTINGS_IDS.inventory,
-            settings.inventoryVerification ? 'Disable' : 'Enable',
+            inventoryButton,
+            !settings.inventoryVerification && !inventoryAvailable,
         ),
     ];
 }

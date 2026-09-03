@@ -11,13 +11,13 @@ const SEND_USER_DATA_COMMAND_DEFINITION = {
 };
 
 /** @type {import('../packages.js').PackageSetup} */
-export default function setup({ config, logging, services, unavailable }) {
+export default function setup({ config, logging, services }) {
     const log = logging.createLogger('sendUserData');
     const missing = [];
     const mysql = services.owo.mysql;
 
     if (!config.users?.owner) missing.push('users.owner (config)');
-    missing.push(...(unavailable.owo.mysql ?? []));
+    if (!mysql) missing.push('OwO MySQL');
     return {
         name: 'Send User Data Command',
         missing,

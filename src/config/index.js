@@ -36,6 +36,9 @@ export async function loadConfig() {
         environment: {
             token,
             services: {
+                openRouterApiKey: process.env.OPENROUTER_API_KEY?.trim() || undefined,
+                qdrantApiKey: process.env.QDRANT_API_KEY?.trim() || undefined,
+                qdrantUrl: process.env.QDRANT_URL?.trim() || undefined,
                 snail: {
                     mongoUri: process.env.SNAIL_MONGO_URI?.trim() || undefined,
                 },

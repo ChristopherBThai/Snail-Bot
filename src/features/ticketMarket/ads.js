@@ -13,7 +13,14 @@ const DELETE_REASON_INPUT_ID = 'ticketMarket:deleteReason';
 export const POST_AD_MODAL_ID = 'ticketMarket:postAdModal';
 export const DELETE_AD_MODAL_PREFIX = 'ticketMarket:deleteAdModal:';
 
-export function createTicketMarketAds({ config, getAccessUnavailable, getSettings, log, runtime }) {
+export function createTicketMarketAds({
+    config,
+    getAccessUnavailableMessage,
+    inventoryAvailable,
+    log,
+    runtime,
+    settings,
+}) {
     return {
         openPostAdModal,
         postAd,
@@ -23,8 +30,7 @@ export function createTicketMarketAds({ config, getAccessUnavailable, getSetting
     };
 
     async function openPostAdModal(context) {
-        const settings = await getSettings();
-        const unavailable = await getSellerUnavailableMessage(context, settings);
+        const unavailable = getSellerUnavailableMessage(context);
         if (unavailable) {
             log.trace('Rejected Ticket Market ad modal', {
                 userId: getInteractionUser(context.interaction).id,
@@ -36,8 +42,7 @@ export function createTicketMarketAds({ config, getAccessUnavailable, getSetting
     }
 
     async function postAd(context) {
-        const settings = await getSettings();
-        const unavailable = await getSellerUnavailableMessage(context, settings);
+        const unavailable = getSellerUnavailableMessage(context);
         if (unavailable) return context.respond(unavailable, { ephemeral: true });
 
         const draft = readAdDraft(context.interaction, settings.maxPrice);
@@ -50,7 +55,7 @@ export function createTicketMarketAds({ config, getAccessUnavailable, getSetting
         }
 
         await context.defer({ ephemeral: true });
-        const message = await runtime.postAd(getInteractionUser(context.interaction).id, draft.value, settings);
+        const message = await runtime.postAd(getInteractionUser(context.interaction).id, draft.value);
         await context.editResponse(message);
     }
 
@@ -105,7 +110,7 @@ export function createTicketMarketAds({ config, getAccessUnavailable, getSetting
         if (sellerId !== getInteractionUser(context.interaction).id) {
             return context.respond('Only the seller can refresh this ad.', { ephemeral: true });
         }
-        if (!(await getSettings()).availabilityTimeout) {
+        if (!settings.availabilityTimeout) {
             return context.respond('That Still Selling button is no longer available.', { ephemeral: true });
         }
         await context.deferUpdate();
@@ -116,12 +121,15 @@ export function createTicketMarketAds({ config, getAccessUnavailable, getSetting
         await context.respond('Availability refreshed.', { ephemeral: true });
     }
 
-    async function getSellerUnavailableMessage(context, settings) {
-        const accessMessage = getAccessUnavailable(context, settings);
+    function getSellerUnavailableMessage(context) {
+        const accessMessage = getAccessUnavailableMessage(context);
         if (accessMessage) return accessMessage;
         const roles = context.interaction.member.roles;
         if (!roles.includes(settings.marketAccessRole) || !roles.includes(settings.sellerAccessRole)) {
             return 'Accept the market and seller rules before posting a Ticket Market ad.';
+        }
+        if (settings.inventoryVerification && !inventoryAvailable) {
+            return 'Inventory verification is currently unavailable, so Ticket Market ads cannot be posted.';
         }
         const userId = getInteractionUser(context.interaction).id;
         if (runtime.getActiveAd(userId)) return 'You already have an active Ticket Market ad.';

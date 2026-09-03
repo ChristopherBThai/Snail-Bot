@@ -6,9 +6,12 @@ import {
     SeparatorSpacingSize,
     TextInputStyle,
 } from 'discord-api-types/v10';
-import { getModalValue, getModalValues } from '../../discord/interactions.js';
+import { getModalValue } from '../../discord/interactions.js';
+import { parseIdentifiers } from '../../utils/identifiers.js';
 import { QUEST_TYPES } from './quests.js';
-import { MAX_EMPTY_MESSAGE_LENGTH, MAX_VISIBLE_QUESTS } from './render.js';
+import { buildPositionResponse, MAX_EMPTY_MESSAGE_LENGTH, MAX_VISIBLE_QUESTS } from './render.js';
+
+const MAX_TEXT_DISPLAY_LENGTH = 4_000;
 
 export const SETTINGS_IDS = Object.freeze({
     channel: 'questList:channel',
@@ -24,6 +27,9 @@ export const SETTINGS_IDS = Object.freeze({
     actionCapacityInput: 'questList:actionCapacity',
     repostIntervalInput: 'questList:repostInterval',
     emptyMessageInput: 'questList:emptyMessage',
+    findUsers: 'questList:findUsers',
+    findUsersModal: 'questList:findUsersModal',
+    findUsersInput: 'questList:findUsersInput',
     manageQueue: 'questList:manageQueue',
     manageQueueModal: 'questList:manageQueueModal',
     queueTypeInput: 'questList:queueType',
@@ -31,7 +37,7 @@ export const SETTINGS_IDS = Object.freeze({
     forceRepost: 'questList:forceRepost',
 });
 
-export function buildOverview(state, running) {
+export function buildOverview(state, { running, questUpdatesAvailable }) {
     return [
         text(
             `### Quest List\n` +
@@ -39,10 +45,22 @@ export function buildOverview(state, running) {
                 `**Visible Limits:** Cookie ${state.capacity.cookieBy}, Pray ${state.capacity.prayBy}, ` +
                 `Curse ${state.capacity.curseBy}, Action ${state.capacity.emoteBy}\n` +
                 `**Repost Interval:** ${state.repostInterval.toLocaleString()} messages` +
-                `\n**Queued Quests:** ${state.quests.length.toLocaleString()}`,
+                `\n**Queued Quests:** ${state.quests.length.toLocaleString()}` +
+                (questUpdatesAvailable ? '' : '\n**Quest Updates:** Unavailable'),
         ),
         spacer(),
-        section('### Queue\nRemove users or clear a quest type.', SETTINGS_IDS.manageQueue, 'Manage'),
+        section(
+            '### User Positions\nCheck the current Quest List positions for one or more users.',
+            SETTINGS_IDS.findUsers,
+            'Find',
+            !questUpdatesAvailable,
+        ),
+        section(
+            '### Queue\nRemove users or clear a quest type.',
+            SETTINGS_IDS.manageQueue,
+            'Manage',
+            !questUpdatesAvailable,
+        ),
         section(
             '### Quest List Message\nRefresh and post a new Quest List message.',
             SETTINGS_IDS.forceRepost,
@@ -161,6 +179,50 @@ export function readEmptyMessage(interaction) {
     return String(getModalValue(interaction, SETTINGS_IDS.emptyMessageInput) ?? '').trim();
 }
 
+export function buildFindUsersModal() {
+    return {
+        title: 'Find Quest List Users',
+        customId: SETTINGS_IDS.findUsersModal,
+        components: [
+            {
+                type: ComponentType.Label,
+                label: 'Discord user IDs',
+                description: 'Separate IDs with spaces or new lines.',
+                component: {
+                    type: ComponentType.TextInput,
+                    customId: SETTINGS_IDS.findUsersInput,
+                    style: TextInputStyle.Paragraph,
+                    required: true,
+                },
+            },
+        ],
+    };
+}
+
+export function readFindUsers(interaction) {
+    return parseUserIds(getModalValue(interaction, SETTINGS_IDS.findUsersInput));
+}
+
+export function buildUserPositionResponses(state, userIds) {
+    return chunkSections(
+        [...userIds].map((userId) =>
+            state.questsByUser.has(userId)
+                ? `### <@${userId}>\n${buildPositionResponse(state, userId)}`
+                : `### <@${userId}>\nThis user does not have any quests on the Quest List.`,
+        ),
+    );
+}
+
+export function buildInvalidUserIdResponses(invalidValues) {
+    return chunkSections(
+        buildValueSections('Invalid Discord user IDs', invalidValues, (value) => {
+            const text = String(value);
+            const display = text.length <= 64 ? text : `${text.slice(0, 63)}…`;
+            return `\`${display}\``;
+        }),
+    );
+}
+
 export function buildManageQueueModal() {
     return {
         title: 'Manage Quest List Queue',
@@ -180,14 +242,13 @@ export function buildManageQueueModal() {
             },
             {
                 type: ComponentType.Label,
-                label: 'Users',
-                description: 'Leave empty to clear the selected quest type.',
+                label: 'Discord user IDs',
+                description: 'Separate IDs with whitespace, or leave empty to clear the selected quest type.',
                 component: {
-                    type: ComponentType.UserSelect,
+                    type: ComponentType.TextInput,
                     customId: SETTINGS_IDS.queueUsersInput,
+                    style: TextInputStyle.Paragraph,
                     required: false,
-                    minValues: 0,
-                    maxValues: 25,
                 },
             },
         ],
@@ -197,24 +258,26 @@ export function buildManageQueueModal() {
 export function readManageQueue(interaction) {
     return {
         questType: String(getModalValue(interaction, SETTINGS_IDS.queueTypeInput) ?? ''),
-        userIds: new Set(getModalValues(interaction, SETTINGS_IDS.queueUsersInput)),
+        ...parseUserIds(getModalValue(interaction, SETTINGS_IDS.queueUsersInput)),
     };
 }
 
-export function buildQueueRemovalResponse(questType, requestedUsers, removed) {
+export function buildQueueRemovalResponses(questType, requestedUsers, removed) {
     const typeName = questType === 'all' ? undefined : QUEST_TYPES[questType].name;
     const questLabel = `${typeName ? `${typeName} ` : ''}quest${removed.length === 1 ? '' : 's'}`;
-    const requestedMentions = [...requestedUsers].map((userId) => `<@${userId}>`);
 
     if (!removed.length) {
-        return requestedMentions.length
-            ? `No queued ${typeName ? `${typeName} ` : ''}quests were found for ${requestedMentions.join(', ')}.`
-            : `There were no queued ${typeName ? `${typeName} ` : ''}quests to clear.`;
+        return requestedUsers.size
+            ? chunkSections([
+                  `No queued ${typeName ? `${typeName} ` : ''}quests were found for these users:`,
+                  ...buildMentionSections('Requested', requestedUsers),
+              ])
+            : [`There were no queued ${typeName ? `${typeName} ` : ''}quests to clear.`];
     }
 
     const affectedUsers = new Set(removed.map((quest) => quest.userId));
     const lines = [
-        `${requestedMentions.length ? 'Removed' : 'Cleared'} ${removed.length.toLocaleString()} queued ${questLabel} ` +
+        `${requestedUsers.size ? 'Removed' : 'Cleared'} ${removed.length.toLocaleString()} queued ${questLabel} ` +
             `belonging to ${affectedUsers.size.toLocaleString()} user${affectedUsers.size === 1 ? '' : 's'}.`,
     ];
 
@@ -228,15 +291,14 @@ export function buildQueueRemovalResponse(questType, requestedUsers, removed) {
         );
     }
 
-    if (requestedMentions.length) {
-        lines.push(`**Affected:** ${[...affectedUsers].map((userId) => `<@${userId}>`).join(', ')}`);
+    const sections = [lines.join('\n')];
+    if (requestedUsers.size) {
+        sections.push(...buildMentionSections('Affected', affectedUsers));
         const unmatched = [...requestedUsers].filter((userId) => !affectedUsers.has(userId));
-        if (unmatched.length) {
-            lines.push(`**No matching quests:** ${unmatched.map((userId) => `<@${userId}>`).join(', ')}`);
-        }
+        if (unmatched.length) sections.push(...buildMentionSections('No matching quests', unmatched));
     }
 
-    return lines.join('\n');
+    return chunkSections(sections);
 }
 
 function text(content) {
@@ -283,4 +345,52 @@ function numberInput(label, customId, value) {
 function readPositiveInteger(interaction, customId) {
     const value = String(getModalValue(interaction, customId) ?? '').trim();
     return /^\d+$/.test(value) && Number(value) > 0 ? Number(value) : undefined;
+}
+
+function parseUserIds(value) {
+    const { identifiers, invalid } = parseIdentifiers(value, (userId) =>
+        /^\d{17,20}$/.test(userId) ? userId : undefined,
+    );
+    return { userIds: new Set(identifiers), invalidValues: invalid };
+}
+
+function chunkSections(sections) {
+    const responses = [];
+    let response = '';
+
+    for (const section of sections) {
+        const joined = response ? `${response}\n\n${section}` : section;
+        if (joined.length <= MAX_TEXT_DISPLAY_LENGTH) {
+            response = joined;
+        } else {
+            if (response) responses.push(response);
+            response = section;
+        }
+    }
+
+    if (response) responses.push(response);
+    return responses;
+}
+
+function buildMentionSections(label, userIds) {
+    return buildValueSections(label, userIds, (userId) => `<@${userId}>`);
+}
+
+function buildValueSections(label, values, formatValue) {
+    const sections = [];
+    let section = `**${label}:**`;
+
+    for (const value of values) {
+        const formatted = formatValue(value);
+        const joined = `${section}${section.endsWith('**') ? ' ' : ', '}${formatted}`;
+        if (joined.length <= MAX_TEXT_DISPLAY_LENGTH) {
+            section = joined;
+        } else {
+            sections.push(section);
+            section = `**${label} (continued):** ${formatted}`;
+        }
+    }
+
+    if (!section.endsWith('**')) sections.push(section);
+    return sections;
 }

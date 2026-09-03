@@ -35,13 +35,12 @@ const LOGS_COMMAND_DEFINITION = {
 };
 
 /** @type {import('../packages.js').PackageSetup} */
-export default function setup({ logging, services, unavailable }) {
+export default function setup({ logging, services }) {
     const log = logging.createLogger('logs');
     const Setting = services.snail.mongo?.Setting;
 
     return {
         name: 'Logs Command',
-        missing: unavailable.snail.mongo ?? [],
         commands: [
             {
                 definition: LOGS_COMMAND_DEFINITION,
@@ -49,7 +48,7 @@ export default function setup({ logging, services, unavailable }) {
                 authorize: hasManagerAccess,
                 autocomplete,
                 async handle(context) {
-                    await context.respond(buildPanel(logging, getCommandOptionValue(context.interaction, 'logger')), {
+                    await context.respond(renderPanel(getCommandOptionValue(context.interaction, 'logger')), {
                         ephemeral: true,
                     });
                 },
@@ -71,6 +70,10 @@ export default function setup({ logging, services, unavailable }) {
         };
     }
 
+    function renderPanel(selectedName) {
+        return buildPanel(logging, selectedName);
+    }
+
     function autocomplete(context) {
         const value = String(getCommandOptionValue(context.interaction, 'logger') ?? '').toLowerCase();
 
@@ -89,7 +92,7 @@ export default function setup({ logging, services, unavailable }) {
             return;
         }
 
-        await context.update(buildPanel(logging, logger.name));
+        await context.update(renderPanel(logger.name));
     }
 
     async function setLevel(context) {
@@ -106,10 +109,18 @@ export default function setup({ logging, services, unavailable }) {
             return;
         }
 
-        await saveLoggingLevel(Setting, logger.name, level);
-        log.info('Changed log level', { logger: logger.name, from: logger.level, to: level });
+        const persisted = Boolean(Setting);
+        if (persisted) await saveLoggingLevel(Setting, logger.name, level);
+        log.info('Changed log level', { logger: logger.name, from: logger.level, to: level, persisted });
         logging.setLevel(logger.name, level);
-        await context.update(buildPanel(logging, logger.name));
+        await context.update(renderPanel(logger.name));
+        if (!persisted) {
+            await context.respond(
+                `${logger.name} was changed to ${level} for the current runtime. ` +
+                    `This change could not be saved and will reset when Snail restarts. Check the runtime logs for details.`,
+                { ephemeral: true },
+            );
+        }
     }
 
     async function exportSource(context) {

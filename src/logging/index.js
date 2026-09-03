@@ -17,6 +17,7 @@ const LEVELS = Object.freeze({
 export const LOG_LEVELS = Object.freeze(Object.keys(LEVELS));
 
 const DEFAULT_LEVEL = 'info';
+const DEFAULT_PRINT = false;
 const LOG_BYTE_LIMIT = 10 * 1_024 * 1_024;
 const TIME_FORMAT = new Intl.DateTimeFormat(undefined, {
     hour: '2-digit',
@@ -70,11 +71,47 @@ const TIME_FORMAT = new Intl.DateTimeFormat(undefined, {
  */
 
 /**
- * Creates an isolated Snail logging manager.
+ * Configuration for one named logger.
+ *
+ * @typedef {object} LoggerConfiguration
+ * @property {LogLevel} [level] Minimum retained level.
+ * @property {boolean} [print] Whether retained records should also be printed to the console.
  */
-export function createLogging() {
+
+/**
+ * Default and per-logger logging configuration.
+ *
+ * @typedef {object} LoggingConfiguration
+ * @property {LogLevel} [defaultLevel] Default minimum retained level.
+ * @property {boolean} [print] Default console printing behavior.
+ * @property {Record<string, LoggerConfiguration>} [overrides] Per-logger overrides.
+ */
+
+/**
+ * Creates an isolated Snail logging manager.
+ *
+ * @param {LoggingConfiguration} [configuration]
+ */
+export function createLogging(configuration = {}) {
     const loggers = new Map();
-    const configuredLevels = new Map();
+    const levelOverrides = new Map();
+    const defaultLevel = configuration.defaultLevel ?? DEFAULT_LEVEL;
+    const defaultPrint = configuration.print ?? DEFAULT_PRINT;
+    const loggerConfigurations = new Map();
+
+    validateLevel(defaultLevel, 'logging.defaultLevel');
+    validatePrint(defaultPrint, 'logging.print');
+
+    for (const [name, override] of Object.entries(configuration.overrides ?? {})) {
+        if (override.level !== undefined) {
+            validateLevel(override.level, `logging.overrides.${name}.level`);
+        }
+        if (override.print !== undefined) {
+            validatePrint(override.print, `logging.overrides.${name}.print`);
+        }
+
+        loggerConfigurations.set(name, { ...override });
+    }
 
     return {
         createLogger,
@@ -86,11 +123,10 @@ export function createLogging() {
      * Creates and registers a uniquely named logger.
      *
      * @param {string} name Unique logger name.
-     * @param {boolean} [print=false] Whether retained records should also be printed to the console.
      * @returns {Logger}
      * @throws {Error} If a logger with `name` is already registered.
      */
-    function createLogger(name, print = false) {
+    function createLogger(name) {
         if (loggers.has(name)) {
             throw new Error(`Logger already exists: ${name}`);
         }
@@ -107,7 +143,7 @@ export function createLogging() {
             },
 
             get level() {
-                return configuredLevels.get(name) ?? DEFAULT_LEVEL;
+                return levelOverrides.get(name) ?? loggerConfigurations.get(name)?.level ?? defaultLevel;
             },
 
             get byteLimit() {
@@ -191,7 +227,7 @@ export function createLogging() {
                 firstEntry = 0;
             }
 
-            if (print) {
+            if (loggerConfigurations.get(name)?.print ?? defaultPrint) {
                 const time = TIME_FORMAT.format(log.timestamp);
                 const level = log.level.toUpperCase();
                 const line = `[${level}] [${time}] [${logger.name}] ${log.message}`;
@@ -234,10 +270,19 @@ export function createLogging() {
      * @throws {TypeError} If `level` is not recognized.
      */
     function setLevel(name, level) {
-        if (!Object.hasOwn(LEVELS, level)) {
-            throw new TypeError(`Unknown log level: ${level}`);
-        }
+        validateLevel(level);
+        levelOverrides.set(name, level);
+    }
+}
 
-        configuredLevels.set(name, level);
+function validateLevel(level, setting) {
+    if (!Object.hasOwn(LEVELS, level)) {
+        throw new TypeError(setting ? `Unknown log level for ${setting}: ${level}` : `Unknown log level: ${level}`);
+    }
+}
+
+function validatePrint(print, setting) {
+    if (typeof print !== 'boolean') {
+        throw new TypeError(`${setting} must be a boolean`);
     }
 }

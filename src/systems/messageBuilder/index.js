@@ -56,15 +56,13 @@ const SESSION_LIFETIME = 14 * 60_000;
  * @property {import('@discordeno/types').Camelize<import('@discordeno/types').DiscordMessage>} [sourceMessage]
  */
 
-export default function createMessageBuilder({ config, logging, rest, services, unavailable }) {
+export default function createMessageBuilder({ config, logging, rest, services }) {
     const log = logging.createLogger('messageBuilder');
-    const missing = unavailable.snail.mongo ?? [];
     const repository = services.snail.mongo ? createDraftRepository(services.snail.mongo.User) : undefined;
     const sessions = new Map();
 
     return {
         name: 'Message Builder',
-        missing,
         components: [
             interaction(IDS.select, selectTopLevel),
             interaction(IDS.child, selectChild),
@@ -88,7 +86,6 @@ export default function createMessageBuilder({ config, logging, rest, services, 
      * @param {MessageBuilderOptions} options
      */
     async function start(context, options) {
-        if (!repository) throw new Error(`Message Builder unavailable: ${missing.join(', ')}`);
         if (typeof options?.authorize !== 'function') throw new TypeError('Message Builder requires authorize');
         if (typeof options?.submit !== 'function') throw new TypeError('Message Builder requires submit');
         if (options.components && options.sourceMessage) {
@@ -112,7 +109,7 @@ export default function createMessageBuilder({ config, logging, rest, services, 
             );
             source = 'components';
         } else {
-            const stored = await repository.load(user.id);
+            const stored = repository ? await repository.load(user.id) : undefined;
             hydrated = stored ? hydrateDraft(stored, { allowIncomplete: true }) : { ok: true, draft: createDraft() };
             source = stored ? 'saved' : 'new';
             if (!hydrated.ok) {
@@ -147,7 +144,7 @@ export default function createMessageBuilder({ config, logging, rest, services, 
             busy: false,
         };
 
-        await repository.save(user.id, session.draft);
+        if (repository) await repository.save(user.id, session.draft);
         await context.respond(buildPreview(session.draft), { ephemeral: true });
         const controller = await context.respond(buildController(session), { ephemeral: true });
         session.controllerId = controller.id;
@@ -304,8 +301,10 @@ export default function createMessageBuilder({ config, logging, rest, services, 
 
         const timer = log.time();
         await context.deferUpdate();
-        await repository.save(session.userId, result.draft);
-        timer.checkpoint('snailMongo');
+        if (repository) {
+            await repository.save(session.userId, result.draft);
+            timer.checkpoint('snailMongo');
+        }
         session.draft = result.draft;
         session.selection = result.selection;
         await context.editResponse(buildController(session));
@@ -319,6 +318,7 @@ export default function createMessageBuilder({ config, logging, rest, services, 
     }
 
     async function submit(context, session) {
+        await context.deferUpdate();
         const validation = validateDraft(session.draft);
         if (!validation.ok) {
             await context.respond(validation.message, { ephemeral: true });
@@ -326,7 +326,6 @@ export default function createMessageBuilder({ config, logging, rest, services, 
         }
 
         const timer = log.time();
-        await context.deferUpdate();
         const result = await session.submit(buildMessage(session.draft));
         timer.checkpoint('submission');
         if (!result || typeof result.ok !== 'boolean' || typeof result.message !== 'string') {

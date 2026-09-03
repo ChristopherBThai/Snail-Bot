@@ -31,10 +31,6 @@ export function getComponent(draft, path) {
     return path.length === 1 ? component : component?.components?.[path[1]];
 }
 
-export function getChildren(component) {
-    return component?.type === ComponentType.Container ? component.components : undefined;
-}
-
 export function getComponentName(component) {
     return (
         {
