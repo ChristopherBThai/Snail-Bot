@@ -54,10 +54,23 @@ export default async function setup({ config, features, logging, rest, services,
                   log,
               })
             : undefined;
+    const tagSync = knowledge
+        ? {
+              syncTags(tags_) {
+                  if (!features.get('knowledgeBase')?.enabled) return;
+                  return knowledge.syncTags(tags_);
+              },
+              deleteTags(tagIds) {
+                  if (!features.get('knowledgeBase')?.enabled) return;
+                  return knowledge.deleteTags(tagIds);
+              },
+          }
+        : undefined;
     const management = createKnowledgeBaseManagement({
         Tag: mongo?.Tag,
         KnowledgeTerm: mongo?.KnowledgeTerm,
         knowledge,
+        tagSync,
         tags,
         terms,
         log,
@@ -72,8 +85,6 @@ export default async function setup({ config, features, logging, rest, services,
           })
         : undefined;
     await Promise.all([management.initialize(), knowledge?.initialize(), ask?.initialize()]);
-
-    const tagSync = knowledge ? { syncTags: knowledge.syncTags, deleteTags: knowledge.deleteTags } : undefined;
 
     const package_ = {
         name: 'Knowledge Base',

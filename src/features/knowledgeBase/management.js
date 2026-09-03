@@ -57,7 +57,16 @@ const COMMAND = {
 
 const SESSION_LIFETIME = 15 * 60_000;
 
-export function createKnowledgeBaseManagement({ Tag, KnowledgeTerm, knowledge, tags, terms, log, searchMissing }) {
+export function createKnowledgeBaseManagement({
+    Tag,
+    KnowledgeTerm,
+    knowledge,
+    tagSync,
+    tags,
+    terms,
+    log,
+    searchMissing,
+}) {
     const findSessions = new Map();
     const listSessions = new Map();
 
@@ -337,11 +346,11 @@ export function createKnowledgeBaseManagement({ Tag, KnowledgeTerm, knowledge, t
     }
 
     async function synchronizeTags(type, changedTags) {
-        if (!knowledge || !changedTags.length) return;
+        if (!tagSync || !changedTags.length) return;
 
         try {
-            if (type === 'delete') await knowledge.deleteTags(changedTags.map((tag) => tag._id));
-            else await knowledge.syncTags(changedTags);
+            if (type === 'delete') await tagSync.deleteTags(changedTags.map((tag) => tag._id));
+            else await tagSync.syncTags(changedTags);
         } catch (error) {
             log.error('Tags changed but Knowledge Base synchronization failed', {
                 error,
