@@ -4,7 +4,7 @@ import { matchTerms } from './terms.js';
 const EMBED_BATCH_SIZE = 64;
 const QUESTION_CACHE_WRITE_BATCH_SIZE = 100;
 const UPDATE_POINT_BATCH_SIZE = 256;
-const PAYLOAD_FIELDS = Object.freeze(['tag_id', 'kind', 'text_hash', 'question']);
+const PAYLOAD_FIELDS = Object.freeze(['tag_id', 'kind', 'data_hash', 'question_hash', 'question', 'text_hash']);
 const POINT_ID_PREFIX = 'snail-knowledge-base:';
 const QUESTION_PROMPT_VERSION = 'tag-question-v3';
 const QUESTION_SYSTEM_PROMPT = 'You generate retrieval scaffolding questions for OwO Discord bot support tags.';
@@ -623,7 +623,7 @@ function buildDesiredPoints(tag) {
         point(`${tag._id}:answer`, tag.text, {
             tag_id: tag._id,
             kind: 'tag_answer',
-            text_hash: hash(tag.text),
+            data_hash: hash(tag.text),
         }),
     ];
 
@@ -632,7 +632,7 @@ function buildDesiredPoints(tag) {
             point(`${tag._id}:question:${question.hash}`, question.text, {
                 tag_id: tag._id,
                 kind: 'tag_question',
-                text_hash: question.hash,
+                question_hash: question.hash,
                 question: question.text,
             }),
         );
@@ -664,8 +664,9 @@ function computeDiff(desired, existing) {
     for (const [id, point] of desired) {
         const old = current.get(id);
         current.delete(id);
+        const hashField = point.payload.kind === 'tag_answer' ? 'data_hash' : 'question_hash';
         if (!old) embed.push({ ...point, operation: 'add' });
-        else if (old.payload?.text_hash !== point.payload.text_hash) embed.push({ ...point, operation: 'vector' });
+        else if (old.payload?.[hashField] !== point.payload[hashField]) embed.push({ ...point, operation: 'vector' });
         else if (PAYLOAD_FIELDS.some((field) => old.payload?.[field] !== point.payload[field])) metadata.push(point);
     }
 
