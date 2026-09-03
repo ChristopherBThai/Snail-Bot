@@ -1,0 +1,93 @@
+{
+    "guildId": "604719438805205004",
+    "roles": {
+        "helper": {
+            "permission": "803184898180644864",
+            "display": "838187713584168981"
+        },
+        "manager": {
+            "permission": "803184854170206248",
+            "display": "838187711210061867"
+        },
+        "admin": {
+            "permission": "803190266952679445",
+            "display": "838187708139438091"
+        },
+        "supporters": {
+            "base": "1536050624699965520",
+            "ticketCommon": "1536050868548542524",
+            "discordUncommon": "1536051052544139314",
+            "patreonCommon": "1536051870622023740",
+            "patreonUncommon": "1536052071529185311",
+            "legendary": "1536051344564166696",
+            "fabled": "1536051717404102737"
+        }
+    },
+    "users": {
+        "owner": "210177401064390658"
+    },
+    "knowledgeBase": {
+        "collection": "owo_knowledge",
+        "embeddingSize": 4096,
+        "queryInstruction": "Given a user question about the OwO Discord bot, retrieve a matching knowledge base entry that answers it.",
+        "topK": 6,
+        "rerankCandidateLimit": 50,
+        "scoreThreshold": 0.5
+    },
+    "openRouter": {
+        "embeddingModel": "qwen/qwen3-embedding-8b",
+        "chatModel": "deepseek/deepseek-v3.2",
+        "rerankModel": "cohere/rerank-4-fast",
+        "maxTokens": 500,
+        "temperature": 0.2,
+        "excludedProviders": ["deepinfra", "novita", "gmicloud", "atlas-cloud", "siliconflow"]
+    },
+    "logging": {
+        "defaultLevel": "debug",
+        "print": false,
+        "overrides": {
+            "snail": {
+                "level": "debug",
+                "print": true
+            },
+            "rest": {
+                "level": "info",
+                "print": true
+            },
+            "gateway": {
+                "level": "debug",
+                "print": true
+            },
+            "messageBuilder": {
+                "level": "debug"
+            },
+            "logs": {
+                "level": "debug"
+            },
+            "giveItem": {
+                "level": "debug"
+            },
+            "sendUserData": {
+                "level": "debug"
+            },
+            "tags": {
+                "level": "trace"
+            },
+            "settings": {
+                "level": "debug"
+            },
+            "knowledgeBase": {
+                "level": "trace"
+            },
+            "questList": {
+                "level": "trace"
+            },
+            "ticketMarket": {
+                "level": "trace"
+            },
+            "supporterRoles": {
+                "level": "trace"
+            }
+        }
+    }
+}

@@ -1,4 +1,4 @@
-FROM node:25-slim
+FROM node:26-slim
 
 ENV NODE_ENV=production
 WORKDIR /app
@@ -8,4 +8,4 @@ RUN npm ci --omit=dev
 
 COPY . .
 
-CMD ["npm", "start"]
+CMD ["sh", "-c", "npm run migrate && exec npm start"]
