@@ -65,7 +65,11 @@ export default async function setup({ config, logging, rest, services }) {
             activate: synchronization?.activate,
             deactivate: synchronization?.deactivate,
             events: synchronization
-                ? [{ event: GatewayDispatchEvents.MessageCreate, handle: synchronization.messageCreated }]
+                ? [
+                      { event: GatewayDispatchEvents.GuildMemberAdd, handle: synchronization.memberAdded },
+                      { event: GatewayDispatchEvents.GuildMemberUpdate, handle: synchronization.memberUpdated },
+                      { event: GatewayDispatchEvents.MessageCreate, handle: synchronization.messageCreated },
+                  ]
                 : [],
             settings: {
                 pages: [{ id: 'overview', label: 'Overview', render: renderOverview }],

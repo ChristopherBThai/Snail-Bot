@@ -22,6 +22,8 @@ export function createSupporterRoleSynchronization({ guildId, roleIds, User, mys
         initialize,
         activate,
         deactivate,
+        memberAdded,
+        memberUpdated,
         messageCreated,
         setOptout,
         synchronizeUser,
@@ -50,16 +52,29 @@ export function createSupporterRoleSynchronization({ guildId, roleIds, User, mys
         synchronizedUntil.clear();
     }
 
+    function memberAdded(member) {
+        queueMember(member.guildId, member.user, member.roles, true);
+    }
+
+    function memberUpdated(member) {
+        queueMember(member.guildId, member.user, member.roles);
+    }
+
     function messageCreated(message) {
-        if (!active || message.author.bot || !message.member || message.guildId !== guildId) return;
-        const member = { userId: message.author.id, roles: message.member.roles };
+        if (!message.member) return;
+        queueMember(message.guildId, message.author, message.member.roles);
+    }
+
+    function queueMember(memberGuildId, user, roles, force = false) {
+        if (!active || user.bot || memberGuildId !== guildId) return;
+        const member = { userId: user.id, roles };
         const now = Date.now();
         if (now >= nextCachePruneAt) {
             pruneCache(now);
             nextCachePruneAt = now + CACHE_PRUNE_INTERVAL_MS;
         }
         const expiresAt = synchronizedUntil.get(member.userId);
-        if (expiresAt > now || synchronizingUsers.has(member.userId)) return;
+        if ((!force && expiresAt > now) || synchronizingUsers.has(member.userId)) return;
         synchronizedUntil.delete(member.userId);
 
         pendingMembers.set(member.userId, member);
