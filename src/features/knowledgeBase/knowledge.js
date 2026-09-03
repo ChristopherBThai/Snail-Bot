@@ -195,11 +195,14 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
                         if (!dryRun && (regenerate || !validQuestions(tag.knowledgeBase?.questions))) {
                             await generateQuestions(tag);
                             pendingQuestionCaches.push(tag);
-                            if (pendingQuestionCaches.length === QUESTION_CACHE_WRITE_BATCH_SIZE) {
-                                await flushQuestionCaches(pendingQuestionCaches, desired, failedTagIds);
-                            }
+                        } else if (!dryRun && !isCurrentCache(tag.knowledgeBase, getCacheHashes(tag))) {
+                            tag.knowledgeBase = { ...tag.knowledgeBase, ...getCacheHashes(tag) };
+                            pendingQuestionCaches.push(tag);
                         } else {
                             addDesiredPoints(desired, tag);
+                        }
+                        if (pendingQuestionCaches.length === QUESTION_CACHE_WRITE_BATCH_SIZE) {
+                            await flushQuestionCaches(pendingQuestionCaches, desired, failedTagIds);
                         }
                     } catch (error) {
                         failedTagIds.add(tag._id);
@@ -311,7 +314,14 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
     }
 
     async function ensureCache(tag) {
-        if (validQuestions(tag.knowledgeBase?.questions)) return tag;
+        if (validQuestions(tag.knowledgeBase?.questions)) {
+            const hashes = getCacheHashes(tag);
+            if (isCurrentCache(tag.knowledgeBase, hashes)) return tag;
+
+            tag.knowledgeBase = { ...tag.knowledgeBase, ...hashes };
+            await saveQuestionCache(tag);
+            return rememberQuestionCache(tag);
+        }
 
         return regenerateQuestions(tag);
     }
@@ -392,12 +402,10 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
             return undefined;
         }
 
-        const updated = {
-            ...current,
-            knowledgeBase: {
-                ...current.knowledgeBase,
-                ...questionCacheFields(tag.knowledgeBase),
-            },
+        const updated = copyTag(current);
+        updated.knowledgeBase = {
+            ...updated.knowledgeBase,
+            ...questionCacheFields(tag.knowledgeBase),
         };
         tags.set(tag._id, updated);
         return updated;
@@ -593,7 +601,15 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
 }
 
 function copyTag(tag) {
-    return { ...tag, knowledgeBase: { ...tag.knowledgeBase } };
+    const plain = typeof tag.toObject === 'function' ? tag.toObject() : tag;
+    return {
+        ...plain,
+        _id: tag._id,
+        text: tag.text,
+        message: tag.message,
+        public: tag.public,
+        knowledgeBase: { ...plain.knowledgeBase },
+    };
 }
 
 function createQuestionEditor(tag) {
