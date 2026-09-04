@@ -1,3 +1,4 @@
+import { COLORS } from '../../discord/colors.js';
 import { getMessageJumpLink } from '../../discord/messages.js';
 import { buildSellerAdMessage } from './render.js';
 import { createTicketMarketVisibility } from './visibility.js';
@@ -169,7 +170,7 @@ export function createTicketMarketRuntime({ config, settings, log, mysql, rest, 
             await visibility.syncAfterMutation(settings, 'posting an ad', adLogData(ad));
             timer.checkpoint('permissions');
             timer.info('Posted Ticket Market ad', adLogData(ad));
-            await sendAdminLog('Ticket Market Ad Posted', adLogLines(ad, config.guildId));
+            await sendAdminLog('Ticket Market Ad Posted', adLogLines(ad, config.guildId), COLORS.success);
             return 'Ticket Market ad posted.';
         } finally {
             postingUsers.delete(userId);
@@ -192,11 +193,15 @@ export function createTicketMarketRuntime({ config, settings, log, mysql, rest, 
         await visibility.syncAfterMutation(settings, 'deleting an ad', adLogData(ad));
         timer.checkpoint('permissions');
         timer.info('Deleted Ticket Market ad', { ...adLogData(ad), actorId, reason, source });
-        await sendAdminLog('Ticket Market Ad Deleted', [
-            ...adLogLines(ad, config.guildId),
-            `**Deleted By:** <@${actorId}> (\`${actorId}\`)`,
-            `**Reason:** ${reason}`,
-        ]);
+        await sendAdminLog(
+            'Ticket Market Ad Deleted',
+            [
+                ...adLogLines(ad, config.guildId),
+                `**Deleted By:** <@${actorId}> (\`${actorId}\`)`,
+                `**Reason:** ${reason}`,
+            ],
+            COLORS.danger,
+        );
     }
 
     async function refreshAvailability(sellerId, messageId, source) {
@@ -290,7 +295,7 @@ export function createTicketMarketRuntime({ config, settings, log, mysql, rest, 
         await visibility.syncAfterMutation(settings, 'reconciling a deleted ad', adLogData(ad));
         timer.checkpoint('permissions');
         timer.info('Reconciled manually deleted Ticket Market ad', adLogData(ad));
-        await sendAdminLog('Ticket Market Ad Manually Deleted', adLogLines(ad, config.guildId));
+        await sendAdminLog('Ticket Market Ad Manually Deleted', adLogLines(ad, config.guildId), COLORS.danger);
     }
 
     async function messageDeletedBulk(message) {
@@ -319,10 +324,14 @@ export function createTicketMarketRuntime({ config, settings, log, mysql, rest, 
             channelId: message.channelId,
             ads: ads.length,
         });
-        await sendAdminLog('Ticket Market Ads Manually Deleted', [
-            `**Ads Deleted:** ${ads.length.toLocaleString()}`,
-            `**Sellers:** ${ads.map((ad) => `<@${ad.sellerId}>`).join(', ')}`,
-        ]);
+        await sendAdminLog(
+            'Ticket Market Ads Manually Deleted',
+            [
+                `**Ads Deleted:** ${ads.length.toLocaleString()}`,
+                `**Sellers:** ${ads.map((ad) => `<@${ad.sellerId}>`).join(', ')}`,
+            ],
+            COLORS.danger,
+        );
     }
 
     async function resetForSellerChannelChange() {
@@ -461,7 +470,7 @@ export function createTicketMarketRuntime({ config, settings, log, mysql, rest, 
         await visibility.syncAfterMutation(settings, 'expiring an ad', adLogData(current));
         timer.checkpoint('permissions');
         timer.info('Expired Ticket Market ad', adLogData(current));
-        await sendAdminLog('Ticket Market Ad Expired', adLogLines(current, config.guildId));
+        await sendAdminLog('Ticket Market Ad Expired', adLogLines(current, config.guildId), COLORS.danger);
     }
 
     function expireAdSafely(ad) {

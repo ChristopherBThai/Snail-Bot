@@ -6,6 +6,7 @@ import {
     MessageFlags,
     SeparatorSpacingSize,
 } from 'discord-api-types/v10';
+import { COLORS } from '../discord/colors.js';
 import { hasManagerAccess } from '../discord/auth.js';
 import { getCommandOptionValue, getCustomIdSuffix, getSelectValue } from '../discord/interactions.js';
 import { suppressMentions } from '../discord/messages.js';
@@ -154,6 +155,7 @@ function buildPanel(logging, selectedName) {
         components: [
             {
                 type: ComponentType.Container,
+                accentColor: COLORS.primary,
                 components: [
                     {
                         type: ComponentType.TextDisplay,

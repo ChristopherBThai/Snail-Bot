@@ -1,4 +1,5 @@
 import { ButtonStyle, ComponentType, MessageFlags, SeparatorSpacingSize, TextInputStyle } from 'discord-api-types/v10';
+import { COLORS } from '../../discord/colors.js';
 import { suppressMentions } from '../../discord/messages.js';
 import {
     canAddComponent,
@@ -61,6 +62,7 @@ export function buildMessage(draft) {
 }
 
 export function buildController(session, { disabled = false, notice } = {}) {
+    const accentColor = notice === 'Submitted.' ? COLORS.success : disabled ? COLORS.neutral : COLORS.primary;
     const selected = getComponent(session.draft, session.selection.path);
     const topLevel = session.draft.components[session.selection.path[0]];
     const children = topLevel?.type === ComponentType.Container ? topLevel.components : undefined;
@@ -218,7 +220,7 @@ export function buildController(session, { disabled = false, notice } = {}) {
 
     return suppressMentions({
         flags: MessageFlags.IsComponentsV2,
-        components: [{ type: ComponentType.Container, components: selectionComponents }],
+        components: [{ type: ComponentType.Container, accentColor, components: selectionComponents }],
     });
 }
 

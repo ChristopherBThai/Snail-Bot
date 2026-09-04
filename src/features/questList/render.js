@@ -1,4 +1,5 @@
 import { ButtonStyle, ComponentType, MessageFlags, SeparatorSpacingSize } from 'discord-api-types/v10';
+import { COLORS } from '../../discord/colors.js';
 import { suppressMentions } from '../../discord/messages.js';
 import { QUEST_TYPES } from './quests.js';
 
@@ -30,6 +31,7 @@ export function buildQuestListMessage(state) {
         components: [
             {
                 type: ComponentType.Container,
+                accentColor: COLORS.primary,
                 components: [
                     {
                         type: ComponentType.TextDisplay,

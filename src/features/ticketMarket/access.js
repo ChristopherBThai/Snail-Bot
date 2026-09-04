@@ -1,3 +1,4 @@
+import { COLORS } from '../../discord/colors.js';
 import { getInteractionUser } from '../../discord/interactions.js';
 import { getMissingSettings } from './settings.js';
 
@@ -23,7 +24,7 @@ export function createTicketMarketAccess({ config, settings, log, rest, sendAdmi
         await context.editResponse('Ticket Market access granted.');
         timer.checkpoint('response');
         timer.info('Accepted Ticket Market rules', { userId, roleId: settings.marketAccessRole });
-        await sendAdminLog('Market Rules Accepted', [`**User:** <@${userId}> (\`${userId}\`)`]);
+        await sendAdminLog('Market Rules Accepted', [`**User:** <@${userId}> (\`${userId}\`)`], COLORS.success);
     }
 
     async function acceptSellerRules(context) {
@@ -44,7 +45,7 @@ export function createTicketMarketAccess({ config, settings, log, rest, sendAdmi
         await context.editResponse('Ticket Market seller access granted.');
         timer.checkpoint('response');
         timer.info('Accepted Ticket Market seller rules', { userId, roleId: settings.sellerAccessRole });
-        await sendAdminLog('Seller Rules Accepted', [`**User:** <@${userId}> (\`${userId}\`)`]);
+        await sendAdminLog('Seller Rules Accepted', [`**User:** <@${userId}> (\`${userId}\`)`], COLORS.success);
     }
 
     function getUnavailableMessage(context) {

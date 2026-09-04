@@ -1,4 +1,5 @@
 import { OverwriteType, PermissionFlagsBits } from 'discord-api-types/v10';
+import { COLORS } from '../../discord/colors.js';
 
 const SELLER_ADS_PERMISSIONS = PermissionFlagsBits.ViewChannel;
 const TICKET_TRADING_PERMISSIONS = PermissionFlagsBits.ViewChannel | PermissionFlagsBits.SendMessages;
@@ -74,11 +75,15 @@ export function createTicketMarketVisibility({ getMarketState, log, rest, sendAd
             ...data,
         });
         const { activeAdCount } = getMarketState();
-        await sendAdminLog('Ticket Trading Synchronization Failed', [
-            `**Action:** ${action}`,
-            `**Active Ads:** ${activeAdCount.toLocaleString()}`,
-            'Automatic retries were exhausted. Use Resync in Ticket Market Settings after correcting the problem.',
-        ]);
+        await sendAdminLog(
+            'Ticket Trading Synchronization Failed',
+            [
+                `**Action:** ${action}`,
+                `**Active Ads:** ${activeAdCount.toLocaleString()}`,
+                'Automatic retries were exhausted. Use Resync in Ticket Market Settings after correcting the problem.',
+            ],
+            COLORS.danger,
+        );
     }
 
     function syncCurrentTicketTradingChannel(settings) {
@@ -145,11 +150,15 @@ export function createTicketMarketVisibility({ getMarketState, log, rest, sendAd
     }
 
     function sendStateLog(open, settings, activeAdCount, reason) {
-        return sendAdminLog(`Ticket Trading ${open ? 'Opened' : 'Closed'}`, [
-            `**Channel:** <#${settings.ticketTradingChannel}>`,
-            `**Active Ads:** ${activeAdCount.toLocaleString()}`,
-            `**Reason:** ${reason}`,
-        ]);
+        return sendAdminLog(
+            `Ticket Trading ${open ? 'Opened' : 'Closed'}`,
+            [
+                `**Channel:** <#${settings.ticketTradingChannel}>`,
+                `**Active Ads:** ${activeAdCount.toLocaleString()}`,
+                `**Reason:** ${reason}`,
+            ],
+            open ? COLORS.success : COLORS.danger,
+        );
     }
 
     function setChannelVisibility(channelId, roleId, permissions, visible, reason) {
