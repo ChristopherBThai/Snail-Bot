@@ -8,6 +8,7 @@ import {
     SeparatorSpacingSize,
     TextInputStyle,
 } from 'discord-api-types/v10';
+import { COLORS } from '../discord/colors.js';
 import { hasOwnerAccess } from '../discord/auth.js';
 import { disableComponents, getModalValue, getSelectValue, getTargetUser } from '../discord/interactions.js';
 import { suppressMentions } from '../discord/messages.js';
@@ -348,6 +349,7 @@ function buildPanel(state, { disabled = false, notice } = {}) {
         components: [
             {
                 type: ComponentType.Container,
+                accentColor: disabled ? COLORS.neutral : COLORS.primary,
                 components: [
                     {
                         type: ComponentType.TextDisplay,

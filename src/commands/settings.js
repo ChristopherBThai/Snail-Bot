@@ -7,6 +7,7 @@ import {
     SeparatorSpacingSize,
 } from 'discord-api-types/v10';
 import { hasManagerAccess } from '../discord/auth.js';
+import { COLORS } from '../discord/colors.js';
 import { getCommandOptionValue, getCustomIdSuffix, getSelectValue } from '../discord/interactions.js';
 import { suppressMentions } from '../discord/messages.js';
 
@@ -309,7 +310,7 @@ function featureSection(feature) {
 function panel(components) {
     return suppressMentions({
         flags: MessageFlags.IsComponentsV2,
-        components: [{ type: ComponentType.Container, components }],
+        components: [{ type: ComponentType.Container, accentColor: COLORS.primary, components }],
     });
 }
 

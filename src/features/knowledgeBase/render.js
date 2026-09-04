@@ -1,4 +1,5 @@
 import { ButtonStyle, ComponentType, MessageFlags, SeparatorSpacingSize, TextInputStyle } from 'discord-api-types/v10';
+import { COLORS } from '../../discord/colors.js';
 import { disableComponents, getModalValue } from '../../discord/interactions.js';
 import { getMessageJumpLink, suppressMentions } from '../../discord/messages.js';
 
@@ -155,7 +156,7 @@ export function buildFeedbackReport({ rating, userId, question, answer, sources,
         `**Answer:** ${link}\n` +
         `**Response:** ${answer}\n` +
         `**Resources:** ${sources.length ? sources.map((tag) => `\`${tag._id}\``).join(', ') : 'None'}`;
-    return panel(splitText(report, 3500).map(text));
+    return panel(splitText(report, 3500).map(text), rating === 'helpful' ? COLORS.success : COLORS.danger);
 }
 
 export function buildFindResults(result, sessionId, requestedPage = 0) {
@@ -214,10 +215,10 @@ export function buildFindResults(result, sessionId, requestedPage = 0) {
     ]);
 }
 
-function panel(components) {
+function panel(components, accentColor = COLORS.primary) {
     return suppressMentions({
         flags: MessageFlags.IsComponentsV2,
-        components: [{ type: ComponentType.Container, components }],
+        components: [{ type: ComponentType.Container, accentColor, components }],
     });
 }
 

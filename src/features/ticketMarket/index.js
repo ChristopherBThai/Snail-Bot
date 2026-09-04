@@ -1,5 +1,6 @@
 import { GatewayDispatchEvents } from 'discord-api-types/v10';
 import { hasManagerAccess } from '../../discord/auth.js';
+import { COLORS } from '../../discord/colors.js';
 import { createTicketMarketAccess } from './access.js';
 import { createTicketMarketAds, DELETE_AD_MODAL_PREFIX, POST_AD_MODAL_ID } from './ads.js';
 import { createTicketMarketConfiguration } from './configuration.js';
@@ -75,11 +76,11 @@ export default async function setup({ config, features, logging, rest, services 
         settings[key] = value;
     }
 
-    async function sendAdminLog(title, lines) {
+    async function sendAdminLog(title, lines, accentColor = COLORS.neutral) {
         const channelId = settings.adminLogChannel;
         if (!channelId) return;
         try {
-            await rest.sendMessage(channelId, buildAdminLog(title, lines));
+            await rest.sendMessage(channelId, buildAdminLog(title, lines, accentColor));
             log.trace('Sent Ticket Market admin log', { title, channelId });
         } catch (error) {
             log.error('Could not send Ticket Market admin log', {
