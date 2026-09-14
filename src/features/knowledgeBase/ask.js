@@ -283,7 +283,10 @@ export function createAsk({ knowledge, log, Setting, rest }) {
     }
 
     async function fetchConversationHistory(channelId, currentMessageId) {
-        const messages = await rest.getMessages(channelId, { limit: ASK_HISTORY_FETCH_LIMIT });
+        const messages = await rest.getMessages(channelId, {
+            limit: ASK_HISTORY_FETCH_LIMIT,
+            before: currentMessageId,
+        });
         const byId = new Map(messages.map((message) => [String(message.id), message]));
         const enriched = await Promise.all(
             messages
