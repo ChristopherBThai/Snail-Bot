@@ -4,8 +4,8 @@ import { matchTerms } from './terms.js';
 const EMBED_BATCH_SIZE = 64;
 const QUESTION_CACHE_WRITE_BATCH_SIZE = 100;
 const UPDATE_POINT_BATCH_SIZE = 256;
-const PAYLOAD_FIELDS = Object.freeze(['tag_id', 'kind', 'text_hash', 'question']);
-const POINT_ID_PREFIX = 'snail-knowledge-base:';
+const PAYLOAD_FIELDS = Object.freeze(['tag_id', 'kind', 'data_hash', 'question_hash', 'question']);
+const DEFAULT_NAMESPACE = '1b671a64-40d5-491e-99b0-da01ff1f3341';
 const QUESTION_PROMPT_VERSION = 'tag-question-v3';
 const QUESTION_SYSTEM_PROMPT = 'You generate retrieval scaffolding questions for OwO Discord bot support tags.';
 const QUESTION_PROMPT_SOURCE = `${QUESTION_PROMPT_VERSION}:${QUESTION_SYSTEM_PROMPT}`;
@@ -414,7 +414,8 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
     }
 
     function addDesiredPoints(desired, tag) {
-        for (const point of buildDesiredPoints(tag)) desired.set(point.pointId, point);
+        for (const point of buildDesiredPoints(tag, config.namespace || DEFAULT_NAMESPACE))
+            desired.set(point.pointId, point);
     }
 
     async function applyDiff(diff) {
@@ -653,21 +654,23 @@ function tagFilter(tagIds) {
     return { must: [{ key: 'tag_id', match }] };
 }
 
-function buildDesiredPoints(tag) {
+function buildDesiredPoints(tag, namespace) {
+    const dataHash = hash(tag.text);
     const points = [
-        point(`${tag._id}:answer`, tag.text, {
+        point(namespace, `tag:${tag._id}:tag_answer:${dataHash}`, tag.text, {
             tag_id: tag._id,
             kind: 'tag_answer',
-            text_hash: hash(tag.text),
+            data_hash: dataHash,
         }),
     ];
 
     for (const question of tag.knowledgeBase?.questions ?? []) {
         points.push(
-            point(`${tag._id}:question:${question.hash}`, question.text, {
+            point(namespace, `tag:${tag._id}:tag_question:${question.hash}`, question.text, {
                 tag_id: tag._id,
                 kind: 'tag_question',
-                text_hash: question.hash,
+                data_hash: dataHash,
+                question_hash: question.hash,
                 question: question.text,
             }),
         );
@@ -675,15 +678,18 @@ function buildDesiredPoints(tag) {
     return points;
 }
 
-function point(key, text, payload) {
-    return { pointId: pointId(key), text, payload };
+function point(namespace, key, text, payload) {
+    return { pointId: pointId(namespace, key), text, payload };
 }
 
-// The prefix and derivation scheme are persistent point identity. Changing
-// either intentionally changes every point ID and requires a full reindex.
-function pointId(key) {
-    const bytes = createHash('sha256').update(`${POINT_ID_PREFIX}${key}`).digest().subarray(0, 16);
-    bytes[6] = (bytes[6] & 0x0f) | 0x80;
+// Preserve legacy UUIDv5 identity: hash namespace bytes followed by the key.
+function pointId(namespace, key) {
+    const bytes = createHash('sha1')
+        .update(Buffer.from(namespace.replaceAll('-', ''), 'hex'))
+        .update(key)
+        .digest()
+        .subarray(0, 16);
+    bytes[6] = (bytes[6] & 0x0f) | 0x50;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     const hex = bytes.toString('hex');
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
@@ -700,8 +706,10 @@ function computeDiff(desired, existing) {
         const old = current.get(id);
         current.delete(id);
         if (!old) embed.push({ ...point, operation: 'add' });
-        else if (old.payload?.text_hash !== point.payload.text_hash) embed.push({ ...point, operation: 'vector' });
-        else if (PAYLOAD_FIELDS.some((field) => old.payload?.[field] !== point.payload[field])) metadata.push(point);
+        else if (old.payload?.kind !== point.payload.kind || old.payload?.tag_id !== point.payload.tag_id)
+            embed.push({ ...point, operation: 'vector' });
+        else if (Object.entries(point.payload).some(([field, value]) => old.payload?.[field] !== value))
+            metadata.push(point);
     }
 
     return { embed, metadata, deleted: [...current.keys()] };
