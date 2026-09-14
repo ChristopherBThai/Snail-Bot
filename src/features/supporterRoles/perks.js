@@ -10,7 +10,8 @@ const SUPPORTER_QUERY = (placeholders) => `
         p.patreonType AS benefitRank,
         p.patreonTimer AS startTime,
         p.patreonMonths AS calendarMonths,
-        NULL AS endTime
+        NULL AS endTime,
+        NULL AS active
     FROM target t
     JOIN patreons p ON p.uid = t.uid
 
@@ -22,7 +23,8 @@ const SUPPORTER_QUERY = (placeholders) => `
         pw.patreonType AS benefitRank,
         NULL AS startTime,
         NULL AS calendarMonths,
-        pw.endDate AS endTime
+        pw.endDate AS endTime,
+        NULL AS active
     FROM target t
     JOIN patreon_wh pw ON pw.uid = t.uid
 
@@ -34,7 +36,8 @@ const SUPPORTER_QUERY = (placeholders) => `
         pd.patreonType AS benefitRank,
         NULL AS startTime,
         NULL AS calendarMonths,
-        pd.endDate AS endTime
+        pd.endDate AS endTime,
+        pd.active AS active
     FROM target t
     JOIN patreon_discord pd ON pd.uid = t.uid
 `;
@@ -54,7 +57,7 @@ function normalizePerks(rows, perksByUserId) {
 
     for (const row of rows) {
         const rank = Number(row.benefitRank);
-        const expiration = getExpiration(row);
+        const expiration = getExpiration(row, now);
         if (!rank || expiration.getTime() <= now) continue;
 
         const perk = perksByUserId.get(String(row.userId))[row.source];
@@ -72,7 +75,13 @@ function createPerks() {
     };
 }
 
-function getExpiration(row) {
+function getExpiration(row, now) {
+    if (row.source === 'discord' && row.active) {
+        const expiration = new Date(now);
+        expiration.setMonth(expiration.getMonth() + 1);
+        return expiration;
+    }
+
     const expiration = new Date(row.startTime ?? row.endTime);
     if (row.source === 'ticket') expiration.setMonth(expiration.getMonth() + Number(row.calendarMonths));
     return expiration;
