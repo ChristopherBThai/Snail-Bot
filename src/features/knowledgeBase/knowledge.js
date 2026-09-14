@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { v5 as uuidv5 } from 'uuid';
 import { matchTerms } from './terms.js';
 
 const EMBED_BATCH_SIZE = 64;
@@ -679,20 +680,7 @@ function buildDesiredPoints(tag, namespace) {
 }
 
 function point(namespace, key, text, payload) {
-    return { pointId: pointId(namespace, key), text, payload };
-}
-
-// Preserve legacy UUIDv5 identity: hash namespace bytes followed by the key.
-function pointId(namespace, key) {
-    const bytes = createHash('sha1')
-        .update(Buffer.from(namespace.replaceAll('-', ''), 'hex'))
-        .update(key)
-        .digest()
-        .subarray(0, 16);
-    bytes[6] = (bytes[6] & 0x0f) | 0x50;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    const hex = bytes.toString('hex');
-    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    return { pointId: uuidv5(key, namespace), text, payload };
 }
 
 // Every existing point absent from desired is deleted, so existing must already
