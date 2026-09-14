@@ -16,7 +16,7 @@ import { normalizeMessage } from './messages.js';
 export function createGateway({ config, token, logging, log, packages, rest }) {
     return createGatewayManager({
         token,
-        intents: GatewayIntentBits.Guilds | GatewayIntentBits.GuildMessages,
+        intents: GatewayIntentBits.Guilds | GatewayIntentBits.GuildMembers | GatewayIntentBits.GuildMessages,
         logger: createDiscordenoLogger(logging.createLogger('gateway')),
         resharding: { enabled: false },
         events: {
