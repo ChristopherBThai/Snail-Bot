@@ -203,6 +203,8 @@ export function createAsk({ knowledge, log, Setting, rest }) {
         const question = cleanQuestion(message.content, state.botUserId);
         if (!question || question.length > 500) return;
         const channel = await rest.getChannel(message.channelId);
+        if (!hasExplicitMention(message.content, state.botUserId) && !isSnailAskThreadChannel(channel, state.botUserId))
+            return;
         await answerMessage(message, question, channel);
     }
 
