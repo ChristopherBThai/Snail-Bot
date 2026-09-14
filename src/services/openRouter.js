@@ -7,6 +7,9 @@ const RETRY_DELAY = 500;
 const RETRYABLE_STATUS_CODES = Object.freeze([408, 425, 429, 500, 502, 503, 504]);
 
 export function createOpenRouter(config, apiKey, elasticApm) {
+    const excludedProviders = Array.isArray(config.excludedProviders)
+        ? config.excludedProviders.map((provider) => String(provider).trim()).filter(Boolean)
+        : [];
     return {
         embeddingModel: config.embeddingModel,
         chatModel: config.chatModel,
@@ -32,7 +35,7 @@ export function createOpenRouter(config, apiKey, elasticApm) {
                     model: config.chatModel,
                     messages: [
                         { role: 'system', content: systemPrompt },
-                        ...history.map((message) => ({
+                        ...(history || []).map((message) => ({
                             role: message?.role === 'assistant' ? 'assistant' : 'user',
                             content: String(message?.content ?? ''),
                         })),
@@ -58,10 +61,10 @@ export function createOpenRouter(config, apiKey, elasticApm) {
                 },
                 RERANK_TIMEOUT,
             );
-            return (data.results ?? [])
+            return (Array.isArray(data.results) ? data.results : [])
                 .map((result) => ({
-                    index: Number(result.index),
-                    score: Number(result.relevance_score ?? result.score),
+                    index: Number(result?.index),
+                    score: Number(result?.relevance_score ?? result?.score),
                 }))
                 .filter(
                     (result) =>
@@ -119,7 +122,7 @@ export function createOpenRouter(config, apiKey, elasticApm) {
                     },
                     body: JSON.stringify({
                         ...body,
-                        provider: { ignore: config.excludedProviders },
+                        ...(excludedProviders.length ? { provider: { ignore: excludedProviders } } : {}),
                     }),
                     signal: AbortSignal.timeout(timeout),
                 });

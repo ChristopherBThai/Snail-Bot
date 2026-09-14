@@ -151,9 +151,7 @@ export default function setup({ logging, messageBuilder, services, tags, tagSync
                 log.info('Set public tag', { tagId, userId: getInteractionUser(context.interaction)?.id });
                 return {
                     ok: true,
-                    message: text
-                        ? `Saved tag \`${tagId}\`.`
-                        : `Saved tag \`${tagId}\`. It is not indexed because it has no searchable text.`,
+                    message: `Saved tag \`${tagId}\`.`,
                 };
             },
         });

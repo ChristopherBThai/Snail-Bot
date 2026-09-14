@@ -17,6 +17,9 @@ const FEEDBACK_LIFETIME = 30 * 60_000;
 const ASK_HISTORY_FETCH_LIMIT = 100;
 const ASK_HISTORY_MAX_TURNS = 5;
 const ASK_HISTORY_MAX_CHARS = 6_000;
+// Read historical ask conversations; these do not enable prefix-command execution.
+const LEGACY_ASK_PREFIXES = ['snail', '🐌', ':snail:', 's!'];
+const LEGACY_ASK_WARNING = '> -# ⚠️ Snail may be incorrect. This feature is still a work in progress!';
 
 export const ASK_COMMAND = {
     type: ApplicationCommandType.ChatInput,
@@ -120,8 +123,9 @@ export function createAsk({ knowledge, log, Setting, rest }) {
         const timer = log.time();
         await context.defer();
         const channel = context.interaction.channel;
+        const startedAt = Date.now();
         const history = isSnailAskThreadChannel(channel, state.botUserId)
-            ? await fetchConversationHistory(channel.id)
+            ? await fetchConversationHistory(channel)
             : [];
 
         let starter;
@@ -150,7 +154,7 @@ export function createAsk({ knowledge, log, Setting, rest }) {
                 }),
             );
         }
-        const result = await knowledge.ask(question, history);
+        const result = await knowledge.ask(question, history, startedAt);
         timer.checkpoint('answer');
         const feedbackId = rememberFeedback({
             userId,
@@ -193,17 +197,22 @@ export function createAsk({ knowledge, log, Setting, rest }) {
     async function handleMessage(message) {
         if (message.author?.bot || !state.botUserId) return;
 
+        let channel;
         let candidate = message;
         if (!hasExplicitMention(message.content, state.botUserId)) {
             if (message.type !== MessageType.Reply) return;
+            channel = await rest.getChannel(message.channelId);
+            if (!isSnailAskThreadChannel(channel, state.botUserId)) return;
             candidate = { ...message, referencedMessage: await resolveReferencedMessage(message) };
         }
         if (!isEligibleAskMessage(candidate, state.botUserId)) return;
 
-        const question = cleanQuestion(message.content, state.botUserId);
+        const question = String(message.content ?? '')
+            .replace(new RegExp(`<@!?${state.botUserId}>`, 'g'), '')
+            .trim();
         if (!question || question.length > 500) return;
-        const channel = await rest.getChannel(message.channelId);
-        await answerMessage(message, question, channel);
+        channel ??= await rest.getChannel(message.channelId);
+        await answerMessage(candidate, question, channel);
     }
 
     async function answerMessage(message, question, channel) {
@@ -228,11 +237,12 @@ export function createAsk({ knowledge, log, Setting, rest }) {
             .catch((error) =>
                 log.debug('Could not send Knowledge Base typing indicator', { error, channelId: deliveryChannel.id }),
             );
+        const startedAt = Date.now();
         const history =
             deliveryChannel.id === channel.id && isSnailAskThreadChannel(channel, state.botUserId)
-                ? await fetchConversationHistory(channel.id, message.id)
+                ? await fetchConversationHistory(channel, message)
                 : [];
-        const result = await knowledge.ask(question, history);
+        const result = await knowledge.ask(question, history, startedAt);
         const feedbackId = rememberFeedback({
             userId: message.author.id,
             question,
@@ -267,9 +277,11 @@ export function createAsk({ knowledge, log, Setting, rest }) {
     }
 
     async function resolveReferencedMessage(message) {
-        if (message.referencedMessage !== undefined) return message.referencedMessage ?? undefined;
         const referencedMessageId = getReferencedMessageId(message);
         if (!referencedMessageId) return undefined;
+        if (message.referencedMessage && String(message.referencedMessage.id) === referencedMessageId) {
+            return message.referencedMessage;
+        }
 
         try {
             return await rest.getMessage(message.channelId, referencedMessageId);
@@ -282,16 +294,36 @@ export function createAsk({ knowledge, log, Setting, rest }) {
         }
     }
 
-    async function fetchConversationHistory(channelId, currentMessageId) {
-        const messages = await rest.getMessages(channelId, { limit: ASK_HISTORY_FETCH_LIMIT });
+    async function fetchConversationHistory(channel, currentMessage) {
+        const channelId = channel.id;
+        let messages;
+        try {
+            messages = await rest.getMessages(channelId, {
+                limit: ASK_HISTORY_FETCH_LIMIT,
+                ...(currentMessage ? { before: currentMessage.id } : {}),
+            });
+        } catch (error) {
+            log.warn('Could not fetch Knowledge Base conversation history', { error, channelId });
+            return [];
+        }
         const byId = new Map(messages.map((message) => [String(message.id), message]));
+        if (channel.parentId) {
+            const starter = await rest.getMessage(channel.parentId, channelId).catch(() => undefined);
+            if (starter) byId.set(String(starter.id), starter);
+        }
+        const currentReferenceId = getReferencedMessageId(currentMessage);
+        if (currentReferenceId && !byId.has(currentReferenceId)) {
+            const referenced = await resolveReferencedMessage(currentMessage);
+            if (referenced) byId.set(String(referenced.id), referenced);
+        }
         const enriched = await Promise.all(
-            messages
-                .filter((message) => String(message.id) !== String(currentMessageId))
+            [...byId.values()]
+                .filter((message) => String(message.id) !== String(currentMessage?.id))
                 .map(async (message) => {
-                    if (message.referencedMessage !== undefined) return message;
                     const referencedMessageId = getReferencedMessageId(message);
                     if (!referencedMessageId) return message;
+                    if (message.referencedMessage && String(message.referencedMessage.id) === referencedMessageId)
+                        return message;
                     const referencedMessage =
                         byId.get(referencedMessageId) ??
                         (await rest.getMessage(channelId, referencedMessageId).catch(() => undefined));
@@ -362,7 +394,7 @@ function isEligibleAskMessage(message, botUserId, answerMessageIds = new Set()) 
     const referencedMessageId = getReferencedMessageId(message);
     return (
         (referencedMessageId && answerMessageIds.has(referencedMessageId)) ||
-        isAskAnswerMessage(message?.referencedMessage, botUserId)
+        isConversationAnswer(message?.referencedMessage, botUserId)
     );
 }
 
@@ -382,27 +414,26 @@ function buildAskConversationHistory(messages, botUserId) {
     const turns = [];
 
     for (const message of [...(messages ?? [])].sort(compareMessageIds)) {
-        if (isAskAnswerMessage(message, botUserId)) {
+        if (isConversationAnswer(message, botUserId)) {
             answerMessageIds.add(String(message.id));
             const embeddedQuestion = extractAskQuestion(message);
             if (embeddedQuestion) {
-                turns.push({ user: embeddedQuestion, assistant: extractAskAnswer(message) });
+                turns.push({ user: embeddedQuestion, assistant: extractConversationAnswer(message) });
                 continue;
             }
             const referencedMessageId = getReferencedMessageId(message);
             const referencedIndex = referencedMessageId
                 ? pendingQuestions.findIndex((question) => question.id === referencedMessageId)
                 : -1;
-            const question = referencedMessageId
-                ? referencedIndex >= 0
-                    ? pendingQuestions.splice(referencedIndex, 1)[0]
-                    : undefined
-                : pendingQuestions.shift();
-            if (question) turns.push({ user: question.content, assistant: extractAskAnswer(message) });
+            const question =
+                referencedIndex >= 0 ? pendingQuestions.splice(referencedIndex, 1)[0] : pendingQuestions.shift();
+            turns.push({ user: question?.content, assistant: extractConversationAnswer(message) });
             continue;
         }
 
-        if (!isEligibleAskMessage(message, botUserId, answerMessageIds)) continue;
+        if (message.author?.bot || message.author?.id === botUserId) continue;
+        if (!isLegacyAskQuestion(message.content) && !isEligibleAskMessage(message, botUserId, answerMessageIds))
+            continue;
         const content = cleanQuestion(message.content, botUserId);
         if (content) pendingQuestions.push({ id: String(message.id), content });
     }
@@ -411,10 +442,54 @@ function buildAskConversationHistory(messages, botUserId) {
 }
 
 function cleanQuestion(content, botUserId) {
-    return String(content ?? '')
+    let text = String(content ?? '')
         .replace(new RegExp(`<@!?${botUserId}>`, 'g'), '')
         .replace(/\s+/g, ' ')
         .trim();
+    text = text.replace(/^snail\s+ask\s*/i, '').trim();
+    for (const prefix of LEGACY_ASK_PREFIXES) {
+        if (!text.toLowerCase().startsWith(prefix)) continue;
+        const command = text.slice(prefix.length).trimStart();
+        if (command.toLowerCase() === 'ask') return '';
+        if (command.toLowerCase().startsWith('ask ')) return command.slice(3).trimStart();
+    }
+    return text;
+}
+
+function isLegacyAskQuestion(content) {
+    const text = String(content ?? '')
+        .trim()
+        .toLowerCase();
+    if (/^snail\s+ask(?:\s|$)/.test(text)) return true;
+    return LEGACY_ASK_PREFIXES.some((prefix) => {
+        if (!text.startsWith(prefix)) return false;
+        const command = text.slice(prefix.length).trimStart();
+        return command === 'ask' || command.startsWith('ask ');
+    });
+}
+
+function isConversationAnswer(message, botUserId) {
+    if (!botUserId || message?.author?.id !== botUserId) return false;
+    const ids = new Set(
+        (message.components ?? [])
+            .flatMap((row) => row.components ?? [])
+            .filter((component) => component?.type === 2)
+            .map((component) => component.customId),
+    );
+    return (
+        (ids.has('kb_ask_feedback_helpful') && ids.has('kb_ask_feedback_needs_fix')) ||
+        isAskAnswerMessage(message, botUserId)
+    );
+}
+
+function extractConversationAnswer(message) {
+    if (!message.content) return extractAskAnswer(message);
+    const text = String(message.content).trim();
+    const footerStart = text.lastIndexOf(`\n\n${LEGACY_ASK_WARNING}`);
+    if (footerStart < 0) return text;
+    const footer = text.slice(footerStart + 2);
+    if (footer !== LEGACY_ASK_WARNING && !footer.startsWith(`${LEGACY_ASK_WARNING}\n> -# Tags:`)) return text;
+    return text.slice(0, footerStart).trim();
 }
 
 function getReferencedMessageId(message) {

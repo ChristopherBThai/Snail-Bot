@@ -4,18 +4,18 @@ import { matchTerms } from './terms.js';
 const EMBED_BATCH_SIZE = 64;
 const QUESTION_CACHE_WRITE_BATCH_SIZE = 100;
 const UPDATE_POINT_BATCH_SIZE = 256;
-const PAYLOAD_FIELDS = Object.freeze(['tag_id', 'kind', 'text_hash', 'question']);
-const POINT_ID_PREFIX = 'snail-knowledge-base:';
+const PAYLOAD_FIELDS = Object.freeze(['tag_id', 'kind', 'data_hash', 'question_hash', 'question']);
+const DEFAULT_NAMESPACE = '1b671a64-40d5-491e-99b0-da01ff1f3341';
 const QUESTION_PROMPT_VERSION = 'tag-question-v3';
 const QUESTION_SYSTEM_PROMPT = 'You generate retrieval scaffolding questions for OwO Discord bot support tags.';
 const QUESTION_PROMPT_SOURCE = `${QUESTION_PROMPT_VERSION}:${QUESTION_SYSTEM_PROMPT}`;
 const FALLBACK_ANSWER = "I don't know that one yet — please ask a helper or rephrase your question.";
 const RETRIEVAL_HISTORY_MAX_CHARS = 1_200;
+const ASK_DEADLINE_MS = 90_000;
 
 const ANSWER_SYSTEM_PROMPT =
     'You are Snail, a friendly helper in the OwO Discord bot support server. ' +
     "Answer the user's question directly using ONLY the provided support notes. " +
-    'Prior conversation may clarify what the user means, but it is not a source of truth. ' +
     'Only answer questions related to the OwO bot or this support server. ' +
     'Do not guess, infer missing details, or use outside knowledge. ' +
     'If the notes only contain related info but not the exact answer, say the exact answer is not specified. ' +
@@ -98,14 +98,12 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
                 await saveQuestionCache(tag);
                 const current = rememberQuestionCache(tag);
                 if (!current) return undefined;
-                if (!current.knowledgeBase.excluded) {
-                    await synchronizeTags([current]).catch((error) =>
-                        log.error('Saved retrieval questions but could not synchronize search points', {
-                            error,
-                            tagId,
-                        }),
-                    );
-                }
+                await synchronizeTags([current]).catch((error) =>
+                    log.error('Saved retrieval questions but could not synchronize search points', {
+                        error,
+                        tagId,
+                    }),
+                );
                 return createQuestionEditor(current);
             });
         },
@@ -116,25 +114,23 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
                 const tag = copyTag(stored);
                 const current = await regenerateQuestions(tag);
                 if (!current) return undefined;
-                if (!current.knowledgeBase.excluded) {
-                    await synchronizeTags([current]).catch((error) =>
-                        log.error('Regenerated retrieval questions but could not synchronize search points', {
-                            error,
-                            tagId,
-                        }),
-                    );
-                }
+                await synchronizeTags([current]).catch((error) =>
+                    log.error('Regenerated retrieval questions but could not synchronize search points', {
+                        error,
+                        tagId,
+                    }),
+                );
                 return createQuestionEditor(current);
             });
         },
         find(question) {
             return find(question, true);
         },
-        ask(question, history = []) {
+        ask(question, history = [], startedAt) {
             const transaction = elasticApm.startTransaction('snail.ask.fetch', 'bot');
             transaction?.setLabel('question_length', question.length);
 
-            return ask(question, history)
+            return ask(question, history, startedAt)
                 .then((result) => {
                     transaction?.setOutcome('success');
                     return result;
@@ -180,6 +176,7 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
     }
 
     async function syncAll({ dryRun = false, regenerateQuestions: regenerate = false } = {}) {
+        if (dryRun && regenerate) throw new Error('Question regeneration cannot be dry-run');
         state.syncing = true;
         const timer = log.time();
 
@@ -192,13 +189,11 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
 
             for (const storedTag of storedTags) {
                 const tag = copyTag(storedTag);
-                if (!tag.knowledgeBase?.excluded && tag.text) {
+                if (!tag.knowledgeBase?.excluded) {
                     try {
-                        if (!dryRun && (regenerate || !validQuestions(tag.knowledgeBase?.questions))) {
-                            await generateQuestions(tag);
-                            pendingQuestionCaches.push(tag);
-                        } else if (!dryRun && !isCurrentCache(tag.knowledgeBase, getCacheHashes(tag))) {
-                            tag.knowledgeBase = { ...tag.knowledgeBase, ...getCacheHashes(tag) };
+                        if (!dryRun && (regenerate || !isCurrentCache(tag.knowledgeBase, getCacheHashes(tag)))) {
+                            if (regenerate || !initializedCache(tag.knowledgeBase)) await generateQuestions(tag);
+                            else refreshCache(tag);
                             pendingQuestionCaches.push(tag);
                         } else {
                             addDesiredPoints(desired, tag);
@@ -227,6 +222,13 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
                 }
             }
             await flushQuestionCaches(pendingQuestionCaches, desired, failedTagIds);
+            // Cache writes are batched, but embedding inputs retain tag iteration order.
+            const tagOrder = new Map(storedTags.map((tag, index) => [String(tag._id), index]));
+            const ordered = [...desired].sort(
+                ([, left], [, right]) => tagOrder.get(left.payload.tag_id) - tagOrder.get(right.payload.tag_id),
+            );
+            desired.clear();
+            for (const [id, point] of ordered) desired.set(id, point);
             timer.checkpoint('prepare');
 
             setProgress('readingPoints', 0, 0);
@@ -286,7 +288,7 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
             if (tags.get(storedTag._id) !== storedTag) continue;
 
             let tag = copyTag(storedTag);
-            if (tag.knowledgeBase?.excluded || !tag.text) {
+            if (tag.knowledgeBase?.excluded) {
                 tagIds.push(tag._id);
                 continue;
             }
@@ -295,7 +297,7 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
                 tag = await ensureCache(tag);
                 if (!tag) continue;
                 tagIds.push(tag._id);
-                if (!tag.knowledgeBase?.excluded && tag.text) addDesiredPoints(desired, tag);
+                if (!tag.knowledgeBase?.excluded) addDesiredPoints(desired, tag);
             } catch (error) {
                 log.error('Knowledge Base tag synchronization failed', { error, tagId: tag._id });
             }
@@ -316,16 +318,11 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
     }
 
     async function ensureCache(tag) {
-        if (validQuestions(tag.knowledgeBase?.questions)) {
-            const hashes = getCacheHashes(tag);
-            if (isCurrentCache(tag.knowledgeBase, hashes)) return tag;
-
-            tag.knowledgeBase = { ...tag.knowledgeBase, ...hashes };
-            await saveQuestionCache(tag);
-            return rememberQuestionCache(tag);
-        }
-
-        return regenerateQuestions(tag);
+        if (isCurrentCache(tag.knowledgeBase, getCacheHashes(tag))) return tag;
+        if (!initializedCache(tag.knowledgeBase)) return regenerateQuestions(tag);
+        refreshCache(tag);
+        await saveQuestionCache(tag);
+        return rememberQuestionCache(tag);
     }
 
     async function regenerateQuestions(tag) {
@@ -391,7 +388,7 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
 
     function rememberPreparedTag(tag, desired, failedTagIds) {
         const current = rememberQuestionCache(tag);
-        if (!current || current.knowledgeBase?.excluded || !current.text) {
+        if (!current || current.knowledgeBase?.excluded) {
             failedTagIds.add(tag._id);
             return;
         }
@@ -414,10 +411,14 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
     }
 
     function addDesiredPoints(desired, tag) {
-        for (const point of buildDesiredPoints(tag)) desired.set(point.pointId, point);
+        for (const point of buildDesiredPoints(tag, config.namespace || DEFAULT_NAMESPACE))
+            desired.set(point.pointId, point);
     }
 
     async function applyDiff(diff) {
+        if (diff.deleted.length) {
+            await qdrant.delete(config.collection, { points: diff.deleted, wait: true });
+        }
         if (state.syncing) setProgress('embeddingPoints', 0, diff.embed.length);
         for (let index = 0; index < diff.embed.length; index += EMBED_BATCH_SIZE) {
             const batch = diff.embed.slice(index, index + EMBED_BATCH_SIZE);
@@ -438,23 +439,16 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
             });
         }
 
-        let deletedIndex = 0;
         let metadataIndex = 0;
-        const updateTotal = diff.deleted.length + diff.metadata.length;
+        const updateTotal = diff.metadata.length;
         if (state.syncing) setProgress('updatingPoints', 0, updateTotal);
-        while (deletedIndex < diff.deleted.length || metadataIndex < diff.metadata.length) {
+        while (metadataIndex < diff.metadata.length) {
             const operations = [];
             let remaining = UPDATE_POINT_BATCH_SIZE;
-            if (deletedIndex < diff.deleted.length) {
-                const points = diff.deleted.slice(deletedIndex, deletedIndex + remaining);
-                operations.push({ delete: { points } });
-                deletedIndex += points.length;
-                remaining -= points.length;
-            }
             while (remaining && metadataIndex < diff.metadata.length) {
                 const point = diff.metadata[metadataIndex];
                 operations.push({
-                    overwrite_payload: {
+                    set_payload: {
                         points: [point.pointId],
                         payload: point.payload,
                     },
@@ -466,7 +460,7 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
                 operations,
                 wait: true,
             });
-            if (state.syncing) setProgress('updatingPoints', deletedIndex + metadataIndex, updateTotal);
+            if (state.syncing) setProgress('updatingPoints', metadataIndex, updateTotal);
         }
         if (diff.deleted.length) log.trace('Deleted Knowledge Base search points', { points: diff.deleted.length });
         if (diff.metadata.length) {
@@ -474,21 +468,26 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
         }
     }
 
-    async function find(question, includeBelowThreshold = false, history = []) {
+    async function find(question, includeBelowThreshold = false, history = [], startedAt) {
         await resetOperation;
         const timer = log.time();
         const matchedTerms = matchTerms(question, terms);
-        const expanded = formatExpandedQuery(question, matchedTerms);
-        const retrievalQuestion = formatRetrievalQuestion(expanded, history);
+        const retrievalQuestion = formatRetrievalQuestion(question, history);
         const [vector] = await openRouter.embed([formatQuery(retrievalQuestion, config.queryInstruction)]);
+        if (startedAt !== undefined) assertAskBudget(startedAt);
         timer.checkpoint('embedding');
-        const result = await qdrant.query(config.collection, {
-            query: vector,
-            limit: config.rerankCandidateLimit,
-            with_payload: true,
-            ...(includeBelowThreshold ? {} : { score_threshold: config.scoreThreshold }),
-        });
+        const result = await qdrant.query(
+            config.collection,
+            {
+                query: vector,
+                limit: config.rerankCandidateLimit,
+                with_payload: true,
+                ...(includeBelowThreshold ? {} : { score_threshold: config.scoreThreshold }),
+            },
+            startedAt === undefined ? undefined : remainingAskRequestOptions(startedAt),
+        );
         const hits = result.points;
+        if (startedAt !== undefined) assertAskBudget(startedAt);
         timer.checkpoint('qdrant');
         const groups = materializeGroups(hits);
         timer.checkpoint('cache');
@@ -513,8 +512,8 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
     function materializeGroups(hits) {
         const grouped = new Map();
         for (const hit of hits) {
-            const tagId = hit.payload?.tag_id;
-            if (!tagId) continue;
+            if (!hit.payload?.tag_id) continue;
+            const tagId = String(hit.payload.tag_id);
             const group = grouped.get(tagId) ?? { tagId, hits: [], score: hit.score };
             group.hits.push(hit);
             group.score = Math.max(group.score, hit.score);
@@ -525,31 +524,38 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
 
         return [...grouped.values()]
             .map((group) => ({ ...group, tag: tags.get(group.tagId) }))
-            .filter((group) => group.tag?.text && !group.tag.knowledgeBase?.excluded)
-            .toSorted((left, right) => right.score - left.score);
+            .filter((group) => group.tag && !group.tag.knowledgeBase?.excluded);
     }
 
     async function rerank(question, groups) {
         if (groups.length <= 1) return groups.slice(0, config.topK);
         try {
-            const results = await openRouter.rerank(
-                question,
-                groups.map((group) => `${group.tag._id}\n${group.tag.text}`),
-                config.topK,
-            );
-            if (!results.length) return groups.slice(0, config.topK);
-            return results.map((result) => ({ ...groups[result.index], rerankScore: result.score }));
+            const results = await openRouter.rerank(question, groups.map(formatTagDocument), config.topK);
+            const selected = [];
+            const indexes = new Set();
+            for (const result of results) {
+                const group = groups[result.index];
+                if (!group || indexes.has(result.index)) continue;
+                selected.push({ ...group, rerankScore: result.score });
+                indexes.add(result.index);
+                if (selected.length >= config.topK) return selected;
+            }
+            for (let index = 0; index < groups.length && selected.length < config.topK; index += 1) {
+                if (!indexes.has(index)) selected.push(groups[index]);
+            }
+            return selected;
         } catch (error) {
             log.warn('Knowledge Base reranking failed; using vector order', { error });
             return groups.slice(0, config.topK);
         }
     }
 
-    async function ask(question, history) {
-        const result = await find(question, false, history);
+    async function ask(question, history, startedAt = Date.now()) {
+        const result = await find(question, false, history, startedAt);
         if (!result.groups.length) return { answer: FALLBACK_ANSWER, sources: [] };
 
-        const notes = result.groups.map((group) => `[Tag: ${group.tagId}]\n${group.tag.text}`).join('\n\n');
+        assertAskBudget(startedAt);
+        const notes = result.groups.map(formatTagDocument).join('\n\n');
         const termLines = result.terms.map((term) => `${term.id} = ${term.meaning}`).join('\n');
         const prompt =
             `Support notes:\n${notes}\n\n` +
@@ -575,11 +581,17 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
             });
         }
 
-        await qdrant.createPayloadIndex(config.collection, {
-            field_name: 'tag_id',
-            field_schema: 'keyword',
-            wait: true,
-        });
+        for (const field of ['tag_id', 'kind']) {
+            try {
+                await qdrant.createPayloadIndex(config.collection, {
+                    field_name: field,
+                    field_schema: 'keyword',
+                    wait: true,
+                });
+            } catch (error) {
+                if (![400, 409].includes(error.status)) throw error;
+            }
+        }
     }
 
     async function scrollAll(filter, onProgress) {
@@ -619,17 +631,34 @@ function createQuestionEditor(tag) {
     return {
         tag,
         current: isCurrentCache(tag.knowledgeBase, getCacheHashes(tag)),
-        questions: tag.knowledgeBase?.questions ?? [],
+        questions: initializedCache(tag.knowledgeBase) ? normalizeExistingQuestions(tag.knowledgeBase.questions) : [],
     };
+}
+
+function assertAskBudget(startedAt) {
+    if (Date.now() - startedAt >= ASK_DEADLINE_MS) {
+        throw new Error('Knowledge base answer timed out. Please try again.');
+    }
+}
+
+function remainingAskRequestOptions(startedAt) {
+    const remaining = ASK_DEADLINE_MS - (Date.now() - startedAt);
+    if (remaining <= 0) throw new Error('Knowledge base answer timed out. Please try again.');
+    const attempts = remaining > 502 ? 2 : 1;
+    const perAttemptBudget = Math.floor(Math.max(1, remaining - 500 * (attempts - 1)) / attempts);
+    return { timeout: Math.max(1, Math.min(15_000, perAttemptBudget)), attempts };
 }
 
 function formatQuery(question, instruction) {
     return `Instruct: ${instruction}\nQuery: ${question}`;
 }
 
-function formatExpandedQuery(question, terms) {
-    if (!terms.length) return question;
-    return `${question}\n\nKnown terms:\n${terms.map((term) => `${term.id}: ${term.meaning}`).join('\n')}`;
+function formatTagDocument(group) {
+    const text = String(group.tag.text ?? '')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    return `[Tag: ${group.tagId}]\n${text}`;
 }
 
 function formatRetrievalQuestion(question, history) {
@@ -640,7 +669,8 @@ function formatRetrievalQuestion(question, history) {
         if (!content) continue;
         const line = `${message.role === 'assistant' ? 'Snail' : 'User'}: ${content}`;
         if (lines.length && chars + line.length > RETRIEVAL_HISTORY_MAX_CHARS) break;
-        const value = line.slice(0, RETRIEVAL_HISTORY_MAX_CHARS);
+        const value =
+            line.length > RETRIEVAL_HISTORY_MAX_CHARS ? `${line.slice(0, RETRIEVAL_HISTORY_MAX_CHARS - 1)}…` : line;
         lines.unshift(value);
         chars += value.length;
     }
@@ -653,37 +683,49 @@ function tagFilter(tagIds) {
     return { must: [{ key: 'tag_id', match }] };
 }
 
-function buildDesiredPoints(tag) {
+function buildDesiredPoints(tag, namespace) {
+    const tagId = String(tag._id);
+    const text = String(tag.text ?? '').trim();
+    const dataHash = tag.knowledgeBase?.textHash || hash(text);
     const points = [
-        point(`${tag._id}:answer`, tag.text, {
-            tag_id: tag._id,
+        point(namespace, `tag:${tagId}:tag_answer:${dataHash}`, text, {
+            tag_id: tagId,
             kind: 'tag_answer',
-            text_hash: hash(tag.text),
+            data_hash: dataHash,
         }),
     ];
 
-    for (const question of tag.knowledgeBase?.questions ?? []) {
+    for (const question of initializedCache(tag.knowledgeBase)
+        ? normalizeExistingQuestions(tag.knowledgeBase.questions)
+        : []) {
         points.push(
-            point(`${tag._id}:question:${question.hash}`, question.text, {
-                tag_id: tag._id,
+            point(namespace, `tag:${tagId}:tag_question:${question.hash}`, question.text, {
+                tag_id: tagId,
                 kind: 'tag_question',
-                text_hash: question.hash,
+                data_hash: dataHash,
                 question: question.text,
+                question_hash: question.hash,
             }),
         );
     }
     return points;
 }
 
-function point(key, text, payload) {
-    return { pointId: pointId(key), text, payload };
+function point(namespace, key, text, payload) {
+    return { pointId: pointId(namespace, key), text, payload };
 }
 
-// The prefix and derivation scheme are persistent point identity. Changing
-// either intentionally changes every point ID and requires a full reindex.
-function pointId(key) {
-    const bytes = createHash('sha256').update(`${POINT_ID_PREFIX}${key}`).digest().subarray(0, 16);
-    bytes[6] = (bytes[6] & 0x0f) | 0x80;
+// Legacy UUIDv5 identity: namespace bytes followed by the content-dependent key.
+function pointId(namespace, key) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(namespace)) {
+        throw new TypeError('Invalid Knowledge Base UUID namespace');
+    }
+    const bytes = createHash('sha1')
+        .update(Buffer.from(namespace.replaceAll('-', ''), 'hex'))
+        .update(key)
+        .digest()
+        .subarray(0, 16);
+    bytes[6] = (bytes[6] & 0x0f) | 0x50;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     const hex = bytes.toString('hex');
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
@@ -692,7 +734,7 @@ function pointId(key) {
 // Every existing point absent from desired is deleted, so existing must already
 // be scoped to the full collection or the single tag being synchronized.
 function computeDiff(desired, existing) {
-    const current = new Map(existing.map((point) => [point.id, point]));
+    const current = new Map(existing.map((point) => [String(point.id), point]));
     const embed = [];
     const metadata = [];
 
@@ -700,35 +742,47 @@ function computeDiff(desired, existing) {
         const old = current.get(id);
         current.delete(id);
         if (!old) embed.push({ ...point, operation: 'add' });
-        else if (old.payload?.text_hash !== point.payload.text_hash) embed.push({ ...point, operation: 'vector' });
-        else if (PAYLOAD_FIELDS.some((field) => old.payload?.[field] !== point.payload[field])) metadata.push(point);
+        else if (old.payload?.kind !== point.payload.kind || old.payload?.tag_id !== point.payload.tag_id)
+            embed.push({ ...point, operation: 'vector' });
+        else if (Object.entries(point.payload).some(([field, value]) => old.payload?.[field] !== value))
+            metadata.push(point);
     }
 
     return { embed, metadata, deleted: [...current.keys()] };
 }
 
 function getCacheHashes(tag) {
-    const textHash = hash(tag.text);
+    const textHash = hash(String(tag.text ?? '').trim());
     return {
         textHash,
         generationHash: hash(
             JSON.stringify({
-                tagId: tag._id,
-                textHash,
+                dataHash: textHash,
                 promptSource: QUESTION_PROMPT_SOURCE,
+                promptVersion: QUESTION_PROMPT_VERSION,
+                tagId: String(tag._id),
             }),
         ),
     };
 }
 
-function createCache(tag, questions, hashes, generatedAt = new Date()) {
+function createCache(tag, questions, hashes, generatedAt) {
     return {
         excluded: tag.knowledgeBase?.excluded === true,
         questions: questions.map((text) => ({ text, hash: hash(text) })),
         textHash: hashes.textHash,
         generationHash: hashes.generationHash,
-        generatedAt,
+        generatedAt: generatedAt || new Date(),
     };
+}
+
+function refreshCache(tag) {
+    tag.knowledgeBase = createCache(
+        tag,
+        normalizeExistingQuestions(tag.knowledgeBase.questions).map((question) => question.text),
+        getCacheHashes(tag),
+        tag.knowledgeBase.generatedAt,
+    );
 }
 
 function questionCacheFields(knowledgeBase) {
@@ -743,6 +797,7 @@ function questionCacheUpdate(knowledgeBase) {
 
 function isCurrentCache(cache, hashes) {
     return (
+        initializedCache(cache) &&
         cache?.textHash === hashes.textHash &&
         cache.generationHash === hashes.generationHash &&
         validQuestions(cache.questions)
@@ -752,17 +807,40 @@ function isCurrentCache(cache, hashes) {
 function validQuestions(questions) {
     return (
         Array.isArray(questions) &&
-        questions.every(
-            (question) => question.text === normalizeQuestion(question.text) && question.hash === hash(question.text),
-        )
+        questions.every((question) => {
+            if (typeof question?.text !== 'string' || typeof question?.hash !== 'string') return false;
+            const text = question.text.replace(/\s+/g, ' ').trim();
+            return Boolean(text) && question.text === text && question.hash === hash(text);
+        })
     );
+}
+
+function initializedCache(cache) {
+    return (
+        Array.isArray(cache?.questions) &&
+        (typeof cache.textHash === 'string' || typeof cache.generationHash === 'string' || Boolean(cache.generatedAt))
+    );
+}
+
+function normalizeExistingQuestions(questions) {
+    const seen = new Set();
+    const normalized = [];
+    for (const question of questions ?? []) {
+        if (typeof question?.text !== 'string' || typeof question?.hash !== 'string') continue;
+        const text = question.text.replace(/\s+/g, ' ').trim();
+        const key = text.toLowerCase();
+        if (!text || question.hash !== hash(text) || seen.has(key)) continue;
+        seen.add(key);
+        normalized.push({ text, hash: hash(text) });
+    }
+    return normalized;
 }
 
 function normalizeQuestions(questions) {
     const unique = new Map();
     for (const question of questions) {
         const text = normalizeQuestion(question);
-        if (text) unique.set(text.toLowerCase(), text);
+        if (text && !unique.has(text.toLowerCase())) unique.set(text.toLowerCase(), text);
     }
     return [...unique.values()];
 }
@@ -777,16 +855,16 @@ function normalizeQuestion(question) {
 function questionPrompt(tag) {
     return (
         'Generate concise English user questions that this support tag can answer.\n' +
-        'Use only the tag text as the source of truth.\n' +
-        'Every question must be fully answerable from the tag text alone.\n' +
-        'Cover the important facts explicitly stated in the tag text.\n' +
-        'Do not add questions that require information outside the tag text.\n' +
+        'Use only the tag data as the source of truth.\n' +
+        'Every question must be fully answerable from the tag data alone.\n' +
+        'Cover the important facts explicitly stated in the tag data.\n' +
+        'Do not add questions that require information outside the tag data.\n' +
         'Use natural user wording and vary phrasing when useful.\n' +
         'Do not start every question with "OwO bot" or the tag name.\n' +
         'Return only a raw JSON array of English strings.\n' +
         'Do not include explanations, markdown, code fences, or answer facts.\n' +
         `Tag id: ${tag._id}\n` +
-        `Tag text:\n${tag.text}`
+        `Tag data:\n${String(tag.text ?? '').trim()}`
     );
 }
 
@@ -822,7 +900,9 @@ function parseAnswer(content) {
     if (!parsed || typeof parsed.answer !== 'string') return { answer: '', tagIds: [], failed: true };
     return {
         answer: parsed.answer.trim(),
-        tagIds: Array.isArray(parsed.tagIds) ? parsed.tagIds.filter((id) => typeof id === 'string') : [],
+        tagIds: Array.isArray(parsed.tagIds)
+            ? parsed.tagIds.map((id) => (typeof id === 'string' ? id.trim() : '')).filter(Boolean)
+            : [],
         failed: false,
     };
 }
@@ -834,6 +914,6 @@ function unwrapJson(content) {
 
 function hash(value) {
     return createHash('sha1')
-        .update(String(value ?? '').trim())
+        .update(String(value ?? ''))
         .digest('hex');
 }
