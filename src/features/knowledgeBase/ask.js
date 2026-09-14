@@ -283,7 +283,16 @@ export function createAsk({ knowledge, log, Setting, rest }) {
     }
 
     async function fetchConversationHistory(channelId, currentMessageId) {
-        const messages = await rest.getMessages(channelId, { limit: ASK_HISTORY_FETCH_LIMIT });
+        let messages;
+        try {
+            messages = await rest.getMessages(channelId, { limit: ASK_HISTORY_FETCH_LIMIT });
+        } catch (error) {
+            log.warn('Could not fetch Knowledge Base conversation history; answering without history', {
+                error,
+                channelId,
+            });
+            return [];
+        }
         const byId = new Map(messages.map((message) => [String(message.id), message]));
         const enriched = await Promise.all(
             messages
