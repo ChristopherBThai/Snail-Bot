@@ -478,8 +478,7 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
         await resetOperation;
         const timer = log.time();
         const matchedTerms = matchTerms(question, terms);
-        const expanded = formatExpandedQuery(question, matchedTerms);
-        const retrievalQuestion = formatRetrievalQuestion(expanded, history);
+        const retrievalQuestion = formatRetrievalQuestion(question, history);
         const [vector] = await openRouter.embed([formatQuery(retrievalQuestion, config.queryInstruction)]);
         timer.checkpoint('embedding');
         const result = await qdrant.query(config.collection, {
@@ -625,11 +624,6 @@ function createQuestionEditor(tag) {
 
 function formatQuery(question, instruction) {
     return `Instruct: ${instruction}\nQuery: ${question}`;
-}
-
-function formatExpandedQuery(question, terms) {
-    if (!terms.length) return question;
-    return `${question}\n\nKnown terms:\n${terms.map((term) => `${term.id}: ${term.meaning}`).join('\n')}`;
 }
 
 function formatRetrievalQuestion(question, history) {
