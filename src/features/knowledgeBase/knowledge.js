@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { requestQdrant } from '../../services/qdrant.js';
 import { matchTerms } from './terms.js';
 
 const EMBED_BATCH_SIZE = 64;
@@ -77,7 +78,9 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
             return enqueue(() => synchronizeTags(tags_));
         },
         deleteTags(tagIds) {
-            return enqueue(() => qdrant.delete(config.collection, { filter: tagFilter(tagIds), wait: true }));
+            return enqueue(() =>
+                requestQdrant(() => qdrant.delete(config.collection, { filter: tagFilter(tagIds), wait: true })),
+            );
         },
         getQuestionEditor(tagId) {
             const tag = tags.get(tagId);
@@ -230,7 +233,7 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
             timer.checkpoint('prepare');
 
             setProgress('readingPoints', 0, 0);
-            const { count: existingCount } = await qdrant.count(config.collection);
+            const { count: existingCount } = await requestQdrant(() => qdrant.count(config.collection));
             setProgress('readingPoints', 0, existingCount);
             const existing = await scrollAll(undefined, (processed) =>
                 setProgress('readingPoints', processed, existingCount),
@@ -422,14 +425,16 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
         for (let index = 0; index < diff.embed.length; index += EMBED_BATCH_SIZE) {
             const batch = diff.embed.slice(index, index + EMBED_BATCH_SIZE);
             const vectors = await openRouter.embed(batch.map((point) => point.text));
-            await qdrant.upsert(config.collection, {
-                points: batch.map((point, offset) => ({
-                    id: point.pointId,
-                    vector: vectors[offset],
-                    payload: point.payload,
-                })),
-                wait: true,
-            });
+            await requestQdrant(() =>
+                qdrant.upsert(config.collection, {
+                    points: batch.map((point, offset) => ({
+                        id: point.pointId,
+                        vector: vectors[offset],
+                        payload: point.payload,
+                    })),
+                    wait: true,
+                }),
+            );
             const processed = Math.min(index + EMBED_BATCH_SIZE, diff.embed.length);
             if (state.syncing) setProgress('embeddingPoints', processed, diff.embed.length);
             log.trace('Embedded Knowledge Base search points', {
@@ -462,10 +467,12 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
                 metadataIndex += 1;
                 remaining -= 1;
             }
-            await qdrant.batchUpdate(config.collection, {
-                operations,
-                wait: true,
-            });
+            await requestQdrant(() =>
+                qdrant.batchUpdate(config.collection, {
+                    operations,
+                    wait: true,
+                }),
+            );
             if (state.syncing) setProgress('updatingPoints', deletedIndex + metadataIndex, updateTotal);
         }
         if (diff.deleted.length) log.trace('Deleted Knowledge Base search points', { points: diff.deleted.length });
@@ -482,12 +489,16 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
         const retrievalQuestion = formatRetrievalQuestion(expanded, history);
         const [vector] = await openRouter.embed([formatQuery(retrievalQuestion, config.queryInstruction)]);
         timer.checkpoint('embedding');
-        const result = await qdrant.query(config.collection, {
-            query: vector,
-            limit: config.rerankCandidateLimit,
-            with_payload: true,
-            ...(includeBelowThreshold ? {} : { score_threshold: config.scoreThreshold }),
-        });
+        const result = await requestQdrant(
+            () =>
+                qdrant.query(config.collection, {
+                    query: vector,
+                    limit: config.rerankCandidateLimit,
+                    with_payload: true,
+                    ...(includeBelowThreshold ? {} : { score_threshold: config.scoreThreshold }),
+                }),
+            2,
+        );
         const hits = result.points;
         timer.checkpoint('qdrant');
         const groups = materializeGroups(hits);
@@ -568,18 +579,22 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
     }
 
     async function ensureCollection() {
-        const { exists } = await qdrant.collectionExists(config.collection);
+        const { exists } = await requestQdrant(() => qdrant.collectionExists(config.collection));
         if (!exists) {
-            await qdrant.createCollection(config.collection, {
-                vectors: { size: config.embeddingSize, distance: 'Cosine' },
-            });
+            await requestQdrant(() =>
+                qdrant.createCollection(config.collection, {
+                    vectors: { size: config.embeddingSize, distance: 'Cosine' },
+                }),
+            );
         }
 
-        await qdrant.createPayloadIndex(config.collection, {
-            field_name: 'tag_id',
-            field_schema: 'keyword',
-            wait: true,
-        });
+        await requestQdrant(() =>
+            qdrant.createPayloadIndex(config.collection, {
+                field_name: 'tag_id',
+                field_schema: 'keyword',
+                wait: true,
+            }),
+        );
     }
 
     async function scrollAll(filter, onProgress) {
@@ -587,13 +602,15 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
         let offset;
 
         do {
-            const page = await qdrant.scroll(config.collection, {
-                limit: 256,
-                with_payload: PAYLOAD_FIELDS,
-                with_vector: false,
-                ...(offset === undefined ? {} : { offset }),
-                ...(filter ? { filter } : {}),
-            });
+            const page = await requestQdrant(() =>
+                qdrant.scroll(config.collection, {
+                    limit: 256,
+                    with_payload: PAYLOAD_FIELDS,
+                    with_vector: false,
+                    ...(offset === undefined ? {} : { offset }),
+                    ...(filter ? { filter } : {}),
+                }),
+            );
             points.push(...page.points);
             onProgress?.(points.length);
             offset = page.next_page_offset ?? undefined;
