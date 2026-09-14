@@ -121,7 +121,7 @@ export function createAsk({ knowledge, log, Setting, rest }) {
         await context.defer();
         const channel = context.interaction.channel;
         const history = isSnailAskThreadChannel(channel, state.botUserId)
-            ? await fetchConversationHistory(channel.id)
+            ? await fetchConversationHistory(channel)
             : [];
 
         let starter;
@@ -230,7 +230,7 @@ export function createAsk({ knowledge, log, Setting, rest }) {
             );
         const history =
             deliveryChannel.id === channel.id && isSnailAskThreadChannel(channel, state.botUserId)
-                ? await fetchConversationHistory(channel.id, message.id)
+                ? await fetchConversationHistory(channel, message)
                 : [];
         const result = await knowledge.ask(question, history);
         const feedbackId = rememberFeedback({
@@ -282,11 +282,22 @@ export function createAsk({ knowledge, log, Setting, rest }) {
         }
     }
 
-    async function fetchConversationHistory(channelId, currentMessageId) {
+    async function fetchConversationHistory(channel, currentMessage) {
+        const channelId = channel.id;
+        const currentMessageId = currentMessage?.id;
         const messages = await rest.getMessages(channelId, { limit: ASK_HISTORY_FETCH_LIMIT });
         const byId = new Map(messages.map((message) => [String(message.id), message]));
+        if (channel.parentId) {
+            const starter = await rest.getMessage(channel.parentId, channel.id).catch(() => undefined);
+            if (starter) byId.set(String(starter.id), starter);
+        }
+        const currentReferenceId = getReferencedMessageId(currentMessage);
+        if (currentReferenceId && !byId.has(currentReferenceId)) {
+            const referenced = await resolveReferencedMessage(currentMessage);
+            if (referenced) byId.set(String(referenced.id), referenced);
+        }
         const enriched = await Promise.all(
-            messages
+            [...byId.values()]
                 .filter((message) => String(message.id) !== String(currentMessageId))
                 .map(async (message) => {
                     if (message.referencedMessage !== undefined) return message;
@@ -298,7 +309,18 @@ export function createAsk({ knowledge, log, Setting, rest }) {
                     return { ...message, referencedMessage };
                 }),
         );
-        return buildAskConversationHistory(enriched, state.botUserId);
+        const historyMessages = new Map(enriched.map((message) => [String(message.id), message]));
+        for (const message of enriched) {
+            const referenced = message.referencedMessage;
+            if (!referenced || String(referenced.id) === String(currentMessageId)) continue;
+            if (!historyMessages.has(String(referenced.id))) {
+                historyMessages.set(String(referenced.id), {
+                    ...referenced,
+                    referencedMessage: await resolveReferencedMessage(referenced),
+                });
+            }
+        }
+        return buildAskConversationHistory([...historyMessages.values()], state.botUserId);
     }
 
     function rememberFeedback(record) {
