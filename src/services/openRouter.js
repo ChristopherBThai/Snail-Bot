@@ -24,7 +24,7 @@ export function createOpenRouter(config, apiKey, elasticApm) {
             );
             return data.data.map((entry) => entry.embedding);
         },
-        async chat(systemPrompt, userPrompt) {
+        async chat(systemPrompt, userPrompt, history = []) {
             const data = await request(
                 'chat',
                 '/chat/completions',
@@ -32,6 +32,10 @@ export function createOpenRouter(config, apiKey, elasticApm) {
                     model: config.chatModel,
                     messages: [
                         { role: 'system', content: systemPrompt },
+                        ...history.map((message) => ({
+                            role: message?.role === 'assistant' ? 'assistant' : 'user',
+                            content: String(message?.content ?? ''),
+                        })),
                         { role: 'user', content: userPrompt },
                     ],
                     max_tokens: config.maxTokens,

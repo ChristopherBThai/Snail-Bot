@@ -1,3 +1,4 @@
+import { GatewayDispatchEvents } from 'discord-api-types/v10';
 import { hasManagerAccess } from '../../discord/auth.js';
 import { getInteractionUser, getSelectValue } from '../../discord/interactions.js';
 import { ASK_COMMAND, createAsk } from './ask.js';
@@ -109,6 +110,7 @@ export default async function setup({ config, features, logging, rest, services,
             missing: searchMissing,
             toggleable: true,
             activate: knowledge?.activate,
+            events: ask ? [{ event: GatewayDispatchEvents.MessageCreate, handle: ask.handleMessage }] : [],
             settings: {
                 pages: [
                     { id: 'overview', label: 'Overview', render: renderOverview },
