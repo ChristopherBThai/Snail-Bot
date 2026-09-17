@@ -82,7 +82,10 @@ export function buildPanel(panel, emojis) {
         separator(true, SeparatorSpacingSize.Large),
         {
             type: ComponentType.Section,
-            components: [text(`### Filters\n\`${panel.presetString}\`\n\n${filters}`), text(`-# Sort: ${sortLabel(panel.preset.sort)}`)],
+            components: [
+                text(`### Filters\n\`${panel.preset.text}\`\n\n${filters}`),
+                text(`-# Sort: ${sortLabel(panel.preset.sort)}`),
+            ],
             accessory: button(panel, 'setPreset', 'Set Preset'),
         },
         row(

@@ -72,10 +72,9 @@ export default function setup({ config, logging, rest, services }) {
         const ownerId = all ? null : String(getCommandOptionValue(context.interaction, 'user') ?? userId);
         const owner = all || ownerId === userId ? user : context.interaction.data.resolved.users[ownerId];
         if (!owner || owner.bot) return context.respond('Choose a human Discord user.', { ephemeral: true });
-        let presetString = getCommandOptionValue(context.interaction, 'preset') ?? '* * * * * *';
         let preset;
         try {
-            preset = readPreset(presetString, all);
+            preset = readPreset(getCommandOptionValue(context.interaction, 'preset') ?? '* * * * * *', all);
         } catch (error) {
             return context.respond(error.message, { ephemeral: true });
         }
@@ -94,7 +93,6 @@ export default function setup({ config, logging, rest, services }) {
             ownerName: owner.username,
             all,
             preset,
-            presetString,
             channelId: context.interaction.channelId,
             state: needsApproval ? 'pending' : 'active',
             pets: [],
@@ -170,11 +168,10 @@ export default function setup({ config, logging, rest, services }) {
             }
             return;
         }
-        let presetString = getModalValue(context.interaction, 'preset') ?? '* * * * * *';
         let preset;
         if (action === 'preset') {
             try {
-                preset = readPreset(presetString, panel.all);
+                preset = readPreset(getModalValue(context.interaction, 'preset') ?? '', panel.all);
             } catch (error) {
                 return context.respond(error.message, { ephemeral: true });
             }
@@ -183,7 +180,7 @@ export default function setup({ config, logging, rest, services }) {
         try {
             await context.deferUpdate();
             if (!getPanel(id)) return;
-            if ((action === 'allow' || action === 'preset') && !(await loadPanel(panel, preset, presetString))) return;
+            if ((action === 'allow' || action === 'preset') && !(await loadPanel(panel, preset))) return;
             touch(panel);
             if (action === 'compact') {
                 const firstPet = panel.page * pageSize(panel);
@@ -202,11 +199,11 @@ export default function setup({ config, logging, rest, services }) {
         }
     }
 
-    async function loadPanel(panel, preset = panel.preset, presetString = panel.presetString) {
+    async function loadPanel(panel, preset = panel.preset) {
         const inventory = await source.loadPets(panel.ownerId, preset);
         // Revocation or expiry can occur while the inventory is loading.
         if (!getPanel(panel.id)) return false;
-        Object.assign(panel, inventory, { state: 'active', preset, presetString, page: 0 });
+        Object.assign(panel, inventory, { state: 'active', preset, page: 0 });
         return true;
     }
 
@@ -260,5 +257,5 @@ function readPreset(input, all = false) {
         if (min > max) throw new Error(`${stat.toUpperCase()}: minimum cannot exceed maximum.`);
         if (min !== undefined || max !== undefined) filters[stat] = { min, max };
     }
-    return { filters, sort };
+    return { filters, sort, text: input };
 }
