@@ -1,5 +1,13 @@
 {
     "guildId": "604719438805205004",
+    "emojis": {
+        "hp": ":regional_indicator_h:",
+        "att": ":red_circle:",
+        "pr": ":o:",
+        "wp": ":regional_indicator_w:",
+        "mag": ":blue_circle:",
+        "mr": ":record_button:"
+    },
     "roles": {
         "helper": {
             "permission": "803184898180644864",

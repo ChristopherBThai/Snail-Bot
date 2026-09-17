@@ -9,6 +9,7 @@ import settingsCommand, { renderFeatureSettings } from './commands/settings.js';
 import snail from './commands/snail.js';
 import tagsPackage from './commands/tags.js';
 import knowledgeBase from './features/knowledgeBase/index.js';
+import petFinder from './features/petFinder/index.js';
 import questList from './features/questList/index.js';
 import supporterRoles from './features/supporterRoles/index.js';
 import ticketMarket from './features/ticketMarket/index.js';
@@ -172,6 +173,7 @@ const INDEPENDENT_PACKAGES = [
     logs,
     settingsCommand,
     questList,
+    petFinder,
     ticketMarket,
     supporterRoles,
 ];
