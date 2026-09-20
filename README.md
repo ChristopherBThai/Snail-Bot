@@ -18,6 +18,8 @@ Snail is developed and deployed with Node.js 26.
 ## Commands
 
 - `npm start` starts Snail.
-- `npm run migrate` runs the one-time production database migration.
+- `npm run migrate` runs the one-time Snail database migration. **Stop all database
+  writers and configure the mandatory external backup directory first:** see
+  [migration and recovery instructions](docs/migration.md).
 - `npm run check` checks formatting with Prettier.
 - `npm run check:fix` formats the project with Prettier.
