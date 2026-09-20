@@ -1,11 +1,13 @@
 import { createHash } from 'node:crypto';
+import { v5 as uuidv5 } from 'uuid';
+import { requestQdrant } from '../../services/qdrant.js';
 import { matchTerms } from './terms.js';
 
 const EMBED_BATCH_SIZE = 64;
 const QUESTION_CACHE_WRITE_BATCH_SIZE = 100;
 const UPDATE_POINT_BATCH_SIZE = 256;
-const PAYLOAD_FIELDS = Object.freeze(['tag_id', 'kind', 'text_hash', 'question']);
-const POINT_ID_PREFIX = 'snail-knowledge-base:';
+const PAYLOAD_FIELDS = Object.freeze(['tag_id', 'kind', 'data_hash', 'question_hash', 'question']);
+const DEFAULT_NAMESPACE = '1b671a64-40d5-491e-99b0-da01ff1f3341';
 const QUESTION_PROMPT_VERSION = 'tag-question-v3';
 const QUESTION_SYSTEM_PROMPT = 'You generate retrieval scaffolding questions for OwO Discord bot support tags.';
 const QUESTION_PROMPT_SOURCE = `${QUESTION_PROMPT_VERSION}:${QUESTION_SYSTEM_PROMPT}`;
@@ -77,7 +79,9 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
             return enqueue(() => synchronizeTags(tags_));
         },
         deleteTags(tagIds) {
-            return enqueue(() => qdrant.delete(config.collection, { filter: tagFilter(tagIds), wait: true }));
+            return enqueue(() =>
+                requestQdrant(() => qdrant.delete(config.collection, { filter: tagFilter(tagIds), wait: true })),
+            );
         },
         getQuestionEditor(tagId) {
             const tag = tags.get(tagId);
@@ -230,7 +234,7 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
             timer.checkpoint('prepare');
 
             setProgress('readingPoints', 0, 0);
-            const { count: existingCount } = await qdrant.count(config.collection);
+            const { count: existingCount } = await requestQdrant(() => qdrant.count(config.collection));
             setProgress('readingPoints', 0, existingCount);
             const existing = await scrollAll(undefined, (processed) =>
                 setProgress('readingPoints', processed, existingCount),
@@ -414,7 +418,8 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
     }
 
     function addDesiredPoints(desired, tag) {
-        for (const point of buildDesiredPoints(tag)) desired.set(point.pointId, point);
+        for (const point of buildDesiredPoints(tag, config.namespace || DEFAULT_NAMESPACE))
+            desired.set(point.pointId, point);
     }
 
     async function applyDiff(diff) {
@@ -422,14 +427,16 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
         for (let index = 0; index < diff.embed.length; index += EMBED_BATCH_SIZE) {
             const batch = diff.embed.slice(index, index + EMBED_BATCH_SIZE);
             const vectors = await openRouter.embed(batch.map((point) => point.text));
-            await qdrant.upsert(config.collection, {
-                points: batch.map((point, offset) => ({
-                    id: point.pointId,
-                    vector: vectors[offset],
-                    payload: point.payload,
-                })),
-                wait: true,
-            });
+            await requestQdrant(() =>
+                qdrant.upsert(config.collection, {
+                    points: batch.map((point, offset) => ({
+                        id: point.pointId,
+                        vector: vectors[offset],
+                        payload: point.payload,
+                    })),
+                    wait: true,
+                }),
+            );
             const processed = Math.min(index + EMBED_BATCH_SIZE, diff.embed.length);
             if (state.syncing) setProgress('embeddingPoints', processed, diff.embed.length);
             log.trace('Embedded Knowledge Base search points', {
@@ -462,10 +469,12 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
                 metadataIndex += 1;
                 remaining -= 1;
             }
-            await qdrant.batchUpdate(config.collection, {
-                operations,
-                wait: true,
-            });
+            await requestQdrant(() =>
+                qdrant.batchUpdate(config.collection, {
+                    operations,
+                    wait: true,
+                }),
+            );
             if (state.syncing) setProgress('updatingPoints', deletedIndex + metadataIndex, updateTotal);
         }
         if (diff.deleted.length) log.trace('Deleted Knowledge Base search points', { points: diff.deleted.length });
@@ -478,16 +487,19 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
         await resetOperation;
         const timer = log.time();
         const matchedTerms = matchTerms(question, terms);
-        const expanded = formatExpandedQuery(question, matchedTerms);
-        const retrievalQuestion = formatRetrievalQuestion(expanded, history);
+        const retrievalQuestion = formatRetrievalQuestion(question, history);
         const [vector] = await openRouter.embed([formatQuery(retrievalQuestion, config.queryInstruction)]);
         timer.checkpoint('embedding');
-        const result = await qdrant.query(config.collection, {
-            query: vector,
-            limit: config.rerankCandidateLimit,
-            with_payload: true,
-            ...(includeBelowThreshold ? {} : { score_threshold: config.scoreThreshold }),
-        });
+        const result = await requestQdrant(
+            () =>
+                qdrant.query(config.collection, {
+                    query: vector,
+                    limit: config.rerankCandidateLimit,
+                    with_payload: true,
+                    ...(includeBelowThreshold ? {} : { score_threshold: config.scoreThreshold }),
+                }),
+            2,
+        );
         const hits = result.points;
         timer.checkpoint('qdrant');
         const groups = materializeGroups(hits);
@@ -568,18 +580,22 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
     }
 
     async function ensureCollection() {
-        const { exists } = await qdrant.collectionExists(config.collection);
+        const { exists } = await requestQdrant(() => qdrant.collectionExists(config.collection));
         if (!exists) {
-            await qdrant.createCollection(config.collection, {
-                vectors: { size: config.embeddingSize, distance: 'Cosine' },
-            });
+            await requestQdrant(() =>
+                qdrant.createCollection(config.collection, {
+                    vectors: { size: config.embeddingSize, distance: 'Cosine' },
+                }),
+            );
         }
 
-        await qdrant.createPayloadIndex(config.collection, {
-            field_name: 'tag_id',
-            field_schema: 'keyword',
-            wait: true,
-        });
+        await requestQdrant(() =>
+            qdrant.createPayloadIndex(config.collection, {
+                field_name: 'tag_id',
+                field_schema: 'keyword',
+                wait: true,
+            }),
+        );
     }
 
     async function scrollAll(filter, onProgress) {
@@ -587,13 +603,15 @@ export function createKnowledgeBase({ config, Tag, tags, terms, qdrant, openRout
         let offset;
 
         do {
-            const page = await qdrant.scroll(config.collection, {
-                limit: 256,
-                with_payload: PAYLOAD_FIELDS,
-                with_vector: false,
-                ...(offset === undefined ? {} : { offset }),
-                ...(filter ? { filter } : {}),
-            });
+            const page = await requestQdrant(() =>
+                qdrant.scroll(config.collection, {
+                    limit: 256,
+                    with_payload: PAYLOAD_FIELDS,
+                    with_vector: false,
+                    ...(offset === undefined ? {} : { offset }),
+                    ...(filter ? { filter } : {}),
+                }),
+            );
             points.push(...page.points);
             onProgress?.(points.length);
             offset = page.next_page_offset ?? undefined;
@@ -627,11 +645,6 @@ function formatQuery(question, instruction) {
     return `Instruct: ${instruction}\nQuery: ${question}`;
 }
 
-function formatExpandedQuery(question, terms) {
-    if (!terms.length) return question;
-    return `${question}\n\nKnown terms:\n${terms.map((term) => `${term.id}: ${term.meaning}`).join('\n')}`;
-}
-
 function formatRetrievalQuestion(question, history) {
     const lines = [];
     let chars = 0;
@@ -653,21 +666,23 @@ function tagFilter(tagIds) {
     return { must: [{ key: 'tag_id', match }] };
 }
 
-function buildDesiredPoints(tag) {
+function buildDesiredPoints(tag, namespace) {
+    const dataHash = hash(tag.text);
     const points = [
-        point(`${tag._id}:answer`, tag.text, {
+        point(namespace, `tag:${tag._id}:tag_answer:${dataHash}`, tag.text, {
             tag_id: tag._id,
             kind: 'tag_answer',
-            text_hash: hash(tag.text),
+            data_hash: dataHash,
         }),
     ];
 
     for (const question of tag.knowledgeBase?.questions ?? []) {
         points.push(
-            point(`${tag._id}:question:${question.hash}`, question.text, {
+            point(namespace, `tag:${tag._id}:tag_question:${question.hash}`, question.text, {
                 tag_id: tag._id,
                 kind: 'tag_question',
-                text_hash: question.hash,
+                data_hash: dataHash,
+                question_hash: question.hash,
                 question: question.text,
             }),
         );
@@ -675,18 +690,8 @@ function buildDesiredPoints(tag) {
     return points;
 }
 
-function point(key, text, payload) {
-    return { pointId: pointId(key), text, payload };
-}
-
-// The prefix and derivation scheme are persistent point identity. Changing
-// either intentionally changes every point ID and requires a full reindex.
-function pointId(key) {
-    const bytes = createHash('sha256').update(`${POINT_ID_PREFIX}${key}`).digest().subarray(0, 16);
-    bytes[6] = (bytes[6] & 0x0f) | 0x80;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    const hex = bytes.toString('hex');
-    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+function point(namespace, key, text, payload) {
+    return { pointId: uuidv5(key, namespace), text, payload };
 }
 
 // Every existing point absent from desired is deleted, so existing must already
@@ -700,8 +705,10 @@ function computeDiff(desired, existing) {
         const old = current.get(id);
         current.delete(id);
         if (!old) embed.push({ ...point, operation: 'add' });
-        else if (old.payload?.text_hash !== point.payload.text_hash) embed.push({ ...point, operation: 'vector' });
-        else if (PAYLOAD_FIELDS.some((field) => old.payload?.[field] !== point.payload[field])) metadata.push(point);
+        else if (old.payload?.kind !== point.payload.kind || old.payload?.tag_id !== point.payload.tag_id)
+            embed.push({ ...point, operation: 'vector' });
+        else if (Object.entries(point.payload).some(([field, value]) => old.payload?.[field] !== value))
+            metadata.push(point);
     }
 
     return { embed, metadata, deleted: [...current.keys()] };

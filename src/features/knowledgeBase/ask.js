@@ -203,6 +203,8 @@ export function createAsk({ knowledge, log, Setting, rest }) {
         const question = cleanQuestion(message.content, state.botUserId);
         if (!question || question.length > 500) return;
         const channel = await rest.getChannel(message.channelId);
+        if (!hasExplicitMention(message.content, state.botUserId) && !isSnailAskThreadChannel(channel, state.botUserId))
+            return;
         await answerMessage(message, question, channel);
     }
 
@@ -283,10 +285,20 @@ export function createAsk({ knowledge, log, Setting, rest }) {
     }
 
     async function fetchConversationHistory(channelId, currentMessageId) {
-        const messages = await rest.getMessages(channelId, {
-            limit: ASK_HISTORY_FETCH_LIMIT,
-            before: currentMessageId,
-        });
+
+        let messages;
+        try {
+            messages = await rest.getMessages(channelId, {
+                limit: ASK_HISTORY_FETCH_LIMIT,
+                before: currentMessageId,
+            });
+        } catch (error) {
+            log.warn('Could not fetch Knowledge Base conversation history; answering without history', {
+                error,
+                channelId,
+            });
+            return [];
+        }
         const byId = new Map(messages.map((message) => [String(message.id), message]));
         const enriched = await Promise.all(
             messages

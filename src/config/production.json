@@ -28,6 +28,7 @@
     },
     "knowledgeBase": {
         "collection": "owo_knowledge",
+        "namespace": "1b671a64-40d5-491e-99b0-da01ff1f3341",
         "embeddingSize": 4096,
         "queryInstruction": "Given a user question about the OwO Discord bot, retrieve a matching knowledge base entry that answers it.",
         "topK": 6,
