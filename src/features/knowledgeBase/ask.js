@@ -285,9 +285,13 @@ export function createAsk({ knowledge, log, Setting, rest }) {
     }
 
     async function fetchConversationHistory(channelId, currentMessageId) {
+
         let messages;
         try {
-            messages = await rest.getMessages(channelId, { limit: ASK_HISTORY_FETCH_LIMIT });
+            messages = await rest.getMessages(channelId, {
+                limit: ASK_HISTORY_FETCH_LIMIT,
+                before: currentMessageId,
+            });
         } catch (error) {
             log.warn('Could not fetch Knowledge Base conversation history; answering without history', {
                 error,
