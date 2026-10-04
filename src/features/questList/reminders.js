@@ -65,7 +65,7 @@ export function createPrayCurseReminders({ User, redis, rest, log, getChannelId 
 
         const timer = log.time();
         const pipeline = redis.multi();
-        for (const userId of userIds) pipeline.hGetAll(`cd_pray_${userId}`);
+        for (const userId of userIds) pipeline.hGet(`cd_pray_${userId}`, 'lasttime');
         const results = await pipeline.execAsPipeline();
         if (!active) return;
 
@@ -77,7 +77,7 @@ export function createPrayCurseReminders({ User, redis, rest, log, getChannelId 
         for (const [index, userId] of userIds.entries()) {
             if (!users.has(userId)) continue;
 
-            const lasttime = results[index]?.lasttime;
+            const lasttime = results[index];
             if (!lasttime) {
                 clearCooldown(userId);
                 continue;
