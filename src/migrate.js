@@ -1,4 +1,8 @@
+import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { chmod, mkdtemp, open, realpath, rename, unlink, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import 'dotenv/config';
 import mongoose from 'mongoose';
@@ -44,6 +48,8 @@ async function migrateDatabase(database) {
         return;
     }
 
+    await backupDatabase(database);
+
     console.log('Migrating database to schema version 1');
     const tags = await migrateTags(database);
     const terms = await migrateKnowledgeTerms(database);
@@ -63,9 +69,78 @@ async function migrateDatabase(database) {
     console.log('Database migrated to schema version 1', {
         tags,
         terms,
-        optedOutUsers: users,
+        updatedUsers: users,
         droppedCollections: dropped,
     });
+}
+
+async function backupDatabase(database) {
+    const uri = process.env.SNAIL_MONGO_URI?.trim();
+    // Never let mongodump infer all databases (or use authSource as the target).
+    const match = uri?.match(/^mongodb(?:\+srv)?:\/\/[^/?#]+\/([^/?#]+)(?:\?[^#]*)?$/);
+    let name;
+    try {
+        name = match && decodeURIComponent(match[1]);
+    } catch {
+        throw new Error('SNAIL_MONGO_URI must explicitly name the Snail database');
+    }
+    if (
+        !name ||
+        /[/\\.\s"$*<>:|?\x00]/.test(name) ||
+        Buffer.byteLength(name) > 63 ||
+        ['admin', 'config', 'local'].includes(name) ||
+        name !== database.databaseName
+    ) {
+        throw new Error('SNAIL_MONGO_URI must explicitly name the connected Snail database');
+    }
+
+    const configured = process.env.SNAIL_MIGRATION_BACKUP_DIR;
+    if (!configured || !path.isAbsolute(configured)) {
+        throw new Error('Set SNAIL_MIGRATION_BACKUP_DIR to an existing absolute directory outside the repository');
+    }
+    const directory = await realpath(configured);
+    const repository = await realpath(fileURLToPath(new URL('..', import.meta.url)));
+    const relative = path.relative(repository, directory);
+    if (!relative || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))) {
+        throw new Error('SNAIL_MIGRATION_BACKUP_DIR must be outside the repository');
+    }
+
+    const runDirectory = await mkdtemp(path.join(directory, 'snail-v0-'));
+    await chmod(runDirectory, 0o700);
+    const config = path.join(runDirectory, 'mongodump.yml');
+    const partial = path.join(runDirectory, 'snail.archive.gz.partial');
+    const archive = path.join(runDirectory, 'snail.archive.gz');
+    console.log(`Backing up Snail Mongo to ${archive}; stop all database writers before migration`);
+    try {
+        // A private config avoids putting credentials in process arguments or logs.
+        await writeFile(config, `uri: ${JSON.stringify(uri)}\n`, { flag: 'wx', mode: 0o600 });
+        const output = await open(partial, 'wx', 0o600);
+        try {
+            await new Promise((resolve, reject) => {
+                const child = spawn('mongodump', ['--config', config, '--db', name, '--archive', '--gzip'], {
+                    // Do not pass unrelated database credentials or ambient tool configuration.
+                    env: { PATH: process.env.PATH },
+                    stdio: ['ignore', output.fd, 'ignore'],
+                });
+                child.once('error', () => reject(new Error('Could not start mongodump; backup required')));
+                child.once('close', (code) => {
+                    if (code === 0) resolve();
+                    else reject(new Error('mongodump failed; migration aborted before writes'));
+                });
+            });
+            if (!(await output.stat()).size) throw new Error('mongodump produced an empty archive');
+            await output.sync();
+        } finally {
+            await output.close();
+        }
+        await rename(partial, archive);
+    } finally {
+        // Remove only the credential-bearing temporary config, never an archive.
+        await unlink(config).catch((error) => {
+            if (error.code !== 'ENOENT') throw new Error('Could not remove private mongodump configuration');
+        });
+    }
+    console.log(`Snail Mongo backup complete: ${archive}`);
 }
 
 async function migrateTags(database) {
@@ -156,35 +231,36 @@ async function migrateKnowledgeTerms(database) {
 async function migrateUsers(database) {
     const collection = database.collection('users');
     const documents = await collection.find({}).toArray();
-    const optedOut = documents.filter(isOptedOut);
-
-    if (optedOut.length) {
-        await collection.bulkWrite(
-            optedOut.map(({ _id }) => ({
-                replaceOne: {
-                    filter: { _id },
-                    replacement: { _id, supporterRoles: { optout: true } },
-                    upsert: true,
+    const operations = [];
+    for (const user of documents) {
+        const $set = {};
+        const $unset = {};
+        for (const reminder of ['luck', 'hunt', 'battle']) {
+            const preference = user.reminders?.[reminder];
+            if (typeof preference?.enabled === 'boolean') $set[`reminders.${reminder}`] = preference.enabled;
+        }
+        const optout = [
+            user.supporterRoles?.optout,
+            user.supporterRoles?.optedOut,
+            user.supporterRoles?.disabled,
+            user.snailRoles,
+        ].find((value) => typeof value === 'boolean');
+        if (optout !== undefined && user.supporterRoles?.optout !== optout) $set['supporterRoles.optout'] = optout;
+        if (typeof user.snailRoles === 'boolean') $unset.snailRoles = '';
+        if (Object.keys($set).length || Object.keys($unset).length) {
+            operations.push({
+                updateOne: {
+                    filter: { _id: user._id },
+                    update: {
+                        ...(Object.keys($set).length ? { $set } : {}),
+                        ...(Object.keys($unset).length ? { $unset } : {}),
+                    },
                 },
-            })),
-            { ordered: true },
-        );
-        await collection.deleteMany({ _id: { $nin: optedOut.map(({ _id }) => _id) } });
-    } else if (documents.length) {
-        await collection.deleteMany({});
+            });
+        }
     }
-
-    return optedOut.length;
-}
-
-function isOptedOut(user) {
-    const values = [
-        user.supporterRoles?.optout,
-        user.supporterRoles?.optedOut,
-        user.supporterRoles?.disabled,
-        user.snailRoles,
-    ];
-    return values.find((value) => typeof value === 'boolean') === true;
+    if (operations.length) await collection.bulkWrite(operations, { ordered: true });
+    return operations.length;
 }
 
 async function dropObsoleteCollections(database) {
@@ -209,7 +285,10 @@ function hash(value) {
     return createHash('sha1').update(value).digest('hex');
 }
 
-migrate().catch((error) => {
-    console.error('Migration failed', error);
+migrate().catch(() => {
+    // Driver/tool errors can contain connection strings or credentials.
+    console.error(
+        'Migration failed. Keep writers stopped; check Snail connectivity, explicit database, backup directory and mongodump installation/permissions. No automatic restore is performed.',
+    );
     process.exitCode = 1;
 });

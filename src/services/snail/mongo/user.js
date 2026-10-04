@@ -25,6 +25,8 @@ const remindersSchema = new mongoose.Schema(
             type: Boolean,
             default: false,
         },
+        hunt: { type: Boolean, default: undefined },
+        battle: { type: Boolean, default: undefined },
     },
     { _id: false },
 );
@@ -63,6 +65,10 @@ const userSchema = new mongoose.Schema(
         _id: {
             type: String,
             required: true,
+        },
+        friends: {
+            type: [{ type: String, ref: 'User' }],
+            default: undefined,
         },
         messageBuilder: {
             type: messageBuilderSchema,
