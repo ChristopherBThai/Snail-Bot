@@ -6,10 +6,12 @@ const DEFAULT_CAPACITY = Object.freeze(
     Object.fromEntries(Object.entries(QUEST_TYPES).map(([type, quest]) => [type, quest.capacity])),
 );
 const DEFAULT_REPOST_INTERVAL = 15;
+const AUTOMATIC_REFRESH_INTERVAL_MS = 30_000;
 const DEFAULT_EMPTY_MESSAGE = 'There are no quests!';
 
 function createEmptyPendingState() {
     return {
+        automatic: false,
         publish: false,
         repost: false,
         messageCount: 0,
@@ -20,7 +22,7 @@ function createEmptyPendingState() {
     };
 }
 
-export function createQuestListUpdates({ Quest, Setting, questSource, rest, log, isEnabled }) {
+export function createQuestListUpdates({ Quest, Setting, questSource, rest, log, isEnabled, owoBotId }) {
     const botId = String(rest.applicationId);
     const state = {
         channelId: undefined,
@@ -31,6 +33,9 @@ export function createQuestListUpdates({ Quest, Setting, questSource, rest, log,
         questsByType: new Map(),
         questsByUser: new Map(),
     };
+    let automaticDirty = false;
+    let automaticTimer;
+    let lastAutomaticRefresh = -Infinity;
     let messageId;
     let messagesSinceRepost = 0;
     let updateRunning = false;
@@ -39,6 +44,7 @@ export function createQuestListUpdates({ Quest, Setting, questSource, rest, log,
     return {
         state,
         activate,
+        deactivate,
         initialize,
         isRunning,
         messageCreated,
@@ -66,6 +72,36 @@ export function createQuestListUpdates({ Quest, Setting, questSource, rest, log,
         });
 
         if (!state.channelId) log.warn('Quest List channel is not configured');
+    }
+
+    function deactivate() {
+        automaticDirty = false;
+        clearTimeout(automaticTimer);
+        automaticTimer = undefined;
+        pending.automatic = false;
+    }
+
+    function prepareAutomaticRefresh(batch) {
+        if (!automaticDirty || !isRunning()) return;
+
+        const remaining = lastAutomaticRefresh + AUTOMATIC_REFRESH_INTERVAL_MS - Date.now();
+        if (remaining > 0) {
+            // Keep the first deadline: continued traffic must not postpone trailing work.
+            automaticTimer ??= setTimeout(() => {
+                automaticTimer = undefined;
+                if (!automaticDirty || !isRunning()) return;
+                pending.automatic = true;
+                requestUpdate();
+            }, remaining);
+            return;
+        }
+
+        clearTimeout(automaticTimer);
+        automaticTimer = undefined;
+        automaticDirty = false;
+        lastAutomaticRefresh = Date.now();
+        batch.refresh = true;
+        batch.reasons.push('channelMessages');
     }
 
     async function initialize() {
@@ -122,7 +158,7 @@ export function createQuestListUpdates({ Quest, Setting, questSource, rest, log,
     }
 
     function messageCreated(message) {
-        if (message.channelId !== state.channelId) return;
+        if (!isRunning() || message.channelId !== state.channelId) return;
 
         if (isQuestListMessage(message)) {
             log.trace('Ignored current Quest List message', { messageId: message.id });
@@ -138,7 +174,8 @@ export function createQuestListUpdates({ Quest, Setting, questSource, rest, log,
             repostInterval: state.repostInterval,
         });
 
-        requestUpdate({ refreshReason: 'channelMessages' });
+        if (owoBotId && message.author?.id === owoBotId) automaticDirty = true;
+        requestUpdate();
     }
 
     function isQuestListMessage(message) {
@@ -153,11 +190,12 @@ export function createQuestListUpdates({ Quest, Setting, questSource, rest, log,
             waiters.push({ resolve, reject, timer: log.time() });
             pending.adds.set(userId, waiters);
         });
-        requestUpdate({ refreshReason: 'addQuests' });
+        requestUpdate();
         return result;
     }
 
     function setChannel(channelId) {
+        deactivate();
         return queueChange(
             { type: 'channel', channelId },
             questSource && isEnabled() ? { refreshReason: 'channelChanged', repost: true } : undefined,
@@ -245,6 +283,7 @@ export function createQuestListUpdates({ Quest, Setting, questSource, rest, log,
 
     function hasPendingUpdate() {
         return Boolean(
+            pending.automatic ||
             pending.refreshReasons.size ||
             pending.publish ||
             pending.repost ||
@@ -280,9 +319,10 @@ export function createQuestListUpdates({ Quest, Setting, questSource, rest, log,
         if (!batch.changes.some((change) => change.type === 'channel')) messagesSinceRepost += batch.messageCount;
         if (isRunning() && messagesSinceRepost >= state.repostInterval) {
             batch.repost = true;
-            batch.refresh = true;
             batch.reasons.push('repostInterval');
         }
+
+        prepareAutomaticRefresh(batch);
 
         let quests = state.quests;
         const [refreshResult, pendingAdditions] = await Promise.all([
@@ -294,7 +334,7 @@ export function createQuestListUpdates({ Quest, Setting, questSource, rest, log,
         let changed = refreshResult.changed;
         const additions = await addPendingQuests(quests, pendingAdditions);
         quests = additions.quests;
-        changed ||= additions.added > 0;
+        changed ||= additions.changed;
 
         const removals = await applyRemovalChanges(quests, batch.changes);
         quests = removals.quests;
@@ -334,6 +374,7 @@ export function createQuestListUpdates({ Quest, Setting, questSource, rest, log,
         for (const change of changes) {
             if (change.type === 'channel') {
                 await saveSetting('channelId', change.channelId);
+                deactivate();
                 messageId = undefined;
                 messagesSinceRepost = 0;
                 log.info('Changed Quest List channel', { channelId: change.channelId });
@@ -361,7 +402,26 @@ export function createQuestListUpdates({ Quest, Setting, questSource, rest, log,
     }
 
     async function addPendingQuests(quests, { userIds, candidates, hydrated }) {
-        if (!userIds.length) return { quests, addedByUser: new Map(), added: 0 };
+        if (!userIds.length) return { quests, addedByUser: new Map(), added: 0, changed: false };
+
+        // Reuse requester hydration to retire old generations before $setOnInsert.
+        // Other users remain cached unless this batch independently requested a refresh.
+        const requesters = new Set(userIds);
+        const current = new Map(hydrated.quests.map((quest) => [generationKey(quest), quest]));
+        const removed = [];
+        let changed = false;
+        quests = quests.flatMap((quest) => {
+            if (!requesters.has(quest.userId)) return [quest];
+            const candidate = current.get(generationKey(quest));
+            if (!candidate) {
+                removed.push(quest.questId);
+                changed = true;
+                return [];
+            }
+            changed ||= quest.count !== candidate.count || quest.total !== candidate.total;
+            return [{ ...candidate, addedAt: quest.addedAt }];
+        });
+        await deleteQueuedQuests(removed);
 
         const generations = new Set(quests.map(generationKey));
         const newQuests = hydrated.quests.filter((quest) => !generations.has(generationKey(quest)));
@@ -390,7 +450,12 @@ export function createQuestListUpdates({ Quest, Setting, questSource, rest, log,
             if (userAdded.length) log.info('Added quests to Quest List', { userId, count: userAdded.length });
         }
 
-        return { quests: [...quests, ...added], addedByUser, added: added.length };
+        return {
+            quests: [...quests, ...added],
+            addedByUser,
+            added: added.length,
+            changed: changed || added.length > 0,
+        };
     }
 
     async function applyRemovalChanges(quests, changes) {

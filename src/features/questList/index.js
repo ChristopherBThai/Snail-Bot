@@ -35,7 +35,7 @@ import {
 import { createQuestListUpdates } from './updates.js';
 
 /** @type {import('../../packages.js').PackageSetup} */
-export default async function setup({ features, logging, rest, services }) {
+export default async function setup({ config, features, logging, rest, services }) {
     const log = logging.createLogger('questList');
     const mongo = services.snail.mongo;
     const owoMongo = services.owo.mongo;
@@ -51,6 +51,7 @@ export default async function setup({ features, logging, rest, services }) {
               rest,
               log,
               isEnabled,
+              owoBotId: config.users?.owo,
           })
         : undefined;
     await updates?.initialize();
@@ -93,7 +94,10 @@ export default async function setup({ features, logging, rest, services }) {
             description: 'Maintains the shared OwO social quest queue.',
             toggleable: true,
             activate,
-            deactivate: () => reminders?.deactivate(),
+            deactivate: () => {
+                updates?.deactivate();
+                reminders?.deactivate();
+            },
             events: questSource ? [{ event: GatewayDispatchEvents.MessageCreate, handle: updates.messageCreated }] : [],
             settings: {
                 pages: [
