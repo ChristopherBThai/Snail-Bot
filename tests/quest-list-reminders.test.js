@@ -146,7 +146,7 @@ test('toggle off/on does not extend a pending legacy timer; deactivate cancels i
     assert.equal(f.sends.length, 1);
 });
 
-test('production alone configures the legacy prefix and requests message content', async () => {
+test('production alone configures the legacy prefix; all configs request message content', async () => {
     const log = { debug() {}, info() {}, warn() {}, error() {} };
     for (const name of ['production', 'wifu']) {
         const config = JSON.parse(await readFile(new URL(`../src/config/${name}.json`, import.meta.url), 'utf8'));
@@ -160,7 +160,7 @@ test('production alone configures the legacy prefix and requests message content
             rest: {},
         });
         const baseline = GatewayIntentBits.Guilds | GatewayIntentBits.GuildMembers | GatewayIntentBits.GuildMessages;
-        assert.equal(gateway.intents, baseline | (name === 'production' ? GatewayIntentBits.MessageContent : 0));
+        assert.equal(gateway.intents, baseline | GatewayIntentBits.MessageContent);
     }
 });
 
@@ -174,52 +174,64 @@ test('unconfigured prefix has no fallback', async (t) => {
     assert.deepEqual(f.sends, []);
 });
 
-test('setup wires command events and reminder toggle without OwO Redis or quest channel', async (t) => {
-    const f = fixture(t);
-    const pack = await setup({
-        config: { owoprefix: 'owo' },
-        features: new Map([['questList', { enabled: true, missing: [] }]]),
-        logging: { createLogger: () => f.log },
-        rest: f.rest,
-        services: {
-            snail: {
-                mongo: {
-                    User: f.User,
-                    Setting: { loadValues: async () => ({}) },
-                    Quest: { find: () => ({ sort: () => ({ lean: async () => [] }) }) },
+for (const redisAvailable of [false, true]) {
+    test(`setup gates reminders on OwO Redis (${redisAvailable}) without requiring a quest channel`, async (t) => {
+        const f = fixture(t);
+        const pack = await setup({
+            config: { owoprefix: 'owo' },
+            features: new Map([['questList', { enabled: true, missing: [] }]]),
+            logging: { createLogger: () => f.log },
+            rest: f.rest,
+            services: {
+                snail: {
+                    mongo: {
+                        User: f.User,
+                        Setting: { loadValues: async () => ({}) },
+                        Quest: { find: () => ({ sort: () => ({ lean: async () => [] }) }) },
+                    },
                 },
+                owo: redisAvailable ? { redis: f.redis } : {},
             },
-            owo: {},
-        },
+        });
+        t.after(() => pack.feature.deactivate());
+        await pack.feature.activate();
+        const toggle = pack.components.find(({ id }) => id === TOGGLE_REMINDERS_ID);
+        assert.deepEqual(toggle.missing, redisAvailable ? [] : ['OwO Redis']);
+        if (!redisAvailable) {
+            assert.deepEqual(pack.feature.events, []);
+            t.mock.timers.tick(900000);
+            await flush();
+            assert.deepEqual(f.reads, []);
+            assert.deepEqual(f.writes, []);
+            assert.deepEqual(f.sends, []);
+            return;
+        }
+        const responses = [];
+        await toggle.handle({ interaction: { user: { id: 'new' } }, respond: async (...args) => responses.push(args) });
+        assert.match(responses[0][0], /command channel/);
+        assert.equal(pack.feature.events.length, 1);
+        assert.equal(pack.feature.events[0].event, 'MESSAGE_CREATE');
+        const gateway = createGateway({
+            config: { owoprefix: 'owo' },
+            token: 'test',
+            logging: { createLogger: () => f.log },
+            log: f.log,
+            packages: {
+                features: new Map([['questList', { enabled: true }]]),
+                events: new Map([
+                    ['MESSAGE_CREATE', pack.feature.events.map((event) => ({ ...event, featureId: 'questList' }))],
+                ]),
+            },
+            rest: f.rest,
+        });
+        await gateway.events.message(undefined, {
+            t: 'MESSAGE_CREATE',
+            d: f.message('owo pray', { author: { id: 'new' } }),
+        });
+        t.mock.timers.tick(300000);
+        await flush();
+        assert.equal(f.sends.length, 1);
+        assert.equal(f.sends[0][0], 'original');
+        assert.deepEqual(f.errors, []);
     });
-    t.after(() => pack.feature.deactivate());
-    await pack.feature.activate();
-    const toggle = pack.components.find(({ id }) => id === TOGGLE_REMINDERS_ID);
-    assert.deepEqual(toggle.missing ?? [], []);
-    const responses = [];
-    await toggle.handle({ interaction: { user: { id: 'new' } }, respond: async (...args) => responses.push(args) });
-    assert.match(responses[0][0], /command channel/);
-    assert.equal(pack.feature.events.length, 1);
-    assert.equal(pack.feature.events[0].event, 'MESSAGE_CREATE');
-    const gateway = createGateway({
-        config: { owoprefix: 'owo' },
-        token: 'test',
-        logging: { createLogger: () => f.log },
-        log: f.log,
-        packages: {
-            features: new Map([['questList', { enabled: true }]]),
-            events: new Map([
-                ['MESSAGE_CREATE', pack.feature.events.map((event) => ({ ...event, featureId: 'questList' }))],
-            ]),
-        },
-        rest: f.rest,
-    });
-    await gateway.events.message(undefined, {
-        t: 'MESSAGE_CREATE',
-        d: f.message('owo pray', { author: { id: 'new' } }),
-    });
-    t.mock.timers.tick(300000);
-    await flush();
-    assert.equal(f.sends.length, 1);
-    assert.equal(f.sends[0][0], 'original');
-});
+}

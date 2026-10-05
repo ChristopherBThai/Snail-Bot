@@ -55,16 +55,17 @@ export default async function setup({ config, features, logging, rest, services 
           })
         : undefined;
     await updates?.initialize();
-    const reminders = mongo
-        ? createPrayCurseReminders({
-              User: mongo.User,
-              owoprefix: config.owoprefix,
-              redis,
-              rest,
-              log,
-              getChannelId: () => updates.state.channelId,
-          })
-        : undefined;
+    const reminders =
+        mongo && redis
+            ? createPrayCurseReminders({
+                  User: mongo.User,
+                  owoprefix: config.owoprefix,
+                  redis,
+                  rest,
+                  log,
+                  getChannelId: () => updates.state.channelId,
+              })
+            : undefined;
 
     return {
         name: 'Quest List',
@@ -73,7 +74,7 @@ export default async function setup({ config, features, logging, rest, services 
             { id: ADD_QUESTS_ID, missing: liveMissing, handle: addQuests },
             { id: MY_POSITION_ID, missing: liveMissing, handle: showPosition },
             { id: VISIBLE_MENTIONS_ID, missing: liveMissing, handle: showVisibleMentions },
-            { id: TOGGLE_REMINDERS_ID, handle: toggleReminders },
+            { id: TOGGLE_REMINDERS_ID, missing: redis ? [] : ['OwO Redis'], handle: toggleReminders },
             interaction(SETTINGS_IDS.channel, setChannel),
             interaction(SETTINGS_IDS.editCapacity, openCapacityModal),
             interaction(SETTINGS_IDS.editRepostInterval, openRepostIntervalModal),

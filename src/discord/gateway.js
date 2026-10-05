@@ -20,7 +20,7 @@ export function createGateway({ config, token, logging, log, packages, rest }) {
             GatewayIntentBits.Guilds |
             GatewayIntentBits.GuildMembers |
             GatewayIntentBits.GuildMessages |
-            (config.owoprefix ? GatewayIntentBits.MessageContent : 0),
+            GatewayIntentBits.MessageContent,
         logger: createDiscordenoLogger(logging.createLogger('gateway')),
         resharding: { enabled: false },
         events: {
