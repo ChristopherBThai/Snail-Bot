@@ -1,11 +1,14 @@
 import { notification } from './render.js';
 
+// Temporarily use legacy command-triggered reminders instead of Redis polling.
+const REDIS_POLLING_ENABLED = false;
 const CHECK_INTERVAL_MS = 4.5 * 60 * 1000;
 const PRAY_COOLDOWN_MS = 5 * 60 * 1000;
 
-export function createPrayCurseReminders({ User, redis, rest, log, getChannelId }) {
+export function createPrayCurseReminders({ User, redis, rest, log, getChannelId, owoprefix }) {
     const users = new Set();
     const cooldowns = new Map();
+    const pendingCommands = new Map();
     let active = false;
     let checkIntervalId;
 
@@ -13,6 +16,7 @@ export function createPrayCurseReminders({ User, redis, rest, log, getChannelId 
         activate,
         deactivate,
         toggle,
+        messageCreated,
     };
 
     async function activate() {
@@ -24,6 +28,7 @@ export function createPrayCurseReminders({ User, redis, rest, log, getChannelId 
         for (const user of loadedUsers) users.add(user._id);
 
         log.debug('Loaded pray/curse reminder users', { users: users.size });
+        if (!REDIS_POLLING_ENABLED) return;
         await check(false).catch(logCheckFailure);
         if (!active) return;
 
@@ -37,6 +42,8 @@ export function createPrayCurseReminders({ User, redis, rest, log, getChannelId 
 
         for (const cooldown of cooldowns.values()) clearTimeout(cooldown.timer);
         cooldowns.clear();
+        for (const pending of pendingCommands.values()) clearTimeout(pending.timer);
+        pendingCommands.clear();
         users.clear();
     }
 
@@ -46,7 +53,7 @@ export function createPrayCurseReminders({ User, redis, rest, log, getChannelId 
 
         if (enabled) {
             users.add(userId);
-            await checkUsers([userId], false).catch(logCheckFailure);
+            if (REDIS_POLLING_ENABLED) await checkUsers([userId], false).catch(logCheckFailure);
         } else {
             users.delete(userId);
             clearCooldown(userId);
@@ -54,6 +61,37 @@ export function createPrayCurseReminders({ User, redis, rest, log, getChannelId 
 
         log.info(`${enabled ? 'Enabled' : 'Disabled'} pray/curse reminders`, { userId });
         return enabled;
+    }
+
+    async function messageCreated(message) {
+        if (!active || !owoprefix || message.author?.bot || !message.content?.toLowerCase().startsWith(owoprefix))
+            return;
+        const command = message.content.slice(owoprefix.length).trim().split(/ +/g)[0].toLowerCase();
+        if (command !== 'pray' && command !== 'curse') return;
+
+        const userId = message.author.id;
+        const enabled = (await User.findById(userId))?.reminders?.luck;
+        if (!active || !enabled || pendingCommands.has(userId)) return;
+
+        const pending = { channelId: message.channelId, timer: undefined };
+        pendingCommands.set(userId, pending);
+        pending.timer = setTimeout(() => remindCommand(userId, pending), PRAY_COOLDOWN_MS);
+    }
+
+    async function remindCommand(userId, pending) {
+        try {
+            const enabled = (await User.findById(userId))?.reminders?.luck;
+            if (!active || !enabled || pendingCommands.get(userId) !== pending) return;
+            await rest.sendMessage(
+                pending.channelId,
+                notification(`<@${userId}> your pray/curse cooldown is over!`, [userId]),
+            );
+            log.info('Sent pray/curse reminder', { userId, channelId: pending.channelId });
+        } catch (error) {
+            log.error('Could not send pray/curse reminder', { error, userId, channelId: pending.channelId });
+        } finally {
+            if (pendingCommands.get(userId) === pending) pendingCommands.delete(userId);
+        }
     }
 
     async function check(remindIfAlreadyReady = true) {

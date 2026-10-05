@@ -59,6 +59,7 @@ export default async function setup({ config, features, logging, rest, services 
         mongo && redis
             ? createPrayCurseReminders({
                   User: mongo.User,
+                  owoprefix: config.owoprefix,
                   redis,
                   rest,
                   log,
@@ -98,7 +99,14 @@ export default async function setup({ config, features, logging, rest, services 
                 updates?.deactivate();
                 reminders?.deactivate();
             },
-            events: questSource ? [{ event: GatewayDispatchEvents.MessageCreate, handle: updates.messageCreated }] : [],
+            events: [
+                ...(questSource
+                    ? [{ event: GatewayDispatchEvents.MessageCreate, handle: updates.messageCreated }]
+                    : []),
+                ...(reminders
+                    ? [{ event: GatewayDispatchEvents.MessageCreate, handle: reminders.messageCreated }]
+                    : []),
+            ],
             settings: {
                 pages: [
                     { id: 'overview', label: 'Overview', render: renderOverview },
@@ -166,7 +174,7 @@ export default async function setup({ config, features, logging, rest, services 
         const enabled = await reminders.toggle(userId);
         await context.respond(
             enabled
-                ? 'Pray/curse reminders are now enabled in the Quest List channel.'
+                ? 'Pray/curse reminders are now enabled in your command channel.'
                 : 'Pray/curse reminders are now disabled.',
             { ephemeral: true },
         );
