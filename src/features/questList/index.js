@@ -55,16 +55,16 @@ export default async function setup({ config, features, logging, rest, services 
           })
         : undefined;
     await updates?.initialize();
-    const reminders =
-        mongo && redis
-            ? createPrayCurseReminders({
-                  User: mongo.User,
-                  redis,
-                  rest,
-                  log,
-                  getChannelId: () => updates.state.channelId,
-              })
-            : undefined;
+    const reminders = mongo
+        ? createPrayCurseReminders({
+              User: mongo.User,
+              owoprefix: config.owoprefix,
+              redis,
+              rest,
+              log,
+              getChannelId: () => updates.state.channelId,
+          })
+        : undefined;
 
     return {
         name: 'Quest List',
@@ -73,7 +73,7 @@ export default async function setup({ config, features, logging, rest, services 
             { id: ADD_QUESTS_ID, missing: liveMissing, handle: addQuests },
             { id: MY_POSITION_ID, missing: liveMissing, handle: showPosition },
             { id: VISIBLE_MENTIONS_ID, missing: liveMissing, handle: showVisibleMentions },
-            { id: TOGGLE_REMINDERS_ID, missing: redis ? [] : ['OwO Redis'], handle: toggleReminders },
+            { id: TOGGLE_REMINDERS_ID, handle: toggleReminders },
             interaction(SETTINGS_IDS.channel, setChannel),
             interaction(SETTINGS_IDS.editCapacity, openCapacityModal),
             interaction(SETTINGS_IDS.editRepostInterval, openRepostIntervalModal),
@@ -98,7 +98,14 @@ export default async function setup({ config, features, logging, rest, services 
                 updates?.deactivate();
                 reminders?.deactivate();
             },
-            events: questSource ? [{ event: GatewayDispatchEvents.MessageCreate, handle: updates.messageCreated }] : [],
+            events: [
+                ...(questSource
+                    ? [{ event: GatewayDispatchEvents.MessageCreate, handle: updates.messageCreated }]
+                    : []),
+                ...(reminders
+                    ? [{ event: GatewayDispatchEvents.MessageCreate, handle: reminders.messageCreated }]
+                    : []),
+            ],
             settings: {
                 pages: [
                     { id: 'overview', label: 'Overview', render: renderOverview },
@@ -166,7 +173,7 @@ export default async function setup({ config, features, logging, rest, services 
         const enabled = await reminders.toggle(userId);
         await context.respond(
             enabled
-                ? 'Pray/curse reminders are now enabled in the Quest List channel.'
+                ? 'Pray/curse reminders are now enabled in your command channel.'
                 : 'Pray/curse reminders are now disabled.',
             { ephemeral: true },
         );

@@ -16,7 +16,11 @@ import { normalizeMessage } from './messages.js';
 export function createGateway({ config, token, logging, log, packages, rest }) {
     return createGatewayManager({
         token,
-        intents: GatewayIntentBits.Guilds | GatewayIntentBits.GuildMembers | GatewayIntentBits.GuildMessages,
+        intents:
+            GatewayIntentBits.Guilds |
+            GatewayIntentBits.GuildMembers |
+            GatewayIntentBits.GuildMessages |
+            (config.owoprefix ? GatewayIntentBits.MessageContent : 0),
         logger: createDiscordenoLogger(logging.createLogger('gateway')),
         resharding: { enabled: false },
         events: {
